@@ -61,12 +61,24 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
 }
 type ClaimDraft = Claim & { selected: boolean };
 
-function mark(icon: "logo" | "arrow" | "external" | "download") {
+function mark(
+  icon:
+    | "logo"
+    | "arrow"
+    | "external"
+    | "download"
+    | "plus"
+    | "remove"
+    | "chevron",
+) {
   const paths = {
     logo: "M3 18h5v-5h5V8h5V3h3",
     arrow: "M4 12h15m-6-6 6 6-6 6",
     external: "M14 4h6v6m0-6-9 9m7 0v6H5V6h6",
     download: "M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3",
+    plus: "M12 5v14M5 12h14",
+    remove: "M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5",
+    chevron: "m6 9 6 6 6-6",
   };
   return (
     <svg
@@ -504,16 +516,33 @@ export function App({
         )}
 
         {page === "claims" && (
-          <section className="panel">
-            <h2 ref={heading} tabIndex={-1}>
-              Confirm the claims
-            </h2>
-            <p className="section-note">
-              Edit any claim, then select up to three whose failure would change
-              your decision.
-            </p>
-            <details className="proposal">
-              <summary>Read your proposal</summary>
+          <section className="panel claim-editor">
+            <div className="claim-editor-head">
+              <div>
+                <h2 ref={heading} tabIndex={-1}>
+                  Confirm the claims
+                </h2>
+                <p>
+                  Edit the wording and choose up to {limits.selected} claims to
+                  review.
+                </p>
+              </div>
+              <div className="claim-count" role="status">
+                <div className="claim-count-track" aria-hidden="true">
+                  {Array.from({ length: limits.selected }, (_, index) => (
+                    <span key={index} data-filled={index < selected.length} />
+                  ))}
+                </div>
+                <span>
+                  <strong>
+                    {selected.length} of {limits.selected}
+                  </strong>{" "}
+                  selected
+                </span>
+              </div>
+            </div>
+            <details className="proposal claim-proposal">
+              <summary>Read your proposal {mark("chevron")}</summary>
               <p>{proposal}</p>
             </details>
             <form onSubmit={onReview}>
@@ -524,49 +553,65 @@ export function App({
                     key={claim.id}
                     data-selected={claim.selected}
                   >
-                    <label className="check-label">
-                      <input
-                        type="checkbox"
-                        checked={claim.selected}
-                        disabled={
-                          !claim.selected && selected.length >= limits.selected
-                        }
-                        onChange={(event) =>
-                          updateClaim(claim.id, {
-                            selected: event.target.checked,
-                          })
-                        }
-                      />
-                      <span>
-                        Review
-                        <span className="sr-only"> claim {index + 1}</span>
-                      </span>
-                    </label>
-                    <label className="sr-only" htmlFor={claim.id}>
-                      Claim {index + 1}
-                    </label>
+                    <div className="claim-row-head">
+                      <label className="claim-name" htmlFor={claim.id}>
+                        Claim {index + 1}
+                      </label>
+                      <div className="claim-row-actions">
+                        <label
+                          className="check-label claim-pick"
+                          data-checked={claim.selected}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Review claim ${index + 1}`}
+                            checked={claim.selected}
+                            disabled={
+                              !claim.selected &&
+                              selected.length >= limits.selected
+                            }
+                            onChange={(event) =>
+                              updateClaim(claim.id, {
+                                selected: event.target.checked,
+                              })
+                            }
+                          />
+                          <span aria-hidden="true">
+                            {claim.selected ? "Included" : "Include"}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          className="claim-remove"
+                          aria-label={`Remove claim ${index + 1}`}
+                          title="Remove claim"
+                          onClick={() => {
+                            const next = claims[index + 1] ?? claims[index - 1];
+                            setClaims((currentClaims) =>
+                              currentClaims.filter(({ id }) => id !== claim.id),
+                            );
+                            requestAnimationFrame(() =>
+                              document
+                                .getElementById(next?.id ?? "add-claim")
+                                ?.focus(),
+                            );
+                            setError("");
+                          }}
+                        >
+                          {mark("remove")}
+                        </button>
+                      </div>
+                    </div>
                     <textarea
                       id={claim.id}
                       value={claim.text}
                       rows={2}
+                      placeholder="Write a testable claim"
                       maxLength={limits.claim}
                       onChange={(event) =>
                         updateClaim(claim.id, { text: event.target.value })
                       }
                     />
-                    <button
-                      type="button"
-                      className="text-button"
-                      aria-label={`Remove claim ${index + 1}`}
-                      onClick={() => {
-                        setClaims((currentClaims) =>
-                          currentClaims.filter(({ id }) => id !== claim.id),
-                        );
-                        setError("");
-                      }}
-                    >
-                      Remove
-                    </button>
                     <div className="claim-meta">
                       <label>
                         Main risk
@@ -591,7 +636,10 @@ export function App({
                           <option value="evidence">Public evidence</option>
                         </select>
                       </label>
-                      <label className="check-label">
+                      <label
+                        className="check-label claim-priority"
+                        data-checked={Boolean(claim.loadBearing)}
+                      >
                         <input
                           type="checkbox"
                           checked={Boolean(claim.loadBearing)}
@@ -612,11 +660,12 @@ export function App({
                   {error}
                 </p>
               )}
-              <div className="actions split">
+              <div className="actions split claim-editor-footer">
                 <div className="actions">
                   <button
                     type="button"
-                    className="button"
+                    className="button claim-add"
+                    id="add-claim"
                     disabled={claims.length >= limits.claims}
                     onClick={() => {
                       const id = crypto.randomUUID();
@@ -630,10 +679,9 @@ export function App({
                       setError("");
                     }}
                   >
-                    Add claim
+                    {mark("plus")} Add claim
                   </button>
-                  <span className="field-note" role="status">
-                    {selected.length} of {limits.selected} selected ·{" "}
+                  <span className="claim-mode">
                     {mode === "demo" ? "Bundled demo" : "Live review"}
                   </span>
                 </div>

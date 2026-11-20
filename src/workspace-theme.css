@@ -258,32 +258,207 @@
 .review-workspace .claim-list {
   gap: 0.5rem;
 }
-.review-workspace .claim-row {
+.review-workspace .claim-editor {
+  max-width: 65rem;
+  margin-inline: auto;
+}
+.claim-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+.review-workspace .claim-editor-head h2 {
+  margin-bottom: 0.35rem;
+}
+.claim-editor-head p {
+  color: #445147;
+}
+.claim-count {
+  flex: none;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--review-blue);
+  border-radius: 0.9rem;
+  color: #212e44;
+  font-size: 0.86rem;
+}
+.claim-count-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.28rem;
+}
+.claim-count-track span {
+  height: 0.28rem;
   border-radius: 1rem;
-  border-color: var(--review-rule);
-  padding: clamp(0.7rem, 2vw, 1.1rem);
-  background: #f8f7f0;
-  transition:
-    background-color 180ms ease,
-    border-color 180ms ease;
+  background: #b1bed1;
 }
-.review-workspace .claim-row[data-selected="true"] {
-  border-color: #98a477;
-  background: #f0f3e4;
+.claim-count-track span[data-filled="true"] {
+  background: #33496b;
 }
-.review-workspace .claim-row textarea {
+.claim-editor .claim-proposal {
+  background: #eeefe7;
+  border: 0;
+  border-radius: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.claim-proposal summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  list-style: none;
+}
+.claim-proposal summary::-webkit-details-marker {
+  display: none;
+}
+.claim-proposal[open] summary svg {
+  rotate: 180deg;
+}
+.review-workspace .claim-editor .claim-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.34rem;
+  padding: 0.6rem 0.85rem 0.7rem;
+  border: 1px solid #dedfd5;
+  border-radius: 1.05rem;
+  background: #faf9f5;
+}
+.review-workspace .claim-editor .claim-row[data-selected="true"] {
+  background: #fffefa;
+  border-color: #bfc9a5;
+  border-inline-start: 4px solid #809652;
+  padding-inline-start: calc(0.85rem - 3px);
+}
+.claim-row-head,
+.claim-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.claim-row-head {
+  justify-content: space-between;
+}
+.claim-row-head .claim-name {
+  margin: 0 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 690;
+  color: #49564b;
+}
+.claim-pick,
+.claim-priority {
+  min-height: 2.25rem;
+  padding: 0.32rem 0.6rem;
+  border-radius: 2rem;
+  cursor: pointer;
+  font-size: 0.83rem;
+}
+.claim-pick {
+  background: #e9eae2;
+}
+.claim-pick[data-checked="true"] {
+  background: #e4efbc;
+  color: #29381c;
+}
+.claim-pick:has(:disabled) {
+  cursor: default;
+  background: #efefe8;
+  color: #535b51;
+}
+.claim-pick input,
+.claim-priority input {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+  flex: none;
+}
+.claim-priority[data-checked="true"] {
+  background: #e0eaff;
+  color: #233552;
+}
+.claim-remove {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #5b5f56;
+}
+.claim-remove:hover {
+  background: #fae1d8;
+  color: #802e25;
+}
+.review-workspace .claim-editor .claim-row textarea {
+  grid-column: auto;
+  grid-row: auto;
   field-sizing: content;
-  min-height: 4.75rem;
-  max-height: 11rem;
-  background: var(--review-paper);
-  border-radius: 0.62rem;
+  min-height: 2.65rem;
+  max-height: 10rem;
+  padding: 0.44rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--review-ink);
+  font-weight: 570;
+  line-height: 1.45;
+  resize: none;
 }
-.review-workspace .claim-row .text-button {
-  padding-inline: 0.65rem;
+.review-workspace .claim-editor .claim-row textarea:hover,
+.review-workspace .claim-editor .claim-row textarea:focus {
+  border-color: #84927b;
+  background: #fff;
 }
-.review-workspace .claim-meta select {
-  background: var(--review-paper);
-  border-radius: 0.65rem;
+.claim-editor .claim-meta {
+  grid-column: auto;
+  gap: 0.25rem 0.55rem;
+  padding: 0.2rem 0.5rem 0;
+  border-top: 1px solid #efefe7;
+}
+.claim-editor .claim-meta label {
+  font-size: 0.82rem;
+}
+.review-workspace .claim-editor .claim-meta select {
+  padding: 0.38rem 0.5rem;
+  max-width: min(44vw, 13.5rem);
+  border: 1px solid #d4d8cd;
+  border-radius: 0.55rem;
+  background: #f3f4ee;
+  font-weight: 560;
+}
+.claim-editor form .claim-editor-footer {
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.9rem;
+  background: #eeefe7;
+  margin-top: 0.8rem;
+}
+.claim-mode {
+  color: #435146;
+  font-size: 0.85rem;
+}
+@media (max-width: 540px) {
+  .claim-editor-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+  .claim-count {
+    grid-template-columns: 3.4rem auto;
+    align-items: center;
+  }
+  .claim-editor .claim-meta {
+    padding-inline: 0.25rem;
+  }
+  .claim-editor .claim-editor-footer {
+    align-items: flex-start;
+  }
+  .claim-editor .claim-editor-footer > .actions {
+    gap: 0.35rem;
+  }
 }
 
 .review-workspace .activity {
@@ -432,16 +607,6 @@
     width: 1.3rem;
     height: 1.3rem;
     font-size: 0.72rem;
-  }
-  .review-workspace .claim-row {
-    gap: 0.4rem;
-  }
-  .review-workspace .claim-meta,
-  .review-workspace .claim-meta label {
-    min-width: 0;
-  }
-  .review-workspace .claim-meta select {
-    max-width: min(100%, 11rem);
   }
 }
 
