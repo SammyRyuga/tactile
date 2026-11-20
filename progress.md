@@ -25,3 +25,9 @@
 - Added tab-session restoration, production security headers, and a Supabase-backed rolling account quota.
 - Added a 15-case development set and a 15-case holdout with a repeatable runner and scoring rubric. Credentialed comparative results are pending.
 - Verified the deployed quota migration enables row-level security, denies anonymous execution, and rejects requests without a session.
+
+## Interface redesign
+
+- Introduced an expressive visual system across the homepage, review workspace, and sign-in.
+- Extended the homepage with an interactive case preview, review walkthrough, feature explanations, and FAQ.
+- Added two new bundled scenarios and desktop/mobile browser coverage for opening a specific scenario.

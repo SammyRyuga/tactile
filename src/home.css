@@ -1,0 +1,583 @@
+:root {
+  --paper-ground: #f5f5f0;
+  --ink: #171a18;
+  --lime: #dafa70;
+  --blue: #dce8ff;
+  --apricot: #ffd6bf;
+  --forest: #222d23;
+  --display: "Bricolage Grotesque Variable", system-ui, sans-serif;
+  --text: "Geist Variable", system-ui, sans-serif;
+}
+body {
+  background: var(--paper-ground);
+  font-family: var(--text);
+  color: var(--ink);
+}
+.site-nav {
+  border: 0;
+  background: var(--paper-ground);
+}
+.site-nav .topbar-body {
+  max-width: 90rem;
+  width: min(calc(100% - 3rem), 90rem);
+  min-height: 5.2rem;
+}
+.site-nav .wordmark {
+  font: 800 1.8rem/0.95 var(--display);
+  letter-spacing: -0.055em;
+}
+.site-nav .logo {
+  background: var(--lime);
+  color: var(--ink);
+  border-radius: 36%;
+  width: 2.45rem;
+  height: 2.45rem;
+}
+.site-nav nav {
+  gap: 0.35rem;
+}
+.site-nav nav a,
+.site-nav nav a:first-child {
+  padding: 0.58rem 0.9rem;
+  border: 0;
+  font-weight: 600;
+}
+.site-nav nav a:last-child {
+  background: var(--ink);
+  color: var(--paper-ground);
+  border-radius: 3rem;
+  padding: 0.62rem 1.2rem;
+}
+.site-nav nav a:hover {
+  background: #ebebe0;
+  text-decoration: none;
+  border-radius: 3rem;
+}
+.site-nav nav a:last-child:hover {
+  background: #354237;
+}
+.home-page {
+  --side: clamp(1.2rem, 5.45vw, 6rem);
+}
+.home-width {
+  width: min(calc(100% - 2 * var(--side)), 82rem);
+  margin-inline: auto;
+}
+.home-page h1,
+.home-page h2,
+.home-page h3 {
+  font-family: var(--display);
+  font-weight: 760;
+}
+.home-page h2 {
+  font-size: clamp(2.5rem, 5.4vw, 5rem);
+  letter-spacing: -0.068em;
+  line-height: 0.98;
+  margin: 0;
+  text-wrap: balance;
+}
+.home-page p {
+  color: #354139;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+.home-hero {
+  padding: clamp(1.5rem, 5vw, 5rem) 0 clamp(3.4rem, 6vw, 5.5rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 5rem);
+}
+.home-intro {
+  min-width: 0;
+}
+.home-intro h1 {
+  font-size: clamp(3.25rem, 7vw, 7.25rem);
+  line-height: 0.88;
+  letter-spacing: -0.062em;
+  font-weight: 800;
+}
+.home-intro h1 span {
+  display: block;
+}
+.home-intro p {
+  font-size: clamp(1.05rem, 1.5vw, 1.28rem);
+  max-width: 28rem;
+  margin: 1.65rem 0 1.8rem;
+}
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.home-button {
+  text-decoration: none;
+  display: inline-flex;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+  width: fit-content;
+  min-height: 3.1rem;
+  border-radius: 3rem;
+  padding: 0.72rem 1.17rem;
+  font-size: 0.97rem;
+  font-weight: 670;
+  transition:
+    border-radius 0.25s cubic-bezier(0.2, 0.8, 0.3, 1),
+    background 0.22s ease,
+    transform 0.22s ease;
+  color: var(--ink);
+}
+.home-button span {
+  font-size: 1.14em;
+}
+.home-button:hover {
+  border-radius: 0.85rem;
+  transform: translateY(-2px);
+}
+.home-button:active {
+  transform: translateY(1px);
+}
+.home-button.filled {
+  background: var(--lime);
+}
+.home-button.filled:hover {
+  background: #c7ef4e;
+}
+.home-button.plain {
+  border: 1px solid #a6afa2;
+}
+.home-button.dark {
+  background: var(--ink);
+  color: var(--paper-ground);
+}
+.hero-stage {
+  min-width: 0;
+  position: relative;
+  background: #d7e0f3;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: clamp(1.35rem, 4vw, 3rem) clamp(1.35rem, 4vw, 3rem)
+    clamp(1.35rem, 4vw, 3rem) 0.7rem;
+  aspect-ratio: 1.14;
+}
+.hero-stage:has(.hero-finding:focus-visible) {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+.hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.hero-finding {
+  position: absolute;
+  inset: auto auto clamp(0.8rem, 3vw, 1.5rem) clamp(0.8rem, 3vw, 1.5rem);
+  display: grid;
+  gap: 0.48rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1.15rem 1.15rem 1.15rem 0.45rem;
+  width: min(calc(100% - 1.6rem), 18rem);
+  background: var(--paper-ground);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+.hero-finding:hover {
+  background: white;
+}
+.hero-finding .verdict {
+  justify-self: start;
+}
+.hero-finding-text {
+  font: 720 1.03rem/1.24 var(--display);
+}
+.hero-link {
+  color: #405041;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+.examples-field {
+  background: var(--forest);
+  color: var(--paper-ground);
+  padding: clamp(3.25rem, 8vw, 7rem) 0;
+  border-radius: clamp(1.4rem, 4vw, 3rem);
+  margin-inline: clamp(0.65rem, 2vw, 1.6rem);
+  scroll-margin-top: 1rem;
+}
+.examples-field .home-width {
+  width: min(calc(100% - 2 * clamp(0.8rem, 4vw, 4rem)), 77rem);
+}
+.home-section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.85fr);
+  gap: 1.4rem;
+  align-items: end;
+  margin-bottom: 1.65rem;
+}
+.home-section-head h2 {
+  text-wrap: initial;
+}
+.home-section-head p {
+  color: #d0ddd0;
+  max-width: 25rem;
+}
+.case-controls {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
+}
+.case-controls button {
+  min-height: 2.8rem;
+  border-radius: 3rem;
+  padding: 0.47rem 1.13rem;
+  color: #eff5ed;
+  border: 1px solid #758576;
+  background: transparent;
+  font-weight: 620;
+  transition:
+    background 0.2s ease,
+    border-radius 0.2s ease,
+    color 0.2s ease;
+}
+.case-controls button:hover {
+  background: #3a483a;
+}
+.case-controls button[aria-pressed="true"] {
+  border-color: var(--lime);
+  background: var(--lime);
+  color: var(--ink);
+  border-radius: 0.75rem;
+}
+.case-controls button:focus-visible {
+  outline-color: var(--lime);
+}
+.case-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  color: var(--ink);
+}
+.case-proposal,
+.case-finding {
+  padding: clamp(1.25rem, 4vw, 2.7rem);
+  border-radius: 1.8rem;
+}
+.case-proposal {
+  background: var(--paper-ground);
+  border-bottom-left-radius: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+}
+.case-finding {
+  background: var(--blue);
+  border-top-right-radius: 0.55rem;
+}
+.case-label {
+  display: block;
+  color: #435246;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-bottom: 0.8rem;
+}
+.case-proposal h3 {
+  font-size: clamp(1.75rem, 3.7vw, 3.15rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  margin-bottom: 0.75rem;
+}
+.case-proposal > p {
+  margin-bottom: 1rem;
+}
+.case-proposal .home-button {
+  margin-top: auto;
+}
+.case-finding .case-claim {
+  font: 720 clamp(1.22rem, 2.35vw, 2rem)/1.15 var(--display);
+  letter-spacing: -0.035em;
+  margin: 0.65rem 0 0.7rem;
+}
+.case-repair {
+  margin-top: 0.95rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 0.9rem;
+  background: #f5f8ff;
+}
+.case-repair strong {
+  font-size: 0.9rem;
+}
+.case-repair p {
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+.method-layout {
+  padding: clamp(4rem, 10vw, 9rem) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: clamp(1.8rem, 7vw, 7rem);
+  align-items: start;
+}
+.method-intro h2 {
+  text-wrap: initial;
+  max-width: 12ch;
+}
+.method-intro p {
+  margin: 1.1rem 0 0.75rem;
+  max-width: 25rem;
+}
+.home-text-link {
+  font-weight: 680;
+  display: inline-block;
+  text-underline-offset: 0.25em;
+}
+.method-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  counter-reset: method;
+}
+.method-steps li {
+  padding: clamp(1rem, 3vw, 1.7rem);
+  display: flex;
+  gap: 1.15rem;
+  border-radius: 1.45rem;
+  background: #e5e9de;
+  counter-increment: method;
+}
+.method-steps li:nth-child(2) {
+  background: var(--lime);
+}
+.method-steps li:nth-child(3) {
+  background: var(--blue);
+}
+.method-steps li::before {
+  content: counter(method);
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.55rem;
+  height: 2.55rem;
+  border-radius: 100%;
+  color: white;
+  background: var(--ink);
+  font-weight: 650;
+}
+.method-steps h3 {
+  font-size: clamp(1.33rem, 2.35vw, 1.9rem);
+  line-height: 1.1;
+  margin-bottom: 0.3rem;
+  letter-spacing: -0.04em;
+}
+.method-steps p {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.principle-section {
+  background: var(--blue);
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 2rem clamp(1.5rem, 5vw, 5rem);
+  padding: clamp(1.4rem, 6vw, 5rem);
+  border-radius: 2.3rem 0.9rem 2.3rem 2.3rem;
+}
+.principle-section h2 {
+  font-size: clamp(2.4rem, 4.2vw, 4.3rem);
+  text-wrap: initial;
+}
+.faq-list {
+  display: grid;
+  gap: 0.45rem;
+}
+.faq-list details {
+  background: var(--paper-ground);
+  border-radius: 1rem;
+}
+.faq-list summary {
+  cursor: pointer;
+  padding: 1rem 1.2rem;
+  font-weight: 670;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  justify-content: space-between;
+  list-style: none;
+}
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+.faq-list summary::after {
+  content: "+";
+  font-size: 1.3rem;
+  line-height: 1;
+  font-weight: 600;
+}
+.faq-list details[open] summary::after {
+  content: "−";
+}
+.faq-list details p {
+  padding: 0 1.2rem 1.15rem;
+  font-size: 1rem;
+  max-width: 65ch;
+}
+.home-faq {
+  padding: clamp(4rem, 9vw, 8rem) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
+  gap: 1.5rem 4rem;
+}
+.home-faq h2 {
+  text-wrap: initial;
+}
+.faq-list details {
+  background: #e9eae1;
+}
+.home-close {
+  background: var(--lime);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 2.5rem;
+  align-items: end;
+  justify-content: space-between;
+  padding: clamp(1.6rem, 5.5vw, 4.25rem);
+  border-radius: clamp(1.3rem, 3.5vw, 2.75rem);
+}
+.home-close h2 {
+  max-width: 13ch;
+  text-wrap: initial;
+}
+.home-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.8rem;
+  padding: 1.6rem 0 2rem;
+  border: 0;
+  margin-top: 1.1rem;
+  font-size: 0.9rem;
+  color: #435046;
+}
+.home-footer strong {
+  font: 800 1.65rem/1 var(--display);
+  letter-spacing: -0.06em;
+  color: var(--ink);
+}
+.home-footer > a {
+  margin-left: auto;
+  font-weight: 650;
+}
+@media (max-width: 800px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+    padding-top: 2rem;
+    gap: 1.8rem;
+  }
+  .home-intro h1 {
+    font-size: clamp(3.65rem, 11vw, 6.25rem);
+  }
+  .hero-stage {
+    aspect-ratio: 1.42;
+  }
+  .hero-image {
+    height: 100%;
+  }
+  .home-section-head,
+  .method-layout,
+  .principle-section,
+  .home-faq {
+    grid-template-columns: 1fr;
+  }
+  .method-intro h2 {
+    max-width: 14ch;
+  }
+}
+@media (max-width: 540px) {
+  .site-nav .topbar-body {
+    width: calc(100% - 2rem);
+    min-height: 4.15rem;
+  }
+  .site-nav .wordmark {
+    font-size: 1.7rem;
+    gap: 0.5rem;
+  }
+  .site-nav .logo {
+    width: 2rem;
+    height: 2rem;
+  }
+  .site-nav nav a,
+  .site-nav nav a:first-child,
+  .site-nav nav a:last-child {
+    font-size: 0.85rem;
+    padding: 0.48rem 0.7rem;
+  }
+  .site-nav .nav-section {
+    display: none;
+  }
+  .hero-stage {
+    aspect-ratio: 1.22;
+  }
+  .hero-finding {
+    width: min(83%, 16rem);
+  }
+  .case-board {
+    grid-template-columns: 1fr;
+  }
+  .case-controls button {
+    padding-inline: 0.75rem;
+    font-size: 0.86rem;
+  }
+  .home-footer > a {
+    margin-left: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-page *,
+  .home-page *::before,
+  .home-page *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+.principle-section h2 + p {
+  margin: 1.1rem 0 0.85rem;
+  max-width: 28rem;
+}
+.trace-preview {
+  padding: clamp(1rem, 3vw, 1.7rem);
+  min-height: 13rem;
+  border-radius: 1.3rem 1.3rem 0.5rem 1.3rem;
+  background: var(--paper-ground);
+}
+.trace-preview h3 {
+  font-size: 1.55rem;
+  letter-spacing: -0.035em;
+}
+.trace-preview > p {
+  font-size: 0.9rem;
+  color: #435246;
+}
+.trace-preview ol {
+  padding: 0;
+  list-style: none;
+  margin: 0.9rem 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.trace-preview li {
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.6rem;
+  background: #e5e9de;
+}
+.trace-preview li p {
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+.trace-preview > a {
+  font-weight: 650;
+  font-size: 0.93rem;
+}

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { z } from "zod";
 import { App } from "./App.tsx";
+import { Home } from "./Home.tsx";
+import { demoExamples } from "../shared/demo.ts";
 
 const authConfig = z.object({
   auth: z
@@ -12,83 +14,38 @@ const authConfig = z.object({
 
 function Header({ session }: { session: Session | null }) {
   return (
-    <header className="topbar">
+    <header className="topbar site-nav">
       <div className="topbar-body">
         <a className="wordmark" href="/">
           <span className="logo" aria-hidden="true">
-            ↗
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 18h5v-5h5V8h5V3h3" />
+            </svg>
           </span>
           Tactile
         </a>
         <nav aria-label="Main navigation">
-          <a href="/review">Review</a>
+          <a className="nav-section" href="/#examples">
+            Cases
+          </a>
+          <a className="nav-section" href="/#method">
+            Method
+          </a>
+          <a href="/review">Workspace</a>
           <a href={session ? "/review" : "/login"}>
             {session ? "Account" : "Sign in"}
           </a>
         </nav>
       </div>
     </header>
-  );
-}
-
-function Home({ session }: { session: Session | null }) {
-  return (
-    <main id="content" className="workspace landing">
-      <section className="landing-hero">
-        <div>
-          <h1>Make better engineering decisions.</h1>
-          <p>
-            Find the assumptions your proposal depends on. Check what holds up,
-            what needs evidence, and what to try next.
-          </p>
-          <div className="actions">
-            <a className="button primary" href={session ? "/review" : "/login"}>
-              {session ? "Start a review" : "Sign in"}
-            </a>
-            <a className="button" href="/review?demo=1">
-              Try the demo
-            </a>
-          </div>
-        </div>
-        <aside className="panel landing-example" aria-label="Example decision">
-          <p className="landing-label">Example decision</p>
-          <h2>Should we run fewer tests on each pull request?</h2>
-          <div className="sample-finding">
-            <span className="verdict contradicted">Contradicted</span>
-            <p>
-              Testing only the changed package can miss failures in a package
-              that depends on it.
-            </p>
-          </div>
-          <a href="/review?demo=1">Review this example →</a>
-        </aside>
-      </section>
-      <section className="landing-how" aria-labelledby="how-title">
-        <h2 id="how-title">How a review works</h2>
-        <ol>
-          <li>
-            <h3>Describe a change</h3>
-            <p>Include the current setup and the outcome you expect.</p>
-          </li>
-          <li>
-            <h3>Confirm the claims</h3>
-            <p>
-              Choose the assumptions that would change your decision if they
-              failed.
-            </p>
-          </li>
-          <li>
-            <h3>Review the evidence</h3>
-            <p>Read the findings and export a Markdown report for your team.</p>
-          </li>
-        </ol>
-      </section>
-      <footer>
-        Built by <a href="https://github.com/ryanfer123">ryanfer123</a> and{" "}
-        <a href="https://github.com/SammyRyuga">SammyRyuga</a> ·{" "}
-        <a href="https://github.com/SammyRyuga/tactile">GitHub</a>
-      </footer>
-    </main>
   );
 }
 
@@ -272,8 +229,13 @@ export function Site() {
   }, []);
 
   if (path === "/review") {
-    const demo =
-      new URLSearchParams(window.location.search).get("demo") === "1";
+    const params = new URLSearchParams(window.location.search);
+    const demo = params.get("demo") === "1";
+    const example = demo
+      ? demoExamples.find(
+          ({ id }) => id !== "ci" && id === params.get("example"),
+        )
+      : undefined;
     if (loading)
       return (
         <p className="workspace field-note" role="status">
@@ -294,16 +256,21 @@ export function Site() {
           accountId={session?.user.id}
           needsSignIn={Boolean(client && !session)}
           startDemo={demo}
+          initialExample={example}
           signOut={async () => {
             try {
               const result = await client?.auth.signOut({ scope: "local" });
               if (result?.error) throw result.error;
               if (session?.user.id) {
                 try {
-                  for (const kind of ["workspace", "example"]) {
-                    sessionStorage.removeItem(
-                      `tactile-review-v1:${session.user.id}:${kind}`,
-                    );
+                  const prefix = `tactile-review-v1:${session.user.id}:`;
+                  for (
+                    let index = sessionStorage.length - 1;
+                    index >= 0;
+                    index--
+                  ) {
+                    const key = sessionStorage.key(index);
+                    if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
                   }
                 } catch {
                   /* Storage can be disabled. */
@@ -327,7 +294,7 @@ export function Site() {
       {path === "/login" ? (
         <Login client={client} session={session} loading={loading} />
       ) : (
-        <Home session={session} />
+        <Home signedIn={Boolean(session)} />
       )}
     </>
   );

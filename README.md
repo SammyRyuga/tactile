@@ -17,7 +17,7 @@ npm ci
 npm run dev
 ```
 
-Open [Tactile on localhost](http://127.0.0.1:5173/) and select **Try the demo**. The bundled example works without a provider key or an account.
+Open [Tactile on localhost](http://127.0.0.1:5173/) and select **Try the demo**. The bundled cases work without a provider key or an account. The homepage preview lets you switch between CI coverage, replica consistency, and feature-flag rollback before opening the full review.
 
 ### Walk through a review
 
@@ -73,3 +73,5 @@ For development workflow and review guidelines, see [CONTRIBUTING.md](CONTRIBUTI
 Tactile was built by [ryanfer123](https://github.com/ryanfer123) and [SammyRyuga](https://github.com/SammyRyuga). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
 
 Crossfire inspired the claim-review approach, including checks selected by risk and a report that traces verdicts back to evidence. [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
+
+The homepage illustration is original ImageGen artwork for Tactile. The site uses Bricolage Grotesque and Geist with GSAP and Lenis for motion.

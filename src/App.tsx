@@ -21,6 +21,11 @@ import type {
 import { extractLive, liveAvailable, runLive } from "./api.ts";
 
 const stepLabels = ["Decision", "Claims", "Report"] as const;
+const defaultExample = {
+  title: "Replace full test runs on pull requests with changed-package tests",
+  proposal: demoProposal,
+  claims: demoClaims,
+};
 type Progress = Partial<
   Record<ProgressEvent["stage"], ProgressEvent["status"]>
 >;
@@ -133,15 +138,29 @@ export function App({
   needsSignIn,
   signOut,
   startDemo,
+  initialExample,
 }: {
   token?: string;
   account?: string;
   accountId?: string;
   needsSignIn: boolean;
   startDemo: boolean;
+  initialExample?: {
+    id?: string;
+    title?: string;
+    proposal: string;
+    claims: Claim[];
+  };
   signOut?: () => Promise<void>;
 }) {
-  const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${startDemo ? "example" : "workspace"}`;
+  const example = initialExample ?? defaultExample;
+  const scenarioId = initialExample?.id;
+  const locationKey = startDemo
+    ? scenarioId
+      ? `example:${scenarioId}`
+      : "example"
+    : "workspace";
+  const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
   const [saved] = useState(() => readDraft(storageKey));
   const [state, dispatch] = useReducer(
     reviewWorkflow,
@@ -160,10 +179,10 @@ export function App({
   const report = page === "report" ? state.report : undefined;
   const progress = page === "running" ? state.progress : undefined;
   const [proposal, setProposal] = useState(
-    saved?.proposal ?? (startDemo ? demoProposal : ""),
+    saved?.proposal ?? (startDemo ? example.proposal : ""),
   );
   const [claims, setClaims] = useState<ClaimDraft[]>(
-    () => saved?.claims ?? (startDemo ? seedDraft(demoClaims) : []),
+    () => saved?.claims ?? (startDemo ? seedDraft(example.claims) : []),
   );
   const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
   const [availability, setAvailability] = useState<
@@ -220,8 +239,8 @@ export function App({
   }, [page]);
 
   function openDemo() {
-    setProposal(demoProposal);
-    setClaims(seedDraft(demoClaims));
+    setProposal(example.proposal);
+    setClaims(seedDraft(example.claims));
     setMode("demo");
     setError("");
     dispatch({ type: "claims" });
@@ -235,7 +254,7 @@ export function App({
       proposalField.current?.focus();
       return;
     }
-    if (proposal.trim() === demoProposal && availability !== "live") {
+    if (proposal.trim() === example.proposal && availability !== "live") {
       openDemo();
       return;
     }
@@ -333,7 +352,10 @@ export function App({
 
   return (
     <>
-      <header className="topbar">
+      <a className="skip-link" href="#content">
+        Skip to content
+      </a>
+      <header className="topbar review-topbar">
         <div className="topbar-body">
           <a className="wordmark" href="/" aria-label="Tactile home">
             <span className="logo">{mark("logo")}</span>Tactile
@@ -348,7 +370,11 @@ export function App({
         </div>
       </header>
 
-      <main className="workspace">
+      <main
+        id="content"
+        className="workspace review-workspace"
+        data-page={page}
+      >
         {account && (
           <div className="account-strip">
             <span>Signed in as {account}</span>
@@ -361,27 +387,28 @@ export function App({
             </button>
           </div>
         )}
-        <div className="intro">
-          <h1>Review an engineering decision</h1>
-          <p>
-            Find the assumptions your proposal depends on before you commit.
-          </p>
+        <div className="review-masthead">
+          <div className="intro">
+            <h1>Review an engineering decision</h1>
+            <p>
+              Find the assumptions your proposal depends on before you commit.
+            </p>
+          </div>
+          <ol className="steps" aria-label="Review steps">
+            {stepLabels.map((step, index) => (
+              <li
+                key={step}
+                aria-current={current === index ? "step" : undefined}
+                className={index <= current ? "reached" : ""}
+              >
+                <span className="step-count" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
         </div>
-
-        <ol className="steps" aria-label="Review steps">
-          {stepLabels.map((step, index) => (
-            <li
-              key={step}
-              aria-current={current === index ? "step" : undefined}
-              className={index <= current ? "reached" : ""}
-            >
-              <span className="step-count" aria-hidden="true">
-                {index + 1}
-              </span>
-              <span>{step}</span>
-            </li>
-          ))}
-        </ol>
 
         {page === "decision" && (
           <div className="decision-layout">
@@ -404,7 +431,7 @@ export function App({
                   }}
                 />
                 {availability === "demo" &&
-                  proposal.trim() !== demoProposal && (
+                  proposal.trim() !== example.proposal && (
                     <p className="field-note">
                       {needsSignIn
                         ? "Sign in to access live reviews. The example is open to everyone."
@@ -429,7 +456,7 @@ export function App({
                     disabled={
                       extracting ||
                       (availability !== "live" &&
-                        proposal.trim() !== demoProposal)
+                        proposal.trim() !== example.proposal)
                     }
                   >
                     {extracting ? "Extracting claims…" : "Extract claims"}
@@ -437,7 +464,7 @@ export function App({
                   <button
                     className={
                       availability === "demo" &&
-                      proposal.trim() !== demoProposal
+                      proposal.trim() !== example.proposal
                         ? "button primary"
                         : "button"
                     }
@@ -453,19 +480,19 @@ export function App({
             <aside className="panel example">
               <h2>Try an example</h2>
               <p className="example-title">
-                Replace full test runs on pull requests with changed-package
-                tests
+                {example.title ?? defaultExample.title}
               </p>
               <p>
-                Faster test feedback sounds good. What happens when a change
-                breaks a package that depends on it?
+                {initialExample
+                  ? "Load the bundled proposal to see how its assumptions are tested."
+                  : "Faster test feedback sounds good. What happens when a change breaks a package that depends on it?"}
               </p>
               <button
                 className="button"
                 type="button"
                 disabled={extracting}
                 onClick={() => {
-                  setProposal(demoProposal);
+                  setProposal(example.proposal);
                   setError("");
                   proposalField.current?.focus();
                 }}
@@ -492,7 +519,11 @@ export function App({
             <form onSubmit={onReview}>
               <div className="claim-list">
                 {claims.map((claim, index) => (
-                  <div className="claim-row" key={claim.id}>
+                  <div
+                    className="claim-row"
+                    key={claim.id}
+                    data-selected={claim.selected}
+                  >
                     <label className="check-label">
                       <input
                         type="checkbox"
@@ -642,7 +673,7 @@ export function App({
             </p>
             <ul className="activity" aria-live="polite">
               {stages.map((stage) => (
-                <li key={stage}>
+                <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
                   <strong>{stage}</strong>
                   <span>
                     {progress?.[stage] === "done"

@@ -33,6 +33,23 @@ assert.equal(schema().total, 12);  // Existing checkout contract fails.</code></
       </p>
       <pre><code>pull_request → changed packages
 push to main → full suite</code></pre>
+      <h2 id="replica-timeline">Replica timeline</h2>
+      <p>
+        Illustrative ordering for an asynchronous replica. The elapsed times are
+        fixture inputs.
+      </p>
+      <pre><code>0 ms   primary commits order 42
+8 ms   checkout reads from replica, order 42 is absent
+42 ms  replica replays the commit
+50 ms  repeated lookup returns order 42</code></pre>
+      <h2 id="flag-timeline">Feature flag timeline</h2>
+      <p>
+        In this example, the flag is evaluated on each new request and the
+        update persists in storage.
+      </p>
+      <pre><code>Flag ON   request A uses the new writer, updating record 7
+Flag OFF  request B uses the old writer
+Read 7    the update from request A is still present</code></pre>
     </main>
   </body>
 </html>
