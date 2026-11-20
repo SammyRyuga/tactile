@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo evidence · Tactile</title>
+    <style>
+      body {
+        margin: 3rem auto;
+        padding: 0 1.25rem;
+        max-width: 44rem;
+        color: #222923;
+        background: #f7f6f2;
+        font: 1rem/1.65 system-ui;
+      }
+      pre {
+        padding: 1rem;
+        overflow: auto;
+        background: #fff;
+        border: 1px solid #d9ded4;
+      }
+      a {
+        color: #254d39;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">Back to Tactile</a></p>
+      <h1>Bundled demo evidence</h1>
+      <p>
+        A minimal example of how a changed-package-only rule can miss a test
+        failure in a dependent package.
+      </p>
+      <h2 id="dependency-replay">Dependency replay</h2>
+      <p>
+        Package <code>checkout</code> depends on the
+        <code>schema</code> package. A change renames <code>total</code> to
+        <code>amount</code>. Run this replay with Node to reproduce the
+        difference.
+      </p>
+      <pre><code>import assert from "node:assert/strict";
+const schema = () => ({ amount: 12 });
+assert.equal(schema().amount, 12); // Changed package passes.
+assert.equal(schema().total, 12);  // Existing checkout contract fails.</code></pre>
+      <h2 id="rollout-configuration">Rollout configuration</h2>
+      <p>
+        The example CI policy chooses the test command by event. A full run on
+        main catches the failure after merge. No timing measurements are
+        bundled.
+      </p>
+      <pre><code>pull_request → changed packages
+push to main → full suite</code></pre>
+    </main>
+  </body>
+</html>
