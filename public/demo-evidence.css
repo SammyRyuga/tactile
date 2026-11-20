@@ -1,0 +1,17 @@
+body {
+  margin: 3rem auto;
+  padding: 0 1.25rem;
+  max-width: 44rem;
+  color: #222923;
+  background: #f7f6f2;
+  font: 1rem/1.65 system-ui;
+}
+pre {
+  padding: 1rem;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #d9ded4;
+}
+a {
+  color: #254d39;
+}

@@ -1,1 +1,4 @@
 package-lock.json
+build/
+test-results/
+playwright-report/

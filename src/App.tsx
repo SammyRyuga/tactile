@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { z } from "zod";
+import { ReviewTrail } from "./ReviewTrail.tsx";
 import type { FormEvent } from "react";
 import { demoClaims, demoProposal, runDemo } from "../shared/demo.ts";
 import {
+  claimSchema,
+  reportSchema,
   limits,
   proposalSchema,
   reviewInputSchema,
@@ -17,7 +21,39 @@ import type {
 import { extractLive, liveAvailable, runLive } from "./api.ts";
 
 const stepLabels = ["Decision", "Claims", "Report"] as const;
-type Page = "decision" | "claims" | "running" | "report";
+type Progress = Partial<
+  Record<ProgressEvent["stage"], ProgressEvent["status"]>
+>;
+type Workflow =
+  | { page: "decision" | "claims" }
+  | { page: "running"; progress: Progress }
+  | { page: "report"; report: Report };
+
+type WorkflowAction =
+  | { type: "decision" | "claims" | "start" }
+  | ProgressEvent
+  | { type: "report"; report: Report };
+
+function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
+  switch (action.type) {
+    case "decision":
+    case "claims":
+      return { page: action.type };
+    case "start":
+      return { page: "running", progress: {} };
+    case "progress":
+      return state.page === "running"
+        ? {
+            ...state,
+            progress: { ...state.progress, [action.stage]: action.status },
+          }
+        : state;
+    case "report":
+      return state.page === "running"
+        ? { page: "report", report: action.report }
+        : state;
+  }
+}
 type ClaimDraft = Claim & { selected: boolean };
 
 function mark(icon: "logo" | "arrow" | "external" | "download") {
@@ -51,7 +87,7 @@ function seedDraft(claims: Claim[]): ClaimDraft[] {
 
 function exportReport(proposal: string, report: Report) {
   const url = URL.createObjectURL(
-    new Blob([toMarkdown(proposal, report)], {
+    new Blob([toMarkdown(proposal, report, window.location.origin)], {
       type: "text/markdown;charset=utf-8",
     }),
   );
@@ -62,40 +98,102 @@ function exportReport(proposal: string, report: Report) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const savedDraftSchema = z
+  .object({
+    page: z.enum(["decision", "claims", "report"]),
+    proposal: z.string().max(limits.proposal),
+    claims: z
+      .array(
+        claimSchema.extend({
+          text: z.string().max(limits.claim),
+          selected: z.boolean(),
+        }),
+      )
+      .max(limits.claims),
+    mode: z.enum(["demo", "live"]),
+    report: reportSchema.optional(),
+  })
+  .refine(({ page, report }) => page !== "report" || Boolean(report));
+
+function readDraft(key: string) {
+  try {
+    const result = savedDraftSchema.safeParse(
+      JSON.parse(sessionStorage.getItem(key) ?? "null"),
+    );
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function App({
   token,
   account,
+  accountId,
   needsSignIn,
   signOut,
   startDemo,
 }: {
   token?: string;
   account?: string;
+  accountId?: string;
   needsSignIn: boolean;
   startDemo: boolean;
   signOut?: () => Promise<void>;
 }) {
-  const [page, setPage] = useState<Page>(startDemo ? "claims" : "decision");
-  const [proposal, setProposal] = useState(startDemo ? demoProposal : "");
-  const [claims, setClaims] = useState<ClaimDraft[]>(() =>
-    startDemo ? seedDraft(demoClaims) : [],
+  const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${startDemo ? "example" : "workspace"}`;
+  const [saved] = useState(() => readDraft(storageKey));
+  const [state, dispatch] = useReducer(
+    reviewWorkflow,
+    undefined,
+    (): Workflow =>
+      saved?.page === "report" && saved.report
+        ? { page: "report", report: saved.report }
+        : {
+            page:
+              saved?.page === "claims" || (!saved && startDemo)
+                ? "claims"
+                : "decision",
+          },
   );
-  const [mode, setMode] = useState<"demo" | "live">("demo");
+  const { page } = state;
+  const report = page === "report" ? state.report : undefined;
+  const progress = page === "running" ? state.progress : undefined;
+  const [proposal, setProposal] = useState(
+    saved?.proposal ?? (startDemo ? demoProposal : ""),
+  );
+  const [claims, setClaims] = useState<ClaimDraft[]>(
+    () => saved?.claims ?? (startDemo ? seedDraft(demoClaims) : []),
+  );
+  const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
   const [availability, setAvailability] = useState<
     "checking" | "live" | "demo"
   >("checking");
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
-  const [progress, setProgress] = useState<
-    Partial<Record<ProgressEvent["stage"], ProgressEvent["status"]>>
-  >({});
-  const [report, setReport] = useState<Report>();
   const request = useRef<AbortController | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const proposalField = useRef<HTMLTextAreaElement>(null);
-  const previousPage = useRef<Page>("decision");
+  const previousPage = useRef<Workflow["page"]>("decision");
   const selected = claims.filter((claim) => claim.selected);
   const current = page === "decision" ? 0 : page === "claims" ? 1 : 2;
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          page: page === "running" ? "claims" : page,
+          proposal,
+          claims,
+          mode,
+          report,
+        }),
+      );
+    } catch {
+      // The review remains usable when browser storage is unavailable.
+    }
+  }, [storageKey, page, proposal, claims, mode, report]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -126,7 +224,7 @@ export function App({
     setClaims(seedDraft(demoClaims));
     setMode("demo");
     setError("");
-    setPage("claims");
+    dispatch({ type: "claims" });
   }
 
   async function onExtract(event: FormEvent<HTMLFormElement>) {
@@ -152,7 +250,7 @@ export function App({
       setProposal(parsed.data);
       setClaims(seedDraft(result));
       setMode("live");
-      setPage("claims");
+      dispatch({ type: "claims" });
     } catch (cause) {
       if (!controller.signal.aborted)
         setError(
@@ -168,7 +266,9 @@ export function App({
 
   function updateClaim(
     id: string,
-    change: Partial<Pick<ClaimDraft, "text" | "selected">>,
+    change: Partial<
+      Pick<ClaimDraft, "text" | "selected" | "risk" | "loadBearing">
+    >,
   ) {
     setError("");
     setClaims((existing) =>
@@ -190,22 +290,10 @@ export function App({
     if (request.current) return;
     const controller = new AbortController();
     request.current = controller;
-    setProgress({});
     setError("");
-    setReport(undefined);
-    setPage("running");
+    dispatch({ type: "start" });
     const emit = (event: ReviewEvent) => {
-      if (controller.signal.aborted) return;
-      if (event.type === "progress") {
-        setProgress((previous) => ({
-          ...previous,
-          [event.stage]: event.status,
-        }));
-      }
-      if (event.type === "report") {
-        setReport(event.report);
-        setPage("report");
-      }
+      if (!controller.signal.aborted && event.type !== "error") dispatch(event);
     };
 
     try {
@@ -222,7 +310,7 @@ export function App({
             ? cause.message
             : "The review could not finish. Try again.",
         );
-        setPage("claims");
+        dispatch({ type: "claims" });
       }
     } finally {
       if (request.current === controller) request.current = null;
@@ -233,14 +321,13 @@ export function App({
     request.current?.abort();
     request.current = null;
     setError("");
-    setPage("claims");
+    dispatch({ type: "claims" });
   }
 
   function restart() {
-    setPage("decision");
+    dispatch({ type: "decision" });
     setProposal("");
     setClaims([]);
-    setReport(undefined);
     setError("");
   }
 
@@ -449,6 +536,43 @@ export function App({
                     >
                       Remove
                     </button>
+                    <div className="claim-meta">
+                      <label>
+                        Main risk
+                        <select
+                          aria-label={`Main risk for claim ${index + 1}`}
+                          value={claim.risk ?? "logic"}
+                          onChange={(event) => {
+                            const result = claimSchema.shape.risk.safeParse(
+                              event.target.value,
+                            );
+                            if (result.success)
+                              updateClaim(claim.id, { risk: result.data });
+                          }}
+                        >
+                          <option value="logic">Logic</option>
+                          <option value="technical">
+                            Technical feasibility
+                          </option>
+                          <option value="adoption">
+                            Adoption and operations
+                          </option>
+                          <option value="evidence">Public evidence</option>
+                        </select>
+                      </label>
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(claim.loadBearing)}
+                          onChange={(event) =>
+                            updateClaim(claim.id, {
+                              loadBearing: event.target.checked,
+                            })
+                          }
+                        />
+                        <span>Load-bearing</span>
+                      </label>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -487,7 +611,7 @@ export function App({
                     type="button"
                     className="text-button"
                     onClick={() => {
-                      setPage("decision");
+                      dispatch({ type: "decision" });
                       setError("");
                     }}
                   >
@@ -521,13 +645,15 @@ export function App({
                 <li key={stage}>
                   <strong>{stage}</strong>
                   <span>
-                    {progress[stage] === "done"
+                    {progress?.[stage] === "done"
                       ? "Complete"
-                      : progress[stage] === "running"
+                      : progress?.[stage] === "running"
                         ? "In progress"
-                        : progress[stage] === "unavailable"
+                        : progress?.[stage] === "unavailable"
                           ? "Incomplete"
-                          : "Waiting"}
+                          : progress?.[stage] === "skipped"
+                            ? "Skipped"
+                            : "Waiting"}
                   </span>
                 </li>
               ))}
@@ -578,6 +704,7 @@ export function App({
                   <p>
                     <strong>Next step</strong> {finding.nextStep}
                   </p>
+                  <ReviewTrail finding={finding} sources={report.sources} />
                   {finding.sourceIds.length > 0 && (
                     <ul className="sources" aria-label="Sources">
                       {report.sources
@@ -602,7 +729,7 @@ export function App({
               <button
                 type="button"
                 className="button"
-                onClick={() => setPage("claims")}
+                onClick={() => dispatch({ type: "claims" })}
               >
                 Edit claims
               </button>

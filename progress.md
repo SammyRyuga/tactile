@@ -17,3 +17,11 @@
 
 - Added a public homepage, direct demo entry, Supabase email/password screens, and sign-out.
 - Added Render-compatible binding and health checks. Hosted live reviews require a verified account and have hourly usage limits.
+
+## Review quality and auditability
+
+- Added claim routing, load-bearing labels, an engineering scope gate, explicit arithmetic checks, a passage verification pass, and an expandable trail in reports and Markdown.
+- Added specific unresolved reasons and repair tradeoffs. The review preserves its recommendation when individual claims need more information.
+- Added tab-session restoration, production security headers, and a Supabase-backed rolling account quota.
+- Added a 15-case development set and a 15-case holdout with a repeatable runner and scoring rubric. Credentialed comparative results are pending.
+- Verified the deployed quota migration enables row-level security, denies anonymous execution, and rejects requests without a session.

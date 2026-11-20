@@ -4,9 +4,10 @@ import type { ReviewEvent, ReviewInput } from "../shared/review.ts";
 
 export async function liveAvailable(signal: AbortSignal): Promise<boolean> {
   const response = await fetch("/api/status", { signal });
+  if (!response.ok) return false;
   const result = z
     .object({ live: z.boolean() })
-    .safeParse(await response.json());
+    .safeParse(await response.json().catch(() => null));
   return response.ok && result.success && result.data.live;
 }
 

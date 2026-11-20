@@ -15,9 +15,23 @@ export const verdictSchema = z.enum([
 export const proposalSchema = z.string().trim().min(20).max(limits.proposal);
 const idSchema = z.string().regex(/^[a-zA-Z0-9-]{1,40}$/);
 
+export const riskSchema = z.enum([
+  "logic",
+  "technical",
+  "adoption",
+  "evidence",
+]);
+export const unresolvedReasonSchema = z.enum([
+  "Evidence insufficient",
+  "Sources conflict",
+  "Check failed",
+]);
+
 export const claimSchema = z.object({
   id: idSchema,
   text: z.string().trim().min(1).max(limits.claim),
+  risk: riskSchema.optional(),
+  loadBearing: z.boolean().optional(),
 });
 
 export const reviewInputSchema = z.object({
@@ -35,7 +49,10 @@ export const reviewInputSchema = z.object({
 export const stages = [
   "Assumptions",
   "Feasibility",
+  "Adoption",
+  "Arithmetic",
   "Evidence",
+  "Verification",
   "Synthesis",
 ] as const;
 export const stageSchema = z.enum(stages);
@@ -44,6 +61,12 @@ const modeSchema = z.enum(["demo", "live"]);
 export const sourceSchema = z.object({
   id: idSchema,
   title: z.string(),
+  passage: z.string().optional(),
+  startIndex: z.number().int().optional(),
+  endIndex: z.number().int().optional(),
+  relation: z
+    .enum(["supports", "contradicts", "qualifies", "unrelated"])
+    .optional(),
   url: z.union([
     z.url({ protocol: /^https?$/ }),
     z.string().regex(/^\/demo-evidence\.html#[a-z-]+$/),
@@ -56,6 +79,19 @@ export const findingSchema = z.object({
   rationale: z.string(),
   nextStep: z.string(),
   sourceIds: z.array(idSchema),
+  reason: unresolvedReasonSchema.optional(),
+  missingInformation: z.string().optional(),
+  repair: z.object({ minimalFix: z.string(), tradeoff: z.string() }).optional(),
+  audit: z
+    .array(
+      z.object({
+        stage: stageSchema,
+        status: z.enum(["complete", "failed", "skipped"]),
+        observation: z.string(),
+        sourceIds: z.array(idSchema).optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const reportSchema = z.object({
@@ -69,7 +105,7 @@ export const reviewEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("progress"),
     stage: stageSchema,
-    status: z.enum(["running", "done", "unavailable"]),
+    status: z.enum(["running", "done", "unavailable", "skipped"]),
   }),
   z.object({ type: z.literal("report"), report: reportSchema }),
   z.object({ type: z.literal("error"), message: z.string() }),
@@ -90,7 +126,20 @@ function markdownText(text: string): string {
     .replace(/[\\`*_{}\[\]()#+.!|<>~&-]/g, "\\$&");
 }
 
-export function toMarkdown(proposal: string, report: Report): string {
+function markdownBlock(text: string): string {
+  const longest = Math.max(
+    0,
+    ...Array.from(text.matchAll(/`+/g), (match) => match[0].length),
+  );
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return [fence, text, fence].join("\n");
+}
+
+export function toMarkdown(
+  proposal: string,
+  report: Report,
+  origin?: string,
+): string {
   const sources = new Map(report.sources.map((source) => [source.id, source]));
   const lines = [
     "# Tactile decision review",
@@ -99,7 +148,7 @@ export function toMarkdown(proposal: string, report: Report): string {
     "",
     "## Proposal",
     "",
-    markdownText(proposal),
+    markdownBlock(proposal),
     "",
     "## Recommended next step",
     "",
@@ -115,15 +164,54 @@ export function toMarkdown(proposal: string, report: Report): string {
       "",
       `**Next step** \n${markdownText(finding.nextStep)}`,
     );
-    for (const id of finding.sourceIds) {
+    if (finding.reason)
+      lines.push("", `**Resolution status** ${finding.reason}`);
+    if (finding.missingInformation)
+      lines.push(
+        "",
+        `**What would settle it** ${markdownText(finding.missingInformation)}`,
+      );
+    if (finding.repair)
+      lines.push(
+        "",
+        `**Smallest viable change** ${markdownText(finding.repair.minimalFix)}`,
+        "",
+        `**Tradeoff** ${markdownText(finding.repair.tradeoff)}`,
+      );
+    if (finding.audit?.length) {
+      lines.push("", "#### Review trail", "");
+      for (const check of finding.audit) {
+        const titles = (check.sourceIds ?? []).flatMap((id) => {
+          const source = sources.get(id);
+          if (!source) return [];
+          const href =
+            source.url.startsWith("/") && origin
+              ? new URL(source.url, origin).href
+              : source.url;
+          return [`[${markdownText(source.title)}](<${href}>)`];
+        });
+        lines.push(
+          `- **${check.stage} · ${check.status}** ${markdownText(check.observation)}${titles.length ? ` (${titles.join(", ")})` : ""}`,
+        );
+      }
+    }
+    const referenced = new Set([
+      ...finding.sourceIds,
+      ...(finding.audit ?? []).flatMap(({ sourceIds }) => sourceIds ?? []),
+    ]);
+    for (const id of referenced) {
       const source = sources.get(id);
       if (!source) continue;
       const title = markdownText(source.title);
-      const url = source.url.startsWith("/")
-        ? "https://github.com/SammyRyuga/tactile/blob/main/public" +
-          source.url.split("#")[0]
-        : source.url;
-      lines.push(`- [${title}](<${new URL(url).href}>)`);
+      const url =
+        source.url.startsWith("/") && origin
+          ? new URL(source.url, origin).href
+          : source.url;
+      lines.push(`- [${title}](<${url}>)`);
+      if (source.passage)
+        lines.push(
+          `  - Cited research excerpt · ${markdownText(source.passage)}`,
+        );
     }
   }
   return lines.join("\n") + "\n";

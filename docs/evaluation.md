@@ -1,16 +1,19 @@
 # Evaluation
 
-Compare Tactile with one prompted critique on the same engineering proposals and confirmed claims. Both use the same configured model and access to web search. Tactile can make more provider calls. This is a quality comparison with unequal compute budgets.
+The development and holdout splits contain 15 cases each. Each split covers sound, mixed, uncertain, quantitative, and out-of-scope decisions. Expected findings are checked in before provider runs. The holdout cases are visible in the repository, so keep them out of prompt adjustments and document any reuse.
 
-| Scenario              | Expected finding to check                                                                             |
-| --------------------- | ----------------------------------------------------------------------------------------------------- |
-| Changed-package tests | Changed-package-only tests miss a regression in a dependent package. Measure time savings separately. |
-| Read replica rollout  | Asynchronous replication can break read-after-write consistency.                                      |
-| Feature flag rollback | Disabling a flag cannot undo writes already completed.                                                |
-| Read-only canary      | A scoped pilot is plausible, but an internal cohort cannot establish user-wide latency.               |
+```sh
+npm run eval -- --list
+npm run eval -- --smoke
+npm run --silent eval -- --live development > development.jsonl
+npm run --silent eval -- --live holdout > holdout.jsonl
+npm run eval -- --score independent-marks.json
+```
 
-Run `npm run eval -- --list` for the four cases and their full rubrics. With live credentials, use `npm run eval -- --smoke` for a one-claim integration check and `npm run eval -- --live` to print both outputs for every case. These commands use public synthetic examples and the configured provider quota.
+The live runner repeats every case three times and stores raw outputs. It compares the full workflow with a single critique, a best-of-N pool with the same number of model requests, and a research baseline that can make multiple searches in one request. The comparison records call counts. Token budgets and provider prices can still differ. Out-of-scope cases compare the two scope gates.
 
-For each output, record which prespecified findings it caught. Inspect cited links and mark each as directly supporting, indirectly relevant, or unrelated to the claim. Count unsupported categorical conclusions. Report per-case findings and raw counts alongside the model and run date.
+Assign a reviewer who did not develop the prompts. Blind system identities, grade each response against the expected finding, and check whether each citation directly supports the associated statement. For best-of-N, retain the strongest sample using the same rubric and report that selection as an upper bound.
 
-**Status.** The rubric and runner are ready. No credentialed comparison has been run in this workspace.
+Pass the scorer a JSON array with one object per evaluated case, repetition, and system. Fields are `caseId`, `repetition`, `system` (`tactile`, `single`, `best-of-n`, or `research-agent`), `caught`, `unsupportedConclusions`, `relevantCitations`, and `totalCitations`. Score the untouched holdout separately.
+
+No credentialed development or holdout result is available. The runner uses the configured provider quota and requires `OPENAI_API_KEY`.

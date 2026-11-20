@@ -250,7 +250,9 @@ export function Site() {
         if (!auth || controller.signal.aborted) return;
         const { createClient } = await import("@supabase/supabase-js");
         if (controller.signal.aborted) return;
-        const supabase = createClient(auth.url, auth.publishableKey);
+        const supabase = createClient(auth.url, auth.publishableKey, {
+          auth: { storage: window.sessionStorage },
+        });
         setClient(supabase);
         const { data } = supabase.auth.onAuthStateChange((_event, next) => {
           if (!controller.signal.aborted) setSession(next);
@@ -272,7 +274,7 @@ export function Site() {
   if (path === "/review") {
     const demo =
       new URLSearchParams(window.location.search).get("demo") === "1";
-    if (loading && !demo)
+    if (loading)
       return (
         <p className="workspace field-note" role="status">
           Opening the review workspace…
@@ -286,14 +288,27 @@ export function Site() {
           </p>
         )}
         <App
+          key={session?.user.id ?? "guest"}
           token={session?.access_token}
           account={session?.user.email}
+          accountId={session?.user.id}
           needsSignIn={Boolean(client && !session)}
           startDemo={demo}
           signOut={async () => {
             try {
               const result = await client?.auth.signOut({ scope: "local" });
               if (result?.error) throw result.error;
+              if (session?.user.id) {
+                try {
+                  for (const kind of ["workspace", "example"]) {
+                    sessionStorage.removeItem(
+                      `tactile-review-v1:${session.user.id}:${kind}`,
+                    );
+                  }
+                } catch {
+                  /* Storage can be disabled. */
+                }
+              }
               window.location.assign("/");
             } catch {
               setNotice("Sign-out failed. Try again.");

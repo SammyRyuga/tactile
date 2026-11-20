@@ -1,3 +1,4 @@
+import { checkArithmetic } from "../server/arithmetic.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -14,12 +15,6 @@ import {
 import type { ReviewEvent } from "../shared/review.ts";
 
 test("bundled fixture reports the dependency failure and leaves timing unresolved", () => {
-  const schema = () => ({ amount: 12 });
-  const checkoutValue = (): number | undefined =>
-    Reflect.get(schema(), "total");
-  assert.equal(schema().amount, 12);
-  assert.notEqual(checkoutValue(), 12);
-
   const input = { proposal: demoProposal, claims: demoClaims.slice(0, 3) };
   const report = reportSchema.parse(demoReport(input));
   assert.deepEqual(
@@ -89,4 +84,17 @@ test("demo cancellation suppresses results and allows retry with the original in
     new AbortController().signal,
   );
   assert.equal(events.at(-1)?.type, "report");
+});
+
+test("explicit arithmetic distinguishes valid, false, and undefined equations", () => {
+  assert.deepEqual(
+    checkArithmetic("0.1 + 0.2 = 0.3; 60 × 2 = 100. 5 / 0 = 0.").map(
+      ({ actual, correct }) => [actual, correct],
+    ),
+    [
+      [0.30000000000000004, true],
+      [120, false],
+      [null, false],
+    ],
+  );
 });

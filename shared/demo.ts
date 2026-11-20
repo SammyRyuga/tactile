@@ -14,14 +14,19 @@ export const demoProposal =
 export const demoClaims: Claim[] = [
   {
     id: "coverage",
+    risk: "technical",
+    loadBearing: true,
     text: "Testing only the changed package catches regressions in its consumers.",
   },
   {
     id: "speed",
+    risk: "evidence",
+    loadBearing: true,
     text: "Changed-package testing reduces pull request feedback time.",
   },
   {
     id: "rollback",
+    risk: "adoption",
     text: "Keeping full tests on main provides a fallback during rollout.",
   },
   {
@@ -51,10 +56,40 @@ const findings: Finding[] = [
       "The replay changes a shared export. The changed package passes its own checks, while the checkout test fails when run as a dependent.",
     nextStep: "Run tests for transitive dependents of every changed package.",
     sourceIds: ["dependency-replay"],
+    repair: {
+      minimalFix:
+        "Run tests for changed packages and every transitive dependent before merge.",
+      tradeoff:
+        "Changes to widely shared packages may still trigger most of the suite.",
+    },
+    audit: [
+      {
+        stage: "Feasibility",
+        status: "complete",
+        observation: "The consumer imports the changed public schema contract.",
+      },
+      {
+        stage: "Evidence",
+        status: "complete",
+        observation:
+          "The bundled example shows how the shared package can pass while its consumer breaks.",
+        sourceIds: ["dependency-replay"],
+      },
+    ],
   },
   {
     claim: demoClaims[1],
     verdict: "Unresolved",
+    reason: "Evidence insufficient",
+    missingInformation:
+      "Queue and execution timings from representative pull requests under both strategies.",
+    audit: [
+      {
+        stage: "Evidence",
+        status: "complete",
+        observation: "The fixture contains no timing measurements.",
+      },
+    ],
     rationale:
       "The replay checks coverage. It has no representative pull request timing sample.",
     nextStep:
@@ -69,6 +104,19 @@ const findings: Finding[] = [
     nextStep:
       "Keep full runs while shadowing affected-package tests on pull requests.",
     sourceIds: ["ci-config"],
+    repair: {
+      minimalFix: "Keep a full-suite check on pull requests during the pilot.",
+      tradeoff: "The pilot measures savings before it reduces merge latency.",
+    },
+    audit: [
+      {
+        stage: "Adoption",
+        status: "complete",
+        observation:
+          "Main-branch checks alert the team after the change has merged.",
+        sourceIds: ["ci-config"],
+      },
+    ],
   },
   {
     claim: demoClaims[3],
@@ -91,9 +139,11 @@ export function demoReport(input: ReviewInput): Report {
           finding.claim.id === claim.id && finding.claim.text === claim.text,
       );
     return (
-      fixture || {
+      (fixture && { ...fixture, claim }) || {
         claim,
         verdict: "Unresolved",
+        reason: "Evidence insufficient",
+        missingInformation: "Evidence addressing this version of the claim.",
         rationale:
           "The bundled evidence does not cover this edited or added claim.",
         nextStep:

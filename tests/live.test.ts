@@ -15,6 +15,8 @@ const citation = {
   type: "url_citation",
   url: "https://example.com/source",
   title: "Fixture source",
+  start_index: 0,
+  end_index: 15,
 };
 
 function success(text: string, annotations: unknown[] = []) {
@@ -30,6 +32,7 @@ function mockProvider(
     conflict?: boolean;
     malformed?: boolean;
     searchDown?: boolean;
+    unrelated?: boolean;
   } = {},
 ) {
   return createProvider("fixture", "fixture", async (_url, init) => {
@@ -45,7 +48,32 @@ function mockProvider(
     if (body.instructions.includes("Identify one to six")) {
       return success(
         JSON.stringify({
-          claims: ["One concrete assumption.", "One concrete assumption."],
+          scope: "engineering",
+          explanation: "",
+          claims: [
+            {
+              text: "One concrete assumption.",
+              risk: "technical",
+              loadBearing: true,
+            },
+            {
+              text: "One concrete assumption.",
+              risk: "technical",
+              loadBearing: true,
+            },
+          ],
+        }),
+      );
+    }
+    if (body.instructions.includes("Assess each research excerpt")) {
+      const { passages } = JSON.parse(body.input);
+      return success(
+        JSON.stringify({
+          judgments: passages.map(({ id }: { id: string }) => ({
+            id,
+            relation: options.unrelated ? "unrelated" : "supports",
+            explanation: "Fixture verification.",
+          })),
         }),
       );
     }
@@ -61,6 +89,12 @@ function mockProvider(
               ? "The sources conflict."
               : "This mock has evidence.",
             nextStep: "Run a shadow test.",
+            reason: options.conflict ? "Sources conflict" : null,
+            missingInformation: options.conflict
+              ? "A reconciled measurement."
+              : null,
+            minimalFix: null,
+            tradeoff: null,
             sourceIds: [
               options.wrongCitation ? "unknown" : `source-${index + 1}-1`,
             ],
@@ -72,7 +106,8 @@ function mockProvider(
       JSON.stringify({
         findings: input.claims.map(({ id }) => ({
           id,
-          observation: "Check the dependency graph.",
+          outcome: "no credible concern",
+          observation: "No credible failure found within the fixture.",
         })),
       }),
     );
@@ -97,9 +132,18 @@ test("provider citation parsing keeps only valid URLs and parallel stages preced
   );
   assert.equal(report.sources.length, 2);
   assert.ok(report.sources.every(({ url }) => url.startsWith("https://")));
-  assert.deepEqual(
-    events.slice(0, 3).map((event) => event.type === "progress" && event.stage),
-    ["Assumptions", "Feasibility", "Evidence"],
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === "progress" &&
+        event.stage === "Verification" &&
+        event.status === "done",
+    ),
+  );
+  assert.ok(
+    report.findings[0].audit?.some(({ observation }) =>
+      observation.includes("no credible concern"),
+    ),
   );
   const last = events.at(-1);
   assert.equal(last?.type === "progress" && last.stage, "Synthesis");
@@ -110,6 +154,7 @@ for (const condition of [
   "conflict",
   "malformed",
   "searchDown",
+  "unrelated",
 ] as const) {
   test(`live review remains unresolved for ${condition}`, async () => {
     const report = await runReview(
@@ -119,8 +164,17 @@ for (const condition of [
       signal,
     );
     assert.ok(report.findings.every(({ verdict }) => verdict === "Unresolved"));
-    assert.match(report.recommendation, /Resolve the open claims/);
-    if (condition !== "conflict") assert.deepEqual(report.sources, []);
+    assert.equal(
+      report.findings[0].reason,
+      condition === "malformed" || condition === "searchDown"
+        ? "Check failed"
+        : condition === "conflict"
+          ? "Sources conflict"
+          : "Evidence insufficient",
+    );
+    assert.ok(report.findings[0].audit?.length);
+    if (condition !== "malformed")
+      assert.equal(report.recommendation, "Check before rollout.");
   });
 }
 
@@ -154,7 +208,14 @@ test("live HTTP endpoints return extracted claims and a validated NDJSON report"
     const claims = await post(url + "/api/claims", { proposal: demoProposal });
     assert.equal(claims.status, 200);
     assert.deepEqual(await claims.json(), {
-      claims: [{ id: "claim-1", text: "One concrete assumption." }],
+      claims: [
+        {
+          id: "claim-1",
+          text: "One concrete assumption.",
+          risk: "technical",
+          loadBearing: true,
+        },
+      ],
     });
     const invalid = await post(url + "/api/reviews", { ...input, claims: [] });
     assert.equal(invalid.status, 400);

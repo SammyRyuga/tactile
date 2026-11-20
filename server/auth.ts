@@ -23,3 +23,24 @@ export function createSessionVerifier(config: PublicAuthConfig) {
     return error || data.user?.is_anonymous ? null : (data.user?.id ?? null);
   };
 }
+
+export async function reserveReview(
+  config: PublicAuthConfig,
+  token: string,
+): Promise<boolean> {
+  const response = await fetch(
+    new URL("/rest/v1/rpc/reserve_tactile_review", config.url),
+    {
+      method: "POST",
+      headers: {
+        apikey: config.publishableKey,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(5000),
+    },
+  );
+  if (!response.ok) throw new Error("Review quota service is unavailable.");
+  return (await response.json()) === true;
+}

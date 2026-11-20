@@ -1,14 +1,14 @@
 # Tactile
 
-**Review the assumptions behind an engineering decision before you commit.**
+Tactile helps engineering teams test the assumptions behind a proposed change. Review the claims that matter, see which checks and sources led to each verdict, and export a Markdown report for a design review or pull request.
 
-Tactile turns a proposal into claims you can edit and prioritize. It checks confirmed claims for hidden assumptions, engineering feasibility, and public evidence, then produces a decision report with citations and a next step.
+Built for **Compute 50 · Domain 9 · Developer Productivity and Intelligent Automation**.
 
-Built for **Compute 50 · Domain 9 — Developer Productivity and Intelligent Automation**.
+[Open the hosted app](https://tactile-compute50.onrender.com/) · [Try the bundled demo](https://tactile-compute50.onrender.com/review?demo=1)
 
-## Run the demo
+## Quickstart
 
-Install Node.js **22.19+ within the 22.x line**, or **24+**, then run:
+Install Node.js **22.19 or later in the 22.x line**, or **24 or later**.
 
 ```sh
 git clone https://github.com/SammyRyuga/tactile.git
@@ -17,39 +17,59 @@ npm ci
 npm run dev
 ```
 
-Open [Tactile on localhost](http://127.0.0.1:5173/) and select **Try the demo**. No provider account or API key is needed.
+Open [Tactile on localhost](http://127.0.0.1:5173/) and select **Try the demo**. The bundled example works without a provider key or an account.
 
-### Judge walkthrough
+### Walk through a review
 
-1. Tactile opens a proposal to replace full pull request test runs with changed-package tests.
-2. On **Confirm the claims**, keep the first three selected or edit one to see how Tactile handles a claim outside its evidence.
-3. Select **Run review**. The bundled dependency replay shows how tests in the changed package can pass while a consumer fails. The speed claim stays unresolved because the example has no representative timing sample.
-4. Open the evidence from the report, then select **Export Markdown** to attach the review to an engineering discussion.
+1. Start with the example proposal to replace full pull request test runs with changed-package tests.
+2. On **Confirm the claims**, review the preselected claims. You can edit the wording, change the main risk, and mark assumptions whose failure would change the decision as **Load-bearing**.
+3. Select **Run review**. The bundled dependency replay shows how a change can pass its own package tests while breaking a consumer. The timing claim stays **Unresolved** until you have representative measurements.
+4. Open **Review trail** on a finding to see the checks and supporting material. Review the **Smallest viable change** and its tradeoff where available, then select **Export Markdown** to share the report.
 
-## Review your own proposal
+## Run a live review
 
-Copy `.env.example` to `.env` and set `OPENAI_API_KEY` locally. Restart Tactile and enter a proposal, then select **Extract claims**. The default model is `gpt-5-mini`; `OPENAI_MODEL` can override it with a model that supports Structured Outputs and web search. Live requests use your provider quota.
+Copy `.env.example` to `.env`, set `OPENAI_API_KEY`, and run `npm run dev`. Enter an engineering proposal and select **Extract claims**. Tactile extracts up to six claims. Confirm up to three for review.
 
-Use proposals you can share with the configured provider. Tactile keeps the working review in the open tab and keeps the provider key on the server. Refreshing resets the form. The demo does not send proposals to a provider. For a built local app, run `npm run build` followed by `npm start`.
+| Setting                                       | Purpose                                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`                              | Enables live reviews. Keep this key on the server.                                                                 |
+| `OPENAI_MODEL`                                | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.                                           |
+| `OPENAI_VERIFIER_MODEL`                       | Optional model for the passage verification pass. Defaults to the main model.                                      |
+| `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` | Enable email/password accounts and Supabase-backed quotas. Production requires both when live reviews are enabled. |
+| `AUTH_REQUIRED`                               | Set to `true` to require Supabase Auth for live reviews in local development too.                                  |
+| `ALLOWED_HOSTS`                               | Comma-separated API hostnames for additional domains.                                                              |
+| `PORT`                                        | HTTP port. Defaults to `5173`.                                                                                     |
 
-## Hosting and accounts
+Custom models need Responses API support for structured output. The main model also needs web search support.
 
-The public homepage links to the review workspace and an email/password sign-in page. The demo is available without an account. Supabase verifies accounts. If live review is enabled on Render, requests also require a verified session and are subject to usage limits. Proposals and reports stay in the workspace tab.
+Live review sends inputs to the model provider and draws on web search. Use only material you can share with the provider. The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry.
 
-To deploy from GitHub, create a free Render Node web service with `npm ci --include=dev && npm run build` as the build command and `npm start` as the start command. Use Node.js 22.19 or later on the 22.x line. The server binds to Render’s assigned port and exposes `/health`.
+## How findings are produced
 
-Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the service. Use the project’s public publishable key. In Supabase Auth, set Site URL to the service’s HTTPS origin and allow that origin’s `/login` callback. Configure a production SMTP provider to deliver public account confirmation emails. `OPENAI_API_KEY` is optional and independent of sign-in.
+- **Route checks by risk.** Specialist checks cover assumptions, engineering feasibility, or adoption and operations as appropriate. Claims marked load-bearing get a larger search allowance. The arithmetic check evaluates explicit equations in claim text.
+- **Check cited material.** A separate verification pass assesses whether each cited research excerpt supports, contradicts, qualifies, or has no bearing on the claim. These excerpts come from the provider’s search response. Follow the source links to confirm the original context.
+- **Make the decision traceable.** The report records verdicts and their review trails. An **Unresolved** finding can identify insufficient evidence, conflicting sources, or a failed check. Where the review identifies a viable repair, it shows the change and the tradeoff together.
 
-## How it works
+For integrations, `POST /api/claims` extracts claims and `POST /api/reviews` streams progress and results as newline-delimited JSON. Protected live endpoints require a verified Supabase session.
 
-- **Decision → claims.** `POST /api/claims` converts a proposal into up to six testable claims. The user chooses up to three to review.
-- **Claims → findings.** `POST /api/reviews` streams newline-delimited JSON progress. Assumptions, feasibility, and web evidence are collected independently before synthesis.
-- **Findings → report.** The server maps citations back to each confirmed claim and downgrades unsupported results to **Unresolved**. Source links let the reader check applicability to their own system. The reviewer prepares a recommendation and does not execute the proposal.
+## Deploy to Render
 
-Run `npm run check` for formatting, lint, types, tests, and the production build. See [evaluation](docs/evaluation.md) for the comparison protocol, [contributing](CONTRIBUTING.md) for the development workflow, and [progress](progress.md) for verification status.
+1. Create a Node web service from the GitHub repository. Use an eligible Node version from the quickstart. Set the build command to `npm ci --include=dev && npm run build`, the start command to `npm start`, and the health check to `/health`.
+2. For accounts and live review, apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) to the Supabase project. Set the project URL and public publishable key in Render, then add the provider key to enable live review.
+3. In Supabase Auth, set **Site URL** to the deployed HTTPS origin and add its `/login` URL to the redirect allowlist. Configure an SMTP provider to send confirmation emails for public sign-ups.
+
+To try the production build locally, run `npm run build` followed by `npm start`.
+
+## Verification and evaluation
+
+Run `npm run check` for formatting, lint, types, tests, and the production build. After installing Chromium with `npx playwright install chromium`, run `npm run test:e2e` to exercise the demo on desktop and mobile.
+
+The evaluation project includes separate 15-case development and holdout sets, baselines, and a scoring rubric. Credentialed comparison results are pending. See the [evaluation protocol](docs/evaluation.md) and [verification status](progress.md).
+
+For development workflow and review guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits and license
 
 Tactile was built by [ryanfer123](https://github.com/ryanfer123) and [SammyRyuga](https://github.com/SammyRyuga). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
 
-**Reference:** [Crossfire technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/) inspired the claim-review approach.
+Crossfire inspired the claim-review approach, including checks selected by risk and a report that traces verdicts back to evidence. [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
