@@ -12,3 +12,8 @@
 - Chrome verified the no-key workflow at 1,487 px desktop and 390 px mobile widths. The walkthrough covered claim edits, add/remove, cancellation, retry, keyboard focus, evidence links, and Markdown export.
 - Live API behavior was exercised with provider fixtures. A real provider smoke test and the four-case comparative evaluation are pending credentials. The [evaluation guide](docs/evaluation.md) includes the prewritten expectations and the commands.
 - GitHub Actions runs the same checks on each push and pull request. [CI workflow](https://github.com/SammyRyuga/tactile/actions/workflows/ci.yml)
+
+## Hosted app
+
+- Added a public homepage, direct demo entry, Supabase email/password screens, and sign-out.
+- Added Render-compatible binding and health checks. Hosted live reviews require a verified account and have hourly usage limits.

@@ -531,3 +531,114 @@ footer {
     border-radius: 0.65rem;
   }
 }
+
+a.button {
+  text-decoration: none;
+}
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  transform: translateY(-200%);
+  background: var(--paper);
+  padding: 0.65rem 1rem;
+  z-index: 2;
+}
+.skip-link:focus {
+  transform: translateY(0.5rem);
+}
+.landing {
+  width: min(100% - 3.5rem, 74rem);
+}
+.landing-hero {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  align-items: center;
+  gap: clamp(1.5rem, 6vw, 6rem);
+  padding: clamp(2.5rem, 8vw, 7rem) 0;
+}
+.landing-hero h1 {
+  font-size: clamp(2.85rem, 6vw, 5.4rem);
+}
+.landing-hero h1 + p {
+  max-width: 36rem;
+  font-size: clamp(1.06rem, 2vw, 1.29rem);
+  margin: 1.25rem 0 1.6rem;
+  color: var(--quiet);
+}
+.landing-example {
+  background: #e9ece2;
+  border-color: #c0cbba;
+}
+.landing-example h2 {
+  margin: 0.65rem 0 1rem;
+}
+.landing-label {
+  font-weight: 650;
+  color: var(--quiet);
+}
+.sample-finding {
+  background: var(--paper);
+  padding: 0.95rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--soft-line);
+  border-radius: 0.5rem;
+}
+.sample-finding p {
+  margin-top: 0.4rem;
+}
+.landing-how {
+  border-top: 1px solid var(--line);
+  padding: 2.1rem 0 0.8rem;
+}
+.landing-how ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.6rem;
+  padding-left: 1.35rem;
+}
+.landing-how li {
+  padding-left: 0.4rem;
+}
+.landing-how p {
+  margin-top: 0.4rem;
+  color: var(--quiet);
+}
+.auth-page {
+  max-width: 34rem;
+  margin: clamp(2rem, 8vw, 6rem) auto;
+}
+.auth-page h1 {
+  font-size: clamp(2.15rem, 5vw, 3.15rem);
+  margin-bottom: 1.4rem;
+}
+.auth-page input {
+  width: 100%;
+  background: #fffdfa;
+  border: 1px solid #949e90;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+.login-demo {
+  display: inline-block;
+  margin-top: 1.5rem;
+}
+.account-strip {
+  display: flex;
+  justify-content: end;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 0.55rem;
+  color: var(--quiet);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .landing {
+    width: min(100% - 2rem, 74rem);
+  }
+  .landing-hero,
+  .landing-how ol {
+    grid-template-columns: 1fr;
+  }
+}

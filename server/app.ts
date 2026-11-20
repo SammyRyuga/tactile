@@ -3,18 +3,30 @@ import type { ErrorRequestHandler, Request, Response } from "express";
 import { proposalSchema, reviewInputSchema } from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 import { extractClaims, runReview } from "./pipeline.ts";
+import type { PublicAuthConfig } from "./auth.ts";
 import type { ReviewProvider } from "./provider.ts";
 
-export function createApp(provider?: ReviewProvider) {
+export function createApp(
+  provider?: ReviewProvider,
+  options: {
+    auth?: PublicAuthConfig;
+    verifySession?: (token: string) => Promise<string | null>;
+    allowedHosts?: string[];
+  } = {},
+) {
   const app = express();
   app.disable("x-powered-by");
   let active = 0;
+  const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
+  const accountUsage = new Map<string, number>();
+  let windowEnds = 0;
+  let totalUsage = 0;
+
+  app.get("/health", (_request, response) => response.json({ ok: true }));
 
   app.use("/api", (request, response, next) => {
-    if (!["localhost", "127.0.0.1"].includes(request.hostname)) {
-      response
-        .status(403)
-        .json({ message: "Tactile serves the API on the local machine." });
+    if (!allowedHosts.includes(request.hostname)) {
+      response.status(403).json({ message: "Unrecognized API host." });
       return;
     }
     response.setHeader("Cache-Control", "no-store");
@@ -22,6 +34,9 @@ export function createApp(provider?: ReviewProvider) {
   });
   app.get("/api/status", (_request, response) =>
     response.json({ live: Boolean(provider) }),
+  );
+  app.get("/api/auth-config", (_request, response) =>
+    response.json({ auth: options.auth ?? null }),
   );
   app.use("/api", express.json({ limit: "24kb" }));
 
@@ -48,6 +63,43 @@ export function createApp(provider?: ReviewProvider) {
         message: "Two reviews are already in progress. Try again shortly.",
       });
       return;
+    }
+    if (options.verifySession) {
+      const token = request.get("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
+      let accountId: string | null = null;
+      try {
+        if (token) accountId = await options.verifySession(token);
+      } catch {
+        response.status(503).json({
+          message: "Sign-in verification is temporarily unavailable.",
+        });
+        return;
+      }
+      if (response.destroyed) return;
+      if (!accountId) {
+        response.status(401).json({ message: "Sign in to run a live review." });
+        return;
+      }
+      if (active >= 2) {
+        response
+          .status(429)
+          .json({ message: "Reviews are busy. Try again shortly." });
+        return;
+      }
+      if (Date.now() >= windowEnds) {
+        windowEnds = Date.now() + 3_600_000;
+        totalUsage = 0;
+        accountUsage.clear();
+      }
+      const count = accountUsage.get(accountId) ?? 0;
+      if (count >= 12 || totalUsage >= 100) {
+        response
+          .status(429)
+          .json({ message: "The hourly live review limit has been reached." });
+        return;
+      }
+      accountUsage.set(accountId, count + 1);
+      totalUsage++;
     }
     const disconnected = new AbortController();
     const close = () => disconnected.abort();

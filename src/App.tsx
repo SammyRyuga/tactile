@@ -62,10 +62,24 @@ function exportReport(proposal: string, report: Report) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function App() {
-  const [page, setPage] = useState<Page>("decision");
-  const [proposal, setProposal] = useState("");
-  const [claims, setClaims] = useState<ClaimDraft[]>([]);
+export function App({
+  token,
+  account,
+  needsSignIn,
+  signOut,
+  startDemo,
+}: {
+  token?: string;
+  account?: string;
+  needsSignIn: boolean;
+  startDemo: boolean;
+  signOut?: () => Promise<void>;
+}) {
+  const [page, setPage] = useState<Page>(startDemo ? "claims" : "decision");
+  const [proposal, setProposal] = useState(startDemo ? demoProposal : "");
+  const [claims, setClaims] = useState<ClaimDraft[]>(() =>
+    startDemo ? seedDraft(demoClaims) : [],
+  );
   const [mode, setMode] = useState<"demo" | "live">("demo");
   const [availability, setAvailability] = useState<
     "checking" | "live" | "demo"
@@ -87,7 +101,8 @@ export function App() {
     const controller = new AbortController();
     liveAvailable(controller.signal).then(
       (live) => {
-        if (!controller.signal.aborted) setAvailability(live ? "live" : "demo");
+        if (!controller.signal.aborted)
+          setAvailability(live && !needsSignIn ? "live" : "demo");
       },
       () => {
         if (!controller.signal.aborted) setAvailability("demo");
@@ -97,7 +112,7 @@ export function App() {
       controller.abort();
       request.current?.abort();
     };
-  }, []);
+  }, [needsSignIn]);
 
   useEffect(() => {
     if (previousPage.current !== page) {
@@ -132,7 +147,7 @@ export function App() {
     setExtracting(true);
     setError("");
     try {
-      const result = await extractLive(parsed.data, controller.signal);
+      const result = await extractLive(parsed.data, controller.signal, token);
       if (controller.signal.aborted) return;
       setProposal(parsed.data);
       setClaims(seedDraft(result));
@@ -198,6 +213,7 @@ export function App() {
         input.data,
         emit,
         controller.signal,
+        token,
       );
     } catch (cause) {
       if (!controller.signal.aborted) {
@@ -236,7 +252,8 @@ export function App() {
             <span className="logo">{mark("logo")}</span>Tactile
           </a>
           <nav aria-label="Project links">
-            <a href="https://csea.psgtech.ac.in/compute50">Compute 50</a>
+            <a href="/">Home</a>
+            {needsSignIn && <a href="/login">Sign in</a>}
             <a href="https://github.com/SammyRyuga/tactile">
               GitHub {mark("external")}
             </a>
@@ -245,6 +262,18 @@ export function App() {
       </header>
 
       <main className="workspace">
+        {account && (
+          <div className="account-strip">
+            <span>Signed in as {account}</span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => void signOut?.()}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
         <div className="intro">
           <h1>Review an engineering decision</h1>
           <p>
@@ -290,7 +319,9 @@ export function App() {
                 {availability === "demo" &&
                   proposal.trim() !== demoProposal && (
                     <p className="field-note">
-                      Live reviews require a server-side provider key.
+                      {needsSignIn
+                        ? "Sign in to access live reviews. The example is open to everyone."
+                        : "Live reviews require a server-side provider key."}
                     </p>
                   )}
                 {availability === "live" && (

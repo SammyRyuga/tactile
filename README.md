@@ -30,7 +30,15 @@ Open [Tactile on localhost](http://127.0.0.1:5173/) and select **Try the demo**.
 
 Copy `.env.example` to `.env` and set `OPENAI_API_KEY` locally. Restart Tactile and enter a proposal, then select **Extract claims**. The default model is `gpt-5-mini`; `OPENAI_MODEL` can override it with a model that supports Structured Outputs and web search. Live requests use your provider quota.
 
-Use proposals you can share with the configured provider. Tactile runs on loopback, keeps the working review in the open tab, and keeps the API key on the server. Refreshing resets the form. The demo does not send proposals to a provider. For a built local app, run `npm run build` followed by `npm start`.
+Use proposals you can share with the configured provider. Tactile keeps the working review in the open tab and keeps the provider key on the server. Refreshing resets the form. The demo does not send proposals to a provider. For a built local app, run `npm run build` followed by `npm start`.
+
+## Hosting and accounts
+
+The public homepage links to the review workspace and an email/password sign-in page. The demo is available without an account. Supabase verifies accounts. If live review is enabled on Render, requests also require a verified session and are subject to usage limits. Proposals and reports stay in the workspace tab.
+
+To deploy from GitHub, create a free Render Node web service with `npm ci --include=dev && npm run build` as the build command and `npm start` as the start command. Use Node.js 22.19 or later on the 22.x line. The server binds to Render’s assigned port and exposes `/health`.
+
+Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the service. Use the project’s public publishable key. In Supabase Auth, set Site URL to the service’s HTTPS origin and allow that origin’s `/login` callback. Configure a production SMTP provider to deliver public account confirmation emails. `OPENAI_API_KEY` is optional and independent of sign-in.
 
 ## How it works
 

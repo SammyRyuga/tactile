@@ -14,11 +14,15 @@ async function post(
   path: string,
   body: object,
   signal: AbortSignal,
+  token?: string,
 ): Promise<Response> {
   const response = await fetch(path, {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     signal,
   });
   if (response.ok) return response;
@@ -31,8 +35,12 @@ async function post(
   );
 }
 
-export async function extractLive(proposal: string, signal: AbortSignal) {
-  const response = await post("/api/claims", { proposal }, signal);
+export async function extractLive(
+  proposal: string,
+  signal: AbortSignal,
+  token?: string,
+) {
+  const response = await post("/api/claims", { proposal }, signal, token);
   return z
     .object({ claims: z.array(claimSchema).min(1).max(6) })
     .parse(await response.json()).claims;
@@ -42,8 +50,9 @@ export async function runLive(
   input: ReviewInput,
   emit: (event: ReviewEvent) => void,
   signal: AbortSignal,
+  token?: string,
 ) {
-  const response = await post("/api/reviews", input, signal);
+  const response = await post("/api/reviews", input, signal, token);
   if (!response.body) throw new Error("The server returned an empty review.");
   let buffer = "";
   let receivedReport = false;

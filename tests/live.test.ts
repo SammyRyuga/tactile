@@ -233,3 +233,35 @@ test("no-key HTTP mode avoids provider calls", async () => {
     assert.equal(response.status, 503);
   });
 });
+
+test("hosted live endpoints require a verified session and limit each account", async () => {
+  let verified = 0;
+  await withServer(
+    createApp(mockProvider(), {
+      verifySession: async (token) => {
+        verified++;
+        return token === "valid" ? "account-1" : null;
+      },
+    }),
+    async (url) => {
+      const submit = (token?: string) =>
+        fetch(url + "/api/claims", {
+          method: "POST",
+          body: JSON.stringify({ proposal: demoProposal }),
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+      assert.equal((await submit()).status, 401);
+      assert.equal(verified, 0);
+      assert.equal((await submit("invalid")).status, 401);
+      for (let i = 0; i < 12; i++) {
+        const response = await submit("valid");
+        assert.equal(response.status, 200);
+        await response.json();
+      }
+      assert.equal((await submit("valid")).status, 429);
+    },
+  );
+});
