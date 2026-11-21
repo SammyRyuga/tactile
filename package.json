@@ -10,6 +10,7 @@
     "dev": "node --env-file-if-exists=.env server/index.ts --dev",
     "setup:crossfire": "python3 -m venv .venv && .venv/bin/python -m pip install -r server/crossfire/requirements.txt",
     "start": "node --env-file-if-exists=.env build/server/index.js",
+    "prebuild": "node scripts/prepare-render.ts",
     "build": "vite build && tsc -p tsconfig.server.json",
     "typecheck": "tsc -p tsconfig.browser.json && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.tools.json",
     "lint": "eslint .",

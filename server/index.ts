@@ -30,7 +30,7 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
 const app = createApp(provider, {
   auth,
   crossfire: auth
-    ? createCrossfireEngine(process.env.TACTILE_PYTHON)
+    ? createCrossfireEngine(process.env.TACTILE_PYTHON, hosted)
     : undefined,
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,

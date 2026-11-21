@@ -34,7 +34,13 @@ const answers = [
   ],
 ];
 
-export function Home({ signedIn }: { signedIn: boolean }) {
+export function Home({
+  signedIn,
+  publicExamples,
+}: {
+  signedIn: boolean;
+  publicExamples: boolean;
+}) {
   const root = useRef<HTMLElement>(null);
   const [selected, setSelected] = useState(0);
   const example = demoExamples[selected];
@@ -130,8 +136,12 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               {signedIn ? "Open workspace" : "Sign in to workspace"}{" "}
               <span aria-hidden="true">↗</span>
             </a>
-            <a className="home-button plain" href="/demo">
-              Try the public demo <span aria-hidden="true">↗</span>
+            <a
+              className="home-button plain"
+              href={publicExamples ? "/demo" : "#examples"}
+            >
+              {publicExamples ? "Try the public demo" : "Explore examples"}{" "}
+              <span aria-hidden="true">↗</span>
             </a>
           </div>
         </div>
@@ -191,7 +201,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               <p>{example.proposal}</p>
               <a
                 className="home-button filled"
-                href={`/demo?example=${example.id}`}
+                href={`${publicExamples ? "/demo" : "/review"}?example=${example.id}`}
               >
                 Try this example <span aria-hidden="true">↗</span>
               </a>

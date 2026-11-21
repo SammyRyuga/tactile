@@ -1,3 +1,4 @@
+import { demoExamples } from "../shared/demo.ts";
 import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
@@ -112,6 +113,14 @@ export function createApp(
     response.setHeader("X-Request-Id", randomUUID());
     next();
   });
+  if (options.auth) {
+    app.get("/demo", (request, response) => {
+      const example = demoExamples.find(
+        ({ id }) => id === request.query.example,
+      );
+      response.redirect(302, `/review?example=${example?.id ?? "flag"}`);
+    });
+  }
   app.get("/api/auth-config", (_request, response) =>
     response.json({ auth: options.auth ?? null }),
   );

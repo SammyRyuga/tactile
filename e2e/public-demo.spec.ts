@@ -32,7 +32,9 @@ test("the public demo replays all three cases and exports the recorded memo", as
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await page.goto("/");
   await page.getByRole("button", { name: "Data consistency" }).press("Space");
-  await page.getByRole("link", { name: "Try this example" }).press("Enter");
+  const exampleLink = page.getByRole("link", { name: "Try this example" });
+  await expect(exampleLink).toHaveAttribute("href", "/demo?example=replica");
+  await exampleLink.press("Enter");
   await expect(page).toHaveURL(/\/demo\?example=replica$/);
   await expect(
     page.getByRole("heading", { name: "Public demo" }),

@@ -4,7 +4,10 @@ import { createCrossfireEngine } from "../server/crossfire-engine.ts";
 import type { ReviewProvider } from "../server/provider.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 
-const engine = createCrossfireEngine(process.env.TACTILE_PYTHON);
+const engine = createCrossfireEngine(
+  process.env.TACTILE_PYTHON,
+  process.env.RENDER === "true",
+);
 const proposal = "Switch invoice exports to a queue with independent workers.";
 
 test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through the Tactile gateway", async () => {

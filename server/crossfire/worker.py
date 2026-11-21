@@ -11,6 +11,8 @@ from types import ModuleType
 
 UPSTREAM = Path(__file__).with_name("upstream")
 sys.path.insert(0, str(UPSTREAM))
+if dependencies := os.getenv("TACTILE_CROSSFIRE_LIBS"):
+    sys.path.insert(1, dependencies)
 
 
 def integration(name, **exports):

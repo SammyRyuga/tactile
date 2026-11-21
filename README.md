@@ -85,7 +85,7 @@ The browser keeps drafts and completed reports in the tab’s session storage. R
 
 ## Deploy to Render
 
-Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. The existing hosted service may still serve an older build. An authenticated deployment needs Python 3.11 or newer and `npm run setup:crossfire` in its build command.
+Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. On an authenticated Render service, `npm run build` installs and checks the pinned Python dependencies. The example library requires sign-in when Supabase is configured.
 
 ## Development and evaluation
 
