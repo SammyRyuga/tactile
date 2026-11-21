@@ -106,11 +106,11 @@ test("the review room shows streamed activity and opens recorded checks from the
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const room = page.locator(".review-room");
   await expect(
-    room.getByRole("button", { name: "Feasibility In progress" }),
+    room.getByRole("button", { name: "Builder In progress" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(room.getByText(observation)).toBeVisible();
-  await room.getByRole("button", { name: "Evidence Waiting" }).press("Enter");
-  await expect(room.getByRole("heading", { name: "Evidence" })).toBeVisible();
+  await room.getByRole("button", { name: "Researcher Waiting" }).press("Enter");
+  await expect(room.getByRole("heading", { name: "Researcher" })).toBeVisible();
   await expect(room.getByText("Check updates will appear here.")).toBeVisible();
   expect(
     await room.evaluate((element) => {
@@ -135,10 +135,10 @@ test("the review room shows streamed activity and opens recorded checks from the
   ).toBeVisible();
   await page.getByText("See the review room").press("Enter");
   await expect(
-    room.getByRole("button", { name: "Feasibility Complete" }),
+    room.getByRole("button", { name: "Builder Complete" }),
   ).toBeVisible();
   await expect(room.getByText(observation)).toBeVisible();
-  await room.getByRole("button", { name: "Decision memo Complete" }).click();
+  await room.getByRole("button", { name: "Steelman Complete" }).click();
   await expect(
     room.getByText("Repeat the staging test before rollout."),
   ).toBeVisible();

@@ -135,3 +135,6 @@
 ## Render release for Crossfire
 
 - Prepare and verify Crossfire’s Python dependencies during an authenticated Render build. Route bundled examples through sign-in on that service and retain the public fixture walkthrough for staging without Supabase.
+
+- Removed the separate three-claim selection cap. New drafts start with all extracted claims selected, and the API accepts all claims the editor can hold.
+- Show Crossfire’s suggested adversarial panel in the claim editor and allow a reviewer to be added or removed before the run. Carry the actual panel into Crossfire, the named review stations, the Decision Memo, and exported audit trails.

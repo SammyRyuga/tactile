@@ -889,3 +889,39 @@
   font-size: 0.93rem;
   color: var(--review-muted);
 }
+
+.reviewer-picker {
+  min-width: 0;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.reviewer-picker legend {
+  padding-inline: 0.25rem;
+  font-weight: 700;
+}
+
+.reviewer-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.5rem;
+}
+
+.reviewer-options .reviewer-option {
+  justify-content: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.reviewer-option strong,
+.reviewer-option small {
+  display: block;
+}
+
+.reviewer-picker .section-note {
+  margin: 0.6rem 0 0;
+}

@@ -21,6 +21,7 @@ import type {
 import { ProposalScopeError } from "./pipeline.ts";
 import type { ReviewProvider } from "./provider.ts";
 import { readSource } from "./source-reader.ts";
+import { reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
 
 const envelope = z.object({
@@ -58,9 +59,7 @@ const engineClaim = z.object({
 const caseSchema = z.object({
   status: z.string(),
   gate_message: z.string().nullish(),
-  selected_agents: z
-    .array(z.enum(["devils_advocate", "builder", "operator", "researcher"]))
-    .max(4),
+  selected_agents: reviewersSchema,
   reversibility: z.enum(["one_way", "two_way"]).nullish(),
   deadline: z.string().nullish(),
   claims: z.array(engineClaim),
@@ -315,23 +314,20 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
               ) ?? [],
             mechanism_of: claim.crossfire?.mechanism,
           })),
-          metadata: metadata
-            ? {
-                selected_agents: metadata.agents,
-                reversibility: metadata.reversibility,
-                deadline: metadata.deadline,
-              }
-            : {},
+          metadata: {
+            selected_agents: input.reviewers ?? metadata?.agents,
+            reversibility: metadata?.reversibility,
+            deadline: metadata?.deadline,
+          },
         },
         signal,
         (name, data) => {
           const finding = data.finding as Record<string, unknown> | undefined;
           const stage =
-            evaluatorStage(data.evaluator ?? finding?.evaluator) ??
-            (name === "verdict_ready" ? "Verification" : undefined) ??
-            (data.tag === "Synthesis" || name === "case_verdict"
+            data.tag === "Synthesis" || name === "case_verdict"
               ? "Synthesis"
-              : undefined);
+              : (evaluatorStage(data.evaluator ?? finding?.evaluator) ??
+                (name === "verdict_ready" ? "Verification" : undefined));
           const claimId = data.claim_id ?? data.target_claim_id;
           const active = name === "test_started" || name === "activity";
           if (
@@ -460,6 +456,7 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
         mode: "live",
         model: provider.modelId,
         crossfireDecision: decisionLabels[verdict.decision_state],
+        crossfireReviewers: caseData.selected_agents,
         recommendation: [verdict.headline, verdict.summary]
           .filter(Boolean)
           .join(" "),

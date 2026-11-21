@@ -82,6 +82,9 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await page
     .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
     .click();
+  const panel = page.getByRole("group", { name: "Adversarial panel" });
+  await expect(panel.getByText("Devil's Advocate")).toBeVisible();
+  await panel.getByRole("checkbox", { name: /Operator/ }).uncheck();
   await page.getByText("Project evidence", { exact: true }).click();
   expect(
     await page.evaluate(
@@ -103,6 +106,11 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await expect(page.getByText("Reviewer-supplied evidence")).toBeVisible();
   await expect(page.getByText(quote)).toBeVisible();
+  expect(submitted[0].reviewers).toEqual([
+    "devils_advocate",
+    "researcher",
+    "builder",
+  ]);
   expect(submitted[0].projectEvidence?.[0].text).toBe(quote);
   expect(submitted[0].claims[1].engineeringCheck?.values).toEqual([120, 5, 10]);
   await page.getByText("Settle this claim").click();
