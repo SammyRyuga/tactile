@@ -9,6 +9,7 @@
 ## Existing implementation — preserve
 
 As documented in `README.md`, `progress.md`, `AGENTS.md`, and `docs/evaluation.md`, Tactile has:
+
 - a proposal → extraction → user-edited claims → up-to-three-claim review → evidence trail → Markdown report workflow;
 - bundled no-key examples, a signed-in workspace, Supabase email/password auth, session-scoped user Meta Muse Spark keys, server quota logic, an Express backend, and a React frontend;
 - deterministic equation checks, source passage fetching and quotation checks, specialist probes, and named unresolved reasons;
@@ -28,18 +29,21 @@ As documented in `README.md`, `progress.md`, `AGENTS.md`, and `docs/evaluation.m
 ## Tasks ordered for qualification
 
 ### P0 — audit and demo stability
+
 1. Inspect current `main`, `AGENTS.md`, docs, outstanding PRs and GitHub Actions CI runs; confirm branch ancestry and changes made by others. Never overwrite Ryan's work.
 2. Install pinned dependencies and rerun `npm run check`, `npm run test:e2e`. Verify at minimum desktop, ~390px mobile, keyboard focus, reduced motion, light/dark themes, export, cancellation/retry, no-key examples, failed-provider feedback and authentication redirects. Log exact commands and results.
 3. Verify Render `/`, `/login`, and `/health`, and the public/demo/signed-in path when authorized test credentials are available. Never publish secrets, send real private proposals to an AI provider without approval, or fake an authenticated success.
 4. Make a reliable, reproducible no-key judging flow requiring no paid provider and showing **claim → check → source/premise → reason → verdict → next action**. Explicitly label fixtures, previews, simulations and live output. Ensure first-time judges are not blocked by a needless sign-in if a public no-key preview can safely be provided without changing protected live APIs; otherwise provide a convincing public landing/demo video and precise sign-in instructions.
 
 ### P1 — review quality with tests
+
 5. Diagnose missing quote / unverified citations / source read failures from corpus. Add regression tests for exact proposal quotation gates; citation-claim separation; misleading reassurance; unknown local conditions; non-applicable public sources; obvious equations; arithmetic rounding; and the distinction between contradicted, weakened, supported, unresolved, and no credible break found.
 6. Repair issues that are reproducible and backed by tests; **do not force resolved verdicts just to reduce the unresolved count**. A valid abstention is better than invented certainty.
 7. Run existing deterministic/fixture evaluation, then any live evaluations only with supplied authorized credentials and within provider quota. Compare against single-pass and best-of-N fairly, record latency, token/request metrics and full source evidence. Preserve prewritten cases and split hygiene. Don't mislabel automated grading as human grading or optimize on the holdout.
 8. Make evidence and limitations prominent in the UI/report; every severe claim must show a verified source excerpt, an explicit quoted premise, or a deterministic counterexample. Unsupported suggestions should be unresolved.
 
 ### P2 — assigned dependency PRs and polish
+
 9. Audit #1, #2, #4, #5 and #6 (release notes, supported Node versions, compatibility, grouped upgrade implications, CI and E2E). #4/#6 should be assessed as a compatible pair; evaluate #5 TypeScript 7 as a potentially disruptive major upgrade. #3/#7 are already merged; do not redo them. **Do not merge Dependabot PRs without explicit user approval.** Provide a recommended disposition for each.
 10. Clean up errors, make the presentation and `README.md` match actual behavior, add a short recorded-demo script, and document caveats in an evidence-led way. Preserve the existing visual identity unless a visual bug warrants a focused change.
 
