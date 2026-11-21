@@ -3,6 +3,14 @@ import { motion, useReducedMotion } from "motion/react";
 import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
+import { EvidenceEditor, EngineeringEditor } from "./EvidenceEditor.tsx";
+import type { CheckDraft, EvidenceDraft } from "./EvidenceEditor.tsx";
+import {
+  downloadText,
+  MeasurementArtifact,
+  OutcomeLog,
+} from "./ReviewExtras.tsx";
+import { engineeringCheckSchema } from "../shared/engineering.ts";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import type { FormEvent } from "react";
 import {
@@ -13,6 +21,7 @@ import {
 } from "../shared/demo.ts";
 import {
   claimSchema,
+  projectEvidenceSchema,
   reportSchema,
   limits,
   proposalSchema,
@@ -23,6 +32,7 @@ import {
 } from "../shared/review.ts";
 import type {
   Claim,
+  Finding,
   ProgressEvent,
   Report,
   ReviewEvent,
@@ -40,11 +50,20 @@ type Progress = Partial<
 >;
 type Workflow =
   | { page: "decision" | "claims" }
-  | { page: "running"; progress: Progress }
+  | {
+      page: "running";
+      progress: Progress;
+      claims: Claim[];
+      updates: Record<
+        string,
+        Partial<Record<ProgressEvent["stage"], ProgressEvent>>
+      >;
+    }
   | { page: "report"; report: Report; previewProposal?: string };
 
 type WorkflowAction =
-  | { type: "decision" | "claims" | "start" }
+  | { type: "decision" | "claims" }
+  | { type: "start"; claims: Claim[] }
   | ProgressEvent
   | { type: "report"; report: Report }
   | { type: "preview"; report: Report; proposal: string };
@@ -55,14 +74,29 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
     case "claims":
       return { page: action.type };
     case "start":
-      return { page: "running", progress: {} };
+      return {
+        page: "running",
+        progress: {},
+        claims: action.claims,
+        updates: {},
+      };
     case "progress":
-      return state.page === "running"
-        ? {
-            ...state,
-            progress: { ...state.progress, [action.stage]: action.status },
-          }
-        : state;
+      if (state.page !== "running") return state;
+      if (!action.claimId)
+        return {
+          ...state,
+          progress: { ...state.progress, [action.stage]: action.status },
+        };
+      return {
+        ...state,
+        updates: {
+          ...state.updates,
+          [action.claimId]: {
+            ...state.updates[action.claimId],
+            [action.stage]: action,
+          },
+        },
+      };
     case "preview":
       return {
         page: "report",
@@ -75,7 +109,7 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
         : state;
   }
 }
-type ClaimDraft = Claim & { selected: boolean };
+type ClaimDraft = Claim & { selected: boolean; checkDraft?: CheckDraft };
 
 function mark(
   icon:
@@ -115,20 +149,21 @@ function seedDraft(claims: Claim[]): ClaimDraft[] {
   return claims.map((claim, index) => ({
     ...claim,
     selected: index < limits.selected,
+    checkDraft: claim.engineeringCheck
+      ? {
+          kind: claim.engineeringCheck.kind,
+          values: claim.engineeringCheck.values.map(String),
+        }
+      : undefined,
   }));
 }
 
 function exportReport(proposal: string, report: Report) {
-  const url = URL.createObjectURL(
-    new Blob([toMarkdown(proposal, report, window.location.origin)], {
-      type: "text/markdown;charset=utf-8",
-    }),
+  downloadText(
+    "tactile-review.md",
+    toMarkdown(proposal, report, window.location.origin),
+    "text/markdown;charset=utf-8",
   );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "tactile-review.md";
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const savedDraftSchema = z
@@ -140,9 +175,24 @@ const savedDraftSchema = z
         claimSchema.extend({
           text: z.string().max(limits.claim),
           selected: z.boolean(),
+          checkDraft: z
+            .object({
+              kind: engineeringCheckSchema.shape.kind,
+              values: z.array(z.string().max(32)).max(5),
+            })
+            .optional(),
         }),
       )
       .max(limits.claims),
+    projectEvidence: z
+      .array(
+        projectEvidenceSchema.extend({
+          title: z.string().max(100),
+          text: z.string().max(limits.evidenceText),
+        }),
+      )
+      .max(limits.evidenceItems)
+      .optional(),
     mode: z.enum(["demo", "live"]),
     report: reportSchema.optional(),
   })
@@ -249,6 +299,9 @@ export function App({
   const [claims, setClaims] = useState<ClaimDraft[]>(
     () => saved?.claims ?? (startExample ? seedDraft(example.claims) : []),
   );
+  const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
+    () => saved?.projectEvidence ?? [],
+  );
   const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
   const [availability, setAvailability] = useState<
     "checking" | "live" | "demo"
@@ -271,6 +324,7 @@ export function App({
           page: page === "running" ? "claims" : page,
           proposal,
           claims,
+          projectEvidence,
           mode,
           report,
         }),
@@ -278,7 +332,16 @@ export function App({
     } catch {
       // The review remains usable when browser storage is unavailable.
     }
-  }, [storageKey, page, proposal, claims, mode, report, previewProposal]);
+  }, [
+    storageKey,
+    page,
+    proposal,
+    claims,
+    projectEvidence,
+    mode,
+    report,
+    previewProposal,
+  ]);
 
   useEffect(() => {
     try {
@@ -364,7 +427,10 @@ export function App({
   function updateClaim(
     id: string,
     change: Partial<
-      Pick<ClaimDraft, "text" | "selected" | "risk" | "loadBearing">
+      Pick<
+        ClaimDraft,
+        "text" | "selected" | "risk" | "loadBearing" | "checkDraft"
+      >
     >,
   ) {
     setError("");
@@ -377,10 +443,25 @@ export function App({
 
   async function onReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const input = reviewInputSchema.safeParse({ proposal, claims: selected });
+    const reviewClaims = selected.map(({ checkDraft, ...claim }) => ({
+      ...claim,
+      engineeringCheck: checkDraft
+        ? {
+            kind: checkDraft.kind,
+            values: checkDraft.values.map((value) =>
+              value.trim() ? Number(value) : NaN,
+            ),
+          }
+        : undefined,
+    }));
+    const input = reviewInputSchema.safeParse({
+      proposal,
+      claims: reviewClaims,
+      projectEvidence: mode === "live" ? projectEvidence : undefined,
+    });
     if (!input.success || selected.some((claim) => !claim.text.trim())) {
       setError(
-        "Select one to three claims and give each one a short description.",
+        "Select one to three claims, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
       );
       return;
     }
@@ -389,7 +470,7 @@ export function App({
     request.current = controller;
     setError("");
     setCopyStatus("");
-    dispatch({ type: "start" });
+    dispatch({ type: "start", claims: input.data.claims });
     const emit = (event: ReviewEvent) => {
       if (controller.signal.aborted || event.type === "error") return;
       if (event.type === "report") {
@@ -455,11 +536,20 @@ export function App({
     }
   }
 
+  function recheck(finding: Finding) {
+    setProposal(reportProposal);
+    setClaims(seedDraft([finding.claim]));
+    setMode("live");
+    setError("");
+    dispatch({ type: "claims" });
+  }
+
   function restart() {
     setCopyStatus("");
     dispatch({ type: "decision" });
     setProposal("");
     setClaims([]);
+    setProjectEvidence([]);
     setError("");
   }
 
@@ -572,6 +662,7 @@ export function App({
                   </button>
                 </div>
               </form>
+              {accountId && <OutcomeLog accountId={accountId} />}
             </section>
             <aside className="workspace-sidebar">
               <section className="panel workspace-library">
@@ -673,6 +764,12 @@ export function App({
               <p>{proposal}</p>
             </details>
             <form onSubmit={onReview}>
+              {mode === "live" && (
+                <EvidenceEditor
+                  items={projectEvidence}
+                  onChange={setProjectEvidence}
+                />
+              )}
               <div className="claim-list">
                 {claims.map((claim, index) => (
                   <div
@@ -779,6 +876,14 @@ export function App({
                         <span>Load-bearing</span>
                       </label>
                     </div>
+                    {mode === "live" && (
+                      <EngineeringEditor
+                        draft={claim.checkDraft}
+                        onChange={(checkDraft) =>
+                          updateClaim(claim.id, { checkDraft })
+                        }
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -864,6 +969,32 @@ export function App({
                 </li>
               ))}
             </ul>
+            {mode === "live" && Object.keys(state.updates).length > 0 && (
+              <div className="claim-activity" aria-live="polite">
+                {state.claims
+                  .filter(({ id }) => state.updates[id])
+                  .map((claim) => (
+                    <details className="proposal" key={claim.id}>
+                      <summary>{claim.text}</summary>
+                      <ul>
+                        {Object.values(state.updates[claim.id]).map(
+                          ({ stage, status, detail }) => (
+                            <li key={stage}>
+                              <strong>{stage}</strong> ·{" "}
+                              {status === "done"
+                                ? "Complete"
+                                : status === "unavailable"
+                                  ? "Incomplete"
+                                  : "In progress"}
+                              {detail && <blockquote>{detail}</blockquote>}
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    </details>
+                  ))}
+              </div>
+            )}
             <button type="button" className="button" onClick={cancelReview}>
               Cancel review
             </button>
@@ -881,6 +1012,8 @@ export function App({
                   {report.mode === "demo"
                     ? "Bundled example evidence"
                     : "Live review"}
+                  {report.verifier &&
+                    ` · Verifier: ${report.verifier.model}${report.verifier.distinct ? " (separate model)" : ""}`}
                 </p>
               </div>
               <button
@@ -932,8 +1065,15 @@ export function App({
                         ? "Proposal reasoning"
                         : finding.basis === "arithmetic"
                           ? "Arithmetic check"
-                          : "Verified source"}
+                          : finding.basis === "project"
+                            ? "Project evidence"
+                            : finding.basis === "engineering"
+                              ? "Engineering check"
+                              : "Verified source"}
                     </span>
+                  )}
+                  {finding.verificationDisagreement && (
+                    <span className="finding-basis">Verifier disagreed</span>
                   )}
                   <h3>{finding.claim.text}</h3>
                   <p>{finding.rationale}</p>
@@ -941,6 +1081,18 @@ export function App({
                     <strong>Next step</strong> {finding.nextStep}
                   </p>
                   <ReviewTrail finding={finding} sources={report.sources} />
+                  {report.mode === "live" && (
+                    <MeasurementArtifact finding={finding} />
+                  )}
+                  {report.mode === "live" && previewProposal === undefined && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => recheck(finding)}
+                    >
+                      Re-review this claim
+                    </button>
+                  )}
                   {finding.sourceIds.length > 0 && (
                     <ul className="sources" aria-label="Sources">
                       {uniqueSourcesByUrl(
@@ -959,6 +1111,14 @@ export function App({
                 </article>
               ))}
             </div>
+            {report.mode === "live" && accountId && (
+              <OutcomeLog
+                accountId={accountId}
+                proposal={reportProposal}
+                report={report}
+                key={reportProposal}
+              />
+            )}
             <div className="actions">
               {previewProposal !== undefined ? (
                 <button

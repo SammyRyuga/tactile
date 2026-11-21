@@ -25,6 +25,12 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 3. Edit the claims, select up to three, and mark any that would change your decision if they failed as **Load-bearing**.
 4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
+Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Tactile can cite an attachment when an exact passage applies to the claim. Attachments are sent to your configured review provider and stay out of the web-search request.
+
+Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Failed numeric requirements can determine a deterministic verdict. Passing a check verifies the calculation under the stated inputs.
+
+In a live report, use **Settle this claim** for a downloadable measurement check, **Re-review this claim** to run one claim with additional evidence, or **Track after rollout** to save a claim in the workspace’s outcome log. The outcome log stays on this device for your account and can be exported as JSON.
+
 The signed-in examples cover changed-package tests, replica consistency, and feature-flag rollback. They use bundled evidence and work without a provider key. Live reviews send your proposal to the configured provider and use web search where applicable. Use proposals you can share with the provider.
 
 ![Claim editor with risk categories, load-bearing controls, and a visible selection count](docs/screenshots/claims.webp)

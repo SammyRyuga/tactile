@@ -30,6 +30,7 @@ export interface Citation {
 }
 
 export interface ReviewProvider {
+  verifierInfo?(modelOverride?: string): { model: string; distinct: boolean };
   structured<T>(
     instruction: string,
     data: unknown,
@@ -70,6 +71,17 @@ export function createProvider(
     onUsage?: (usage: ProviderUsage) => void;
   } = {},
 ): ReviewProvider {
+  function verifierInfo(modelOverride?: string) {
+    const verifier =
+      vendor === "openai"
+        ? (modelOverride ?? config.verifierModel)
+        : config.verifierModel;
+    return {
+      model: verifier || model,
+      distinct: Boolean(verifier && verifier !== model),
+    };
+  }
+
   async function respond(
     instructions: string,
     data: unknown,
@@ -149,6 +161,7 @@ export function createProvider(
   }
 
   return {
+    verifierInfo,
     async structured<T>(
       instruction: string,
       data: unknown,
@@ -158,11 +171,9 @@ export function createProvider(
     ) {
       const jsonSchema = z.toJSONSchema(schema);
       delete jsonSchema.$schema;
-      const verifier =
-        verification &&
-        (vendor === "openai"
-          ? (verification.model ?? config.verifierModel)
-          : config.verifierModel);
+      const verifier = verification
+        ? verifierInfo(verification.model).model
+        : undefined;
       const result = await respond(instruction, data, signal, {
         ...(verifier ? { model: verifier } : {}),
         text: {

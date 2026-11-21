@@ -359,6 +359,10 @@ export async function runDemo(
 ) {
   // Yield between fixture stages so users can follow and cancel the local walkthrough.
   for (const stage of stages) {
+    if (stage === "Project evidence" || stage === "Engineering check") {
+      emit({ type: "progress", stage, status: "skipped" });
+      continue;
+    }
     emit({ type: "progress", stage, status: "running" });
     await yieldToBrowser(signal);
     emit({ type: "progress", stage, status: "done" });

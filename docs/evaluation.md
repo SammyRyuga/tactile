@@ -66,3 +66,22 @@ Muse Spark 1.3 completed all 15 development cases and 84 best-of-N samples. Two 
 | Raw-proposal critique |          8/12 |         5/12 |
 
 Tactile and the single-critique scope baseline correctly declined all 3 out-of-scope cases. Tactile returned 18 unresolved claims out of 36 on this pass. These results use one repetition and automated grading. Human grading and independent citation scoring are pending.
+
+### Human grading a full comparison
+
+The standard comparison command runs three repetitions. `TACTILE_EVAL_WORKERS` bounds parallel trials, and `TACTILE_EVAL_TRIALS` can retry specific `case:repetition` pairs. Use the same Tactile revision and provider configuration for all attempts. Keep one complete result per case and repetition.
+
+```sh
+npm run --silent eval -- --live development --meta > comparison.jsonl
+node scripts/grading.ts prepare comparison.jsonl grading
+node scripts/grading.ts unblind grading/blind/marks.csv grading/system-key.json > marked.json
+npm run eval -- --score marked.json
+```
+
+Grade the case files and fill out the matching CSV before opening the system key. The single critique is also the first sample in the best-of-N pool, so it appears once in the packet. The scorer chooses the strongest marked sample from a complete pool and reports case-cluster bootstrap intervals for catch and false-alarm rates.
+
+### Full development run ready for human grading
+
+All 45 trials completed across 15 development cases, three repetitions each, with Muse Spark 1.3 on Tactile revision `8cb7ae0`. Two trials were rerun after provider timeouts left incomplete baseline pools. The final set contains 36 engineering reports, nine paired scope decisions, and 255 best-of-N samples. The blinded packet contains 381 candidate outputs.
+
+Tactile returned 72 unresolved findings out of 108 (66.7%). The 95% case-cluster bootstrap interval was 53.7% to 79.6%. The remaining findings were 17 **Contradicted**, 13 **No credible break found**, five **Weakened**, and one **Supported**. These are automatically counted verdict labels. Comparative accuracy, false alarms, citation relevance, and reassurance require the human marks. This run predates the project-evidence workflow.

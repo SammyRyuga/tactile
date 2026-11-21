@@ -26,6 +26,19 @@ export function ReviewTrail({
           )}
         </div>
       )}
+      {finding.projectCitations?.length ? (
+        <div className="finding-note project-citations">
+          <h4>Reviewer-supplied evidence</h4>
+          {finding.projectCitations.map(({ id, title, quote, relation }) => (
+            <blockquote key={id}>
+              <small>
+                {title} · {relation}
+              </small>
+              <p>{quote}</p>
+            </blockquote>
+          ))}
+        </div>
+      ) : null}
       {finding.repair && (
         <div className="finding-note repair">
           <h4>Smallest viable change</h4>

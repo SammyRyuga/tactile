@@ -63,3 +63,10 @@
 - Added reassurance scoring fields. Two blind automated reviewers agreed that one of five reassurance findings in the development pass was misleading.
 - Completed the one-pass Meta baseline comparison over all 15 development cases and published blinded automated grades. Human and citation grading remain pending.
 - Separated plausible integer rounding from exact mismatches. Aligned Meta key validation with production reasoning and isolated validation locks to Supabase sign-in sessions.
+
+## Project evidence and post-rollout checks
+
+- Added text attachments and exact claim-scoped project citations. Attachments go to the structured review provider and stay out of the web-search payload.
+- Added deterministic checks for retry amplification, serial SLO composition, sequential timeout budgets, throughput units, and weighted averages.
+- Added per-claim evaluator activity, verifier attribution and disagreement, and one-claim re-review. Added downloadable measurement checks and account-scoped local outcome tracking.
+- Completed all 45 development trials on the previous review revision and prepared 381 blinded candidates for human grading. Recorded the unresolved rate and its case-cluster interval in the evaluation guide.
