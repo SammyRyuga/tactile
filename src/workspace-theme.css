@@ -872,3 +872,14 @@
 .claim-activity {
   margin-block: 1rem;
 }
+
+.evidence-editor .actions > div {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.evidence-editor input[type="file"] {
+  display: block;
+  max-inline-size: 100%;
+  color: var(--review-ink);
+}

@@ -81,6 +81,11 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     );
   await page.getByRole("button", { name: "Extract claims" }).click();
   await page.getByText("Project evidence", { exact: true }).click();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page.getByLabel("Attach a text file").setInputFiles({
     name: "benchmark.csv",
     mimeType: "text/csv",
