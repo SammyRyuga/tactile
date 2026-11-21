@@ -118,9 +118,15 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     await example.hover();
     await expectReadable(example.getByText("Run fewer tests per pull request"));
     const recent = history.getByRole("button", {
-      name: /Replace full test runs/,
+      name: /^Replace full test runs/,
     });
     await recent.hover();
     await expectReadable(recent.locator("small"));
+    const deleteReport = history.getByRole("button", {
+      name: /^Delete report Replace full test runs/,
+    });
+    await expectReadable(deleteReport);
+    await deleteReport.hover();
+    await expectReadable(deleteReport);
   }
 });

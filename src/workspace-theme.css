@@ -775,6 +775,37 @@
   flex: none;
 }
 
+.workspace-history .workspace-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-inline-end: 0.2rem;
+  border: 1px solid var(--review-rule);
+  border-radius: 0.85rem;
+  background: var(--review-paper);
+}
+
+.workspace-history .workspace-list button {
+  border: 0;
+  background: transparent;
+}
+
+.workspace-history .workspace-list button:hover {
+  background: var(--sidebar-surface);
+}
+
+.workspace-history .workspace-list button:focus-visible {
+  outline-offset: -2px;
+}
+
+.workspace-history .workspace-list .history-delete {
+  justify-content: center;
+  inline-size: 2.75rem;
+  min-block-size: 2.75rem;
+  padding: 0;
+  color: var(--review-muted);
+}
+
 .report-actions {
   margin-block: 0 0.8rem;
 }
@@ -904,48 +935,30 @@
   color: var(--review-muted);
 }
 
-.review-setup,
-.report-details {
+.review-disclosures {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   margin-block-end: 1rem;
 }
 
-.review-workspace :is(.review-setup, .report-details) > details {
+.review-workspace .review-disclosures > details {
+  min-width: 0;
   margin: 0;
 }
 
-:is(.review-setup, .report-details) > details[open] {
-  grid-column: 1 / -1;
-}
-
-.review-setup {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: stretch;
-}
-
-.review-setup > details:only-child {
-  grid-column: 1 / -1;
-}
-
-.review-setup > details:not([open]) > summary {
-  min-height: 100%;
-}
-
-.review-setup > details > summary {
+.review-disclosures > details > summary {
   position: relative;
   display: block;
   padding-inline-end: 1.75rem;
   list-style: none;
 }
 
-.review-setup > details > summary::-webkit-details-marker {
+.review-disclosures > details > summary::-webkit-details-marker {
   display: none;
 }
 
-.review-setup > details > summary::after {
+.review-disclosures > details > summary::after {
   position: absolute;
   inset-block-start: 1rem;
   inset-inline-end: 0.45rem;
@@ -958,14 +971,13 @@
   rotate: 45deg;
 }
 
-.review-setup > details[open] > summary::after {
+.review-disclosures > details[open] > summary::after {
   rotate: 225deg;
 }
 
-@media (max-width: 700px) {
-  .review-setup {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.review-disclosures > details > p {
+  max-inline-size: 76ch;
+  padding-block-end: 0.45rem;
 }
 
 .reviewer-disclosure summary small {

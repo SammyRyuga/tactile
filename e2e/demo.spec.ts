@@ -90,11 +90,29 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     "Replace full test runs on pull requests with changed-package tests.",
   );
 
-  await history.getByRole("button", { name: /Replace full test runs/ }).click();
+  await history
+    .getByRole("button", { name: /^Replace full test runs/ })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeFocused();
   await page.getByRole("button", { name: "Back to workspace" }).click();
+  await expect(page.getByLabel("Your plan")).toHaveValue(
+    "A separate draft decision to preserve.",
+  );
+  await history
+    .getByRole("button", { name: /^Delete report Replace full test runs/ })
+    .press("Enter");
+  await expect(history.getByRole("status")).toHaveText(
+    "Report deleted from this tab.",
+  );
+  await expect(history.getByRole("heading")).toBeFocused();
+  await expect(history.getByRole("button")).toHaveCount(0);
+  await expect(page.getByLabel("Your plan")).toHaveValue(
+    "A separate draft decision to preserve.",
+  );
+  await page.reload();
+  await expect(history).toHaveCount(0);
   await expect(page.getByLabel("Your plan")).toHaveValue(
     "A separate draft decision to preserve.",
   );
