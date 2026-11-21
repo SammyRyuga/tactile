@@ -8,7 +8,11 @@ import type {
 
 test("attachments seed a plan and flow through clarification, review, and revision", async ({
   page,
-}) => {
+}, testInfo) => {
+  if (testInfo.project.name === "mobile") {
+    await page.setViewportSize({ width: 320, height: 820 });
+    await page.emulateMedia({ colorScheme: "dark" });
+  }
   await mockAuthentication(page);
   await page.route("**/api/status", (route) =>
     route.fulfill({ json: { live: true } }),
@@ -115,6 +119,11 @@ test("attachments seed a plan and flow through clarification, review, and revisi
     buffer: Buffer.from("fixture screenshot bytes"),
   });
   await expect(page.getByText("retry.png")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await page
     .getByRole("button", { name: "Remove attachment retry.png" })
     .click();
