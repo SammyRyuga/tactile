@@ -1,10 +1,13 @@
 import { z } from "zod";
+import { engineeringCheckSchema } from "./engineering.ts";
 
 export const limits = {
   proposal: 3000,
   claim: 240,
   claims: 6,
   selected: 3,
+  evidenceItems: 3,
+  evidenceText: 2400,
 } as const;
 export const verdictSchema = z.enum([
   "Supported",
@@ -28,15 +31,30 @@ export const unresolvedReasonSchema = z.enum([
   "Check failed",
 ]);
 
+export const projectEvidenceSchema = z.object({
+  id: idSchema,
+  title: z.string().trim().min(1).max(100),
+  text: z.string().trim().min(12).max(limits.evidenceText),
+});
+export const evidenceListSchema = z
+  .array(projectEvidenceSchema)
+  .max(limits.evidenceItems)
+  .refine(
+    (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
+    "Evidence IDs must be unique.",
+  );
+
 export const claimSchema = z.object({
   id: idSchema,
   text: z.string().trim().min(1).max(limits.claim),
   risk: riskSchema.optional(),
   loadBearing: z.boolean().optional(),
+  engineeringCheck: engineeringCheckSchema.optional(),
 });
 
 export const reviewInputSchema = z.object({
   proposal: proposalSchema,
+  projectEvidence: evidenceListSchema.optional(),
   claims: z
     .array(claimSchema)
     .min(1)
@@ -52,6 +70,8 @@ export const stages = [
   "Feasibility",
   "Adoption",
   "Arithmetic",
+  "Engineering check",
+  "Project evidence",
   "Evidence critique",
   "Evidence",
   "Source retrieval",
@@ -102,7 +122,20 @@ export function uniqueSourcesByUrl<T extends { url: string }>(sources: T[]) {
 export const findingSchema = z.object({
   claim: claimSchema,
   verdict: verdictSchema,
-  basis: z.enum(["proposal", "arithmetic", "source"]).optional(),
+  basis: z
+    .enum(["proposal", "arithmetic", "source", "project", "engineering"])
+    .optional(),
+  verificationDisagreement: z.boolean().optional(),
+  projectCitations: z
+    .array(
+      z.object({
+        id: idSchema,
+        title: z.string(),
+        quote: z.string(),
+        relation: z.enum(["supports", "contradicts", "qualifies"]),
+      }),
+    )
+    .optional(),
   proposalExcerpt: z.string().optional(),
   rationale: z.string(),
   nextStep: z.string(),
@@ -124,6 +157,7 @@ export const findingSchema = z.object({
 
 export const reportSchema = z.object({
   mode: modeSchema,
+  verifier: z.object({ model: z.string(), distinct: z.boolean() }).optional(),
   recommendation: z.string(),
   findings: z.array(findingSchema),
   sources: z.array(sourceSchema),
@@ -133,12 +167,15 @@ export const reviewEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("progress"),
     stage: stageSchema,
+    claimId: idSchema.optional(),
+    detail: z.string().max(360).optional(),
     status: z.enum(["running", "done", "unavailable", "skipped"]),
   }),
   z.object({ type: z.literal("report"), report: reportSchema }),
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
 
+export type ProjectEvidence = z.infer<typeof projectEvidenceSchema>;
 export type Claim = z.infer<typeof claimSchema>;
 export type ReviewInput = z.infer<typeof reviewInputSchema>;
 export type ReviewEvent = z.infer<typeof reviewEventSchema>;
@@ -222,6 +259,21 @@ export function toMarkdown(
         "",
         `**Tradeoff** ${markdownText(finding.repair.tradeoff)}`,
       );
+    if (finding.verificationDisagreement)
+      lines.push(
+        "",
+        "**Verifier disagreement** The verifier did not find that the supplied premise established the specialist’s concern.",
+      );
+    if (finding.projectCitations?.length) {
+      lines.push("", "**Project evidence supplied by the reviewer**");
+      for (const { title, relation, quote } of finding.projectCitations) {
+        lines.push(
+          "",
+          `- ${markdownText(title)} · ${relation}`,
+          `  - ${markdownText(quote)}`,
+        );
+      }
+    }
     if (finding.audit?.length) {
       lines.push("", "#### Review trail", "");
       for (const check of finding.audit) {

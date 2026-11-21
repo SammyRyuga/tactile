@@ -1,3 +1,7 @@
+import {
+  engineeringCheckSchema,
+  evaluateEngineeringCheck,
+} from "../shared/engineering.ts";
 import { corpus } from "../scripts/evaluation-cases.ts";
 import { sourceExcerpt } from "../server/source-reader.ts";
 import { checkArithmetic } from "../server/arithmetic.ts";
@@ -202,4 +206,25 @@ test("implicit integer rounding is distinguished from exact arithmetic errors", 
 
 test("a partial right-hand expression cannot produce a deterministic verdict", () => {
   assert.deepEqual(checkArithmetic("2 + 2 = 5 - 1; 12 / 2 = 12 / 2"), []);
+});
+
+test("engineering checks compare explicit budgets with consistent units", () => {
+  for (const [kind, values, meets, result] of [
+    ["retries", [3, 3, 26], false, /27 downstream attempts/],
+    ["slo", [99.9, 99.9, 99.9], false, /99.8001/],
+    ["timeout", [3, 100, 75, 350], false, /375 ms/],
+    ["throughput", [60, 4, 4], true, /4 jobs\/s/],
+    ["average", [5, 2, 9, 6, 7], false, /8 in the entered units/],
+  ] as const) {
+    const resultData = evaluateEngineeringCheck(
+      engineeringCheckSchema.parse({ kind, values }),
+    );
+    assert.equal(resultData.meets, meets, kind);
+    assert.match(resultData.observation, result);
+  }
+  assert.equal(
+    engineeringCheckSchema.safeParse({ kind: "retries", values: [3.5, 2, 10] })
+      .success,
+    false,
+  );
 });

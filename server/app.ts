@@ -101,7 +101,7 @@ export function createApp(
   app.get("/api/auth-config", (_request, response) =>
     response.json({ auth: options.auth ?? null }),
   );
-  app.use("/api", express.json({ limit: "24kb" }));
+  app.use("/api", express.json({ limit: "80kb" }));
 
   async function requireSession(request: Request, response: Response) {
     const token = request.get("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];

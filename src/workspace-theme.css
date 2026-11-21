@@ -817,3 +817,58 @@
 [dir="rtl"] .workspace-list svg {
   transform: scaleX(-1);
 }
+
+.review-workspace
+  :is(
+    .evidence-editor,
+    .engineering-editor,
+    .settlement-artifact,
+    .outcome-log
+  ) {
+  margin-block: 0.9rem;
+}
+
+.review-workspace .engineering-editor {
+  grid-column: 1 / -1;
+  margin-block: 0.2rem 0;
+}
+
+.engineering-fields {
+  display: grid;
+  gap: 0.7rem;
+  margin-block-start: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
+.review-workspace
+  :is(.evidence-editor, .engineering-editor, .outcome-log)
+  :is(input:not([type="file"]), select) {
+  display: block;
+  width: 100%;
+  min-height: 2.7rem;
+  border: 1px solid var(--review-rule);
+  border-radius: 0.7rem;
+  padding-inline: 0.65rem;
+  margin-block: 0.25rem 0.7rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+}
+
+.evidence-entry {
+  padding-block: 0.9rem;
+  border-block-start: 1px solid var(--review-rule);
+}
+
+.review-workspace
+  :is(
+    .settlement-artifact code,
+    .claim-activity blockquote,
+    .project-citations blockquote
+  ) {
+  overflow-wrap: anywhere;
+}
+
+.claim-activity {
+  margin-block: 1rem;
+}

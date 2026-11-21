@@ -10,6 +10,9 @@ import { demoClaims, demoProposal } from "../shared/demo.ts";
 import { reviewEventSchema } from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 
+const benchmarkQuote =
+  "Checkout staging p95 was 128 ms under 500 requests per second.";
+
 const input = { proposal: demoProposal, claims: demoClaims.slice(0, 2) };
 const signal = new AbortController().signal;
 const sourceReader = async () =>
@@ -43,6 +46,7 @@ function mockProvider(
     repeatedCitations?: boolean;
     nonEntailingPremise?: boolean;
     shortPremise?: boolean;
+    submittedEvidence?: "valid" | "fabricated" | "another-claim";
     noBreak?: boolean;
     missingFacts?: boolean;
     internal?: boolean;
@@ -57,6 +61,7 @@ function mockProvider(
     const body = JSON.parse(String(init?.body));
     assert.equal(body.store, false);
     if (body.tools) {
+      assert.doesNotMatch(body.input, /Checkout staging p95 was 128 ms/);
       if (options.searchDown) return new Response(null, { status: 503 });
       return success(
         "Fixture: two sources conflict; applicability is uncertain.",
@@ -98,6 +103,23 @@ function mockProvider(
               loadBearing: true,
             },
           ],
+        }),
+      );
+    }
+    if (body.instructions.includes("Verify private project evidence")) {
+      const { pairs } = JSON.parse(body.input);
+      return success(
+        JSON.stringify({
+          judgments: pairs.map(({ id }: { id: string }) => ({
+            id,
+            relation: "supports",
+            quote:
+              options.submittedEvidence === "fabricated"
+                ? "An invented production measurement from the model."
+                : benchmarkQuote,
+            explanation:
+              "The fixture matches the checkout load and percentile.",
+          })),
         }),
       );
     }
@@ -188,13 +210,19 @@ function mockProvider(
             sourceIds:
               options.internal || options.noBreak
                 ? []
-                : [
-                    options.wrongCitation
-                      ? "unknown"
-                      : options.crossClaimCitation
-                        ? `source-${2 - index}-1`
-                        : `source-${index + 1}-1`,
-                  ],
+                : options.submittedEvidence
+                  ? [
+                      options.submittedEvidence === "another-claim"
+                        ? "project-2-1"
+                        : `project-${index + 1}-1`,
+                    ]
+                  : [
+                      options.wrongCitation
+                        ? "unknown"
+                        : options.crossClaimCitation
+                          ? `source-${2 - index}-1`
+                          : `source-${index + 1}-1`,
+                    ],
           })),
         }),
       );
@@ -515,6 +543,60 @@ test("an unstated integer rounding rule weakens a claim without calling it contr
   assert.equal(report.findings[0].basis, "arithmetic");
   assert.match(report.findings[0].rationale, /142\.857.*floor/);
   assert.match(report.recommendation, /State the rounding rule/);
+});
+
+test("only an exact claim-scoped project quote can support a verdict", async () => {
+  const projectEvidence = [
+    { id: "benchmark", title: "Checkout load run", text: benchmarkQuote },
+  ];
+  for (const scenario of ["valid", "fabricated", "another-claim"] as const) {
+    const events: ReviewEvent[] = [];
+    const report = await runReview(
+      mockProvider({ submittedEvidence: scenario, searchDown: true }),
+      { ...input, projectEvidence },
+      (event) => events.push(event),
+      signal,
+    );
+    const finding = report.findings[0];
+    if (scenario === "valid") {
+      assert.equal(finding.verdict, "Supported");
+      assert.equal(finding.basis, "project");
+      assert.equal(finding.projectCitations?.[0].quote, benchmarkQuote);
+      assert.deepEqual(finding.sourceIds, []);
+      assert.ok(
+        events.some(
+          (event) =>
+            event.type === "progress" &&
+            event.claimId === finding.claim.id &&
+            event.detail === benchmarkQuote,
+        ),
+      );
+    } else {
+      assert.equal(finding.verdict, "Unresolved");
+      assert.ok(!finding.projectCitations?.length);
+    }
+  }
+});
+
+test("the deterministic retry budget can contradict a claim without synthesis", async () => {
+  const report = await runReview(
+    mockProvider({ malformed: true }),
+    {
+      ...input,
+      claims: [
+        {
+          id: "retry-budget",
+          text: "Maximum downstream attempts stay below 20.",
+          engineeringCheck: { kind: "retries", values: [3, 3, 20] },
+        },
+      ],
+    },
+    () => {},
+    signal,
+  );
+  assert.equal(report.findings[0].basis, "engineering");
+  assert.equal(report.findings[0].verdict, "Contradicted");
+  assert.match(report.findings[0].rationale, /27 downstream attempts/);
 });
 
 test("review input cannot expand the server search budget", async () => {

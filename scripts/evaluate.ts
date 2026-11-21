@@ -8,7 +8,6 @@ import {
   runReview,
 } from "../server/pipeline.ts";
 import { demoExamples, demoReport } from "../shared/demo.ts";
-import { writeBlindReview } from "./blind-review.ts";
 import { corpus } from "./evaluation-cases.ts";
 
 const markSchema = z
@@ -167,21 +166,13 @@ if (command === "--list") {
     };
   });
   console.log(JSON.stringify({ arithmetic, demos }, null, 2));
-} else if (command === "--blind") {
-  if (args.length !== 3)
-    throw new Error(
-      "Supply the run JSONL, reviewer packet path, and private answer key path.",
-    );
-  writeBlindReview(args[0], args[1], args[2]);
 } else if (command === "--score") {
   if (args.length !== 1)
     throw new Error("Supply a JSON file with human annotations.");
   score(args[0]);
 } else {
   if (command !== "--smoke" && command !== "--live")
-    throw new Error(
-      "Use --list, --fixtures, --blind, --score, --smoke, or --live.",
-    );
+    throw new Error("Use --list, --fixtures, --score, --smoke, or --live.");
   const reviewOnly = command === "--live" && args.includes("--review-only");
   const once = command === "--live" && args.includes("--once");
   const vendor = args.includes("--meta") ? "meta" : "openai";
@@ -197,6 +188,17 @@ if (command === "--list") {
       "Choose development or holdout and optionally --meta, --review-only, or --once.",
     );
   const split = args.includes("holdout") ? "holdout" : "development";
+  const requestedWorkers = Number(process.env.TACTILE_EVAL_WORKERS ?? "3");
+  if (
+    !Number.isInteger(requestedWorkers) ||
+    requestedWorkers < 1 ||
+    requestedWorkers > 8
+  )
+    throw new Error("TACTILE_EVAL_WORKERS must be between 1 and 8.");
+  const requestedTrials = process.env.TACTILE_EVAL_TRIALS?.split(",").map(
+    (value) => value.trim(),
+  );
+  const revision = process.env.TACTILE_EVAL_REVISION;
   const prefix = vendor === "meta" ? "META" : "OPENAI";
   const key = process.env[`${prefix}_API_KEY`]?.trim();
   if (!key)
@@ -282,6 +284,7 @@ if (command === "--list") {
     const meta = {
       caseId,
       repetition,
+      revision,
       category,
       target,
       split,
@@ -382,19 +385,30 @@ if (command === "--list") {
       maxToolCalls?: number,
     ) {
       const sample = metered(true);
-      try {
-        const result = await sample.provider.research(
-          instructions,
-          data,
-          AbortSignal.timeout(56_000),
-          { maxToolCalls },
-        );
-        return { result, metrics: sample.metrics() };
-      } catch (error) {
-        return {
-          error: error instanceof Error ? error.name : "unknown",
-          metrics: sample.metrics(),
-        };
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const result = await sample.provider.research(
+            instructions,
+            data,
+            AbortSignal.timeout(56_000),
+            { maxToolCalls },
+          );
+          return { result, metrics: sample.metrics() };
+        } catch (error) {
+          const transient =
+            error instanceof Error &&
+            (error.name === "TimeoutError" ||
+              error.name === "TypeError" ||
+              /status (?:429|5[0-9]{2})\./.test(error.message));
+          if (attempt === 0 && transient) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          return {
+            error: error instanceof Error ? error.name : "unknown",
+            metrics: sample.metrics(),
+          };
+        }
       }
     }
     const [researchAgent, rawProposal] = await Promise.all([
@@ -440,35 +454,46 @@ if (command === "--list") {
       }),
     );
   }
-  if (reviewOnly || once) {
-    // Keep output machine-readable, including failed cases, and bound provider concurrency.
-    let index = 0;
-    async function worker() {
-      for (let trial = trials[index++]; trial; trial = trials[index++]) {
-        try {
-          await runTrial(trial, 1);
-        } catch (error) {
-          console.log(
-            JSON.stringify({
-              caseId: trial[1],
-              category: trial[0],
-              error: error instanceof Error ? error.name : "unknown",
-            }),
-          );
-          process.exitCode = 1;
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: 3 }, worker));
-  } else {
-    for (const trial of trials) {
-      for (
-        let repetition = 1;
-        repetition <= (command === "--smoke" ? 1 : 3);
-        repetition++
-      ) {
+  const repetitions = command === "--live" && !reviewOnly && !once ? 3 : 1;
+  const allJobs = trials.flatMap((trial) =>
+    Array.from({ length: repetitions }, (_, index) => ({
+      trial,
+      repetition: index + 1,
+    })),
+  );
+  const jobs = requestedTrials
+    ? allJobs.filter(({ trial, repetition }) =>
+        requestedTrials.includes(`${trial[1]}:${repetition}`),
+      )
+    : allJobs;
+  if (
+    !jobs.length ||
+    (requestedTrials && jobs.length !== requestedTrials.length)
+  )
+    throw new Error(
+      "TACTILE_EVAL_TRIALS must contain unique, valid case:repetition pairs.",
+    );
+  let index = 0;
+  async function worker() {
+    for (let job = jobs[index++]; job; job = jobs[index++]) {
+      const { trial, repetition } = job;
+      try {
         await runTrial(trial, repetition);
+      } catch (error) {
+        console.log(
+          JSON.stringify({
+            caseId: trial[1],
+            category: trial[0],
+            repetition,
+            revision,
+            error: error instanceof Error ? error.name : "unknown",
+          }),
+        );
+        process.exitCode = 1;
       }
     }
   }
+  await Promise.all(
+    Array.from({ length: Math.min(jobs.length, requestedWorkers) }, worker),
+  );
 }
