@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { z } from "zod";
 import { App } from "./App.tsx";
+import { ThemeToggle } from "./Theme.tsx";
+import { Settings } from "./Settings.tsx";
 import { Home } from "./Home.tsx";
 import { demoExamples } from "../shared/demo.ts";
 
@@ -40,8 +42,9 @@ function Header({ session }: { session: Session | null }) {
             Method
           </a>
           <a href="/review">Workspace</a>
-          <a href={session ? "/review" : "/login"}>
-            {session ? "Account" : "Sign in"}
+          <ThemeToggle />
+          <a href={session ? "/settings" : "/login"}>
+            {session ? "Settings" : "Sign in"}
           </a>
         </nav>
       </div>
@@ -53,10 +56,12 @@ function Login({
   client,
   session,
   loading,
+  next,
 }: {
   client: SupabaseClient | null;
   session: Session | null;
   loading: boolean;
+  next: string;
 }) {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -88,7 +93,7 @@ function Login({
             : "Sign-in failed. Check your details and confirm your email before retrying.",
         );
       } else if (result.data.session) {
-        window.location.assign("/review");
+        window.location.assign(next);
       } else if (creating) {
         setMessage(
           "Check your email to confirm your account, then return to sign in.",
@@ -115,15 +120,13 @@ function Login({
               : "Sign in to Tactile"}
         </h1>
         {session ? (
-          <a className="button primary" href="/review">
-            Open the review workspace
+          <a className="button primary" href={next}>
+            Continue to Tactile
           </a>
         ) : loading ? (
           <p role="status">Connecting to sign-in…</p>
         ) : !client ? (
-          <p role="status">
-            Sign-in is unavailable. You can still open the demo.
-          </p>
+          <p role="status">Sign-in is unavailable. Try again later.</p>
         ) : (
           <form onSubmit={submit}>
             <label htmlFor="email">Email address</label>
@@ -179,12 +182,19 @@ function Login({
             </div>
           </form>
         )}
-        <a className="login-demo" href="/review?demo=1">
-          Try the demo without an account →
-        </a>
       </section>
     </main>
   );
+}
+
+function allowedDestination(value: string | null) {
+  if (!value) return "/review";
+  if (value === "/settings") return value;
+  if (value === "/review") return value;
+  const example = demoExamples.find(
+    ({ id }) => value === `/review?example=${id}`,
+  );
+  return example ? `/review?example=${example.id}` : "/review";
 }
 
 export function Site() {
@@ -193,6 +203,21 @@ export function Site() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  const protectedRoute = path === "/review" || path === "/settings";
+  const exampleId =
+    params.get("example") ?? (params.get("demo") === "1" ? "ci" : null);
+  const example =
+    path === "/review"
+      ? demoExamples.find(({ id }) => id === exampleId)
+      : undefined;
+  const requested =
+    path === "/settings"
+      ? path
+      : example
+        ? `/review?example=${example.id}`
+        : "/review";
+  const next = allowedDestination(params.get("next"));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -211,11 +236,29 @@ export function Site() {
           auth: { storage: window.sessionStorage },
         });
         setClient(supabase);
-        const { data } = supabase.auth.onAuthStateChange((_event, next) => {
-          if (!controller.signal.aborted) setSession(next);
+        const { data } = await supabase.auth.getSession();
+        if (controller.signal.aborted) return;
+        if (data.session) {
+          const user = protectedRoute
+            ? await supabase.auth.getUser(data.session.access_token)
+            : { data: { user: data.session.user } };
+          if (
+            !controller.signal.aborted &&
+            user.data.user &&
+            !user.data.user.is_anonymous
+          )
+            setSession(data.session);
+        }
+        if (controller.signal.aborted) return;
+        const changes = supabase.auth.onAuthStateChange((event, updated) => {
+          if (controller.signal.aborted || event === "INITIAL_SESSION") return;
+          if (!updated) setSession(null);
+          else
+            setSession((current) =>
+              current?.user.id === updated.user.id ? updated : current,
+            );
         });
-        unsubscribe = () => data.subscription.unsubscribe();
-        await supabase.auth.getSession();
+        unsubscribe = () => changes.data.subscription.unsubscribe();
       } catch {
         if (!controller.signal.aborted) setClient(null);
       } finally {
@@ -226,22 +269,55 @@ export function Site() {
       controller.abort();
       unsubscribe?.();
     };
-  }, []);
+  }, [protectedRoute]);
 
-  if (path === "/review") {
-    const params = new URLSearchParams(window.location.search);
-    const demo = params.get("demo") === "1";
-    const example = demo
-      ? demoExamples.find(
-          ({ id }) => id !== "ci" && id === params.get("example"),
-        )
-      : undefined;
-    if (loading)
-      return (
-        <p className="workspace field-note" role="status">
-          Opening the review workspace…
-        </p>
+  useEffect(() => {
+    if (protectedRoute && !loading && !session) {
+      window.location.replace(
+        `/login?${new URLSearchParams({ next: requested })}`,
       );
+    }
+  }, [protectedRoute, loading, session, requested]);
+
+  async function signOut() {
+    try {
+      if (session) {
+        await fetch("/api/settings/provider", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => undefined);
+      }
+      const result = await client?.auth.signOut({ scope: "local" });
+      if (result?.error) throw result.error;
+      if (session?.user.id) {
+        try {
+          const prefix = `tactile-review-v1:${session.user.id}:`;
+          for (let index = sessionStorage.length - 1; index >= 0; index--) {
+            const key = sessionStorage.key(index);
+            if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+          }
+        } catch {
+          // Storage can be disabled.
+        }
+      }
+      window.location.assign("/");
+    } catch {
+      setNotice("Sign-out failed. Try again.");
+    }
+  }
+
+  if (protectedRoute && (loading || !session)) {
+    return (
+      <main className="workspace">
+        <p role="status">
+          {loading ? "Checking your session…" : "Opening sign-in…"}
+        </p>
+      </main>
+    );
+  }
+
+  if (path === "/review" && session) {
     return (
       <>
         {notice && (
@@ -250,37 +326,13 @@ export function Site() {
           </p>
         )}
         <App
-          key={session?.user.id ?? "guest"}
-          token={session?.access_token}
-          account={session?.user.email}
-          accountId={session?.user.id}
-          needsSignIn={Boolean(client && !session)}
-          startDemo={demo}
-          initialExample={example}
-          signOut={async () => {
-            try {
-              const result = await client?.auth.signOut({ scope: "local" });
-              if (result?.error) throw result.error;
-              if (session?.user.id) {
-                try {
-                  const prefix = `tactile-review-v1:${session.user.id}:`;
-                  for (
-                    let index = sessionStorage.length - 1;
-                    index >= 0;
-                    index--
-                  ) {
-                    const key = sessionStorage.key(index);
-                    if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
-                  }
-                } catch {
-                  /* Storage can be disabled. */
-                }
-              }
-              window.location.assign("/");
-            } catch {
-              setNotice("Sign-out failed. Try again.");
-            }
-          }}
+          key={session.user.id}
+          token={session.access_token}
+          account={session.user.email}
+          accountId={session.user.id}
+          startExample={Boolean(example)}
+          initialExample={example?.id === "ci" ? undefined : example}
+          signOut={signOut}
         />
       </>
     );
@@ -292,7 +344,19 @@ export function Site() {
       </a>
       <Header session={session} />
       {path === "/login" ? (
-        <Login client={client} session={session} loading={loading} />
+        <Login
+          client={client}
+          session={session}
+          loading={loading}
+          next={next}
+        />
+      ) : path === "/settings" && session ? (
+        <Settings
+          token={session.access_token}
+          email={session.user.email}
+          signOut={signOut}
+          notice={notice}
+        />
       ) : (
         <Home signedIn={Boolean(session)} />
       )}

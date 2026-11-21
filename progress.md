@@ -31,3 +31,9 @@
 - Introduced an expressive visual system across the homepage, review workspace, and sign-in.
 - Extended the homepage with an interactive case preview, review walkthrough, feature explanations, and FAQ.
 - Added two new bundled scenarios and desktop/mobile browser coverage for opening a specific scenario.
+
+## Authentication and appearance
+
+- Required a verified Supabase session for the review workspace and Settings, including legacy example links.
+- Added motion to the claim editor with reduced-motion support, and a browser-persisted dark theme.
+- Added authenticated, session-scoped Meta Model API key settings and an adapter for Muse Spark. Provider requests are covered by fixtures pending a credentialed run.

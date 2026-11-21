@@ -259,6 +259,9 @@
   gap: 0.5rem;
 }
 .review-workspace .claim-editor {
+  --claim-motion-quick: 150ms;
+  --claim-motion-enter: 230ms;
+  --claim-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
   max-width: 65rem;
   margin-inline: auto;
 }
@@ -458,6 +461,68 @@
   }
   .claim-editor .claim-editor-footer > .actions {
     gap: 0.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .claim-editor .claim-row {
+    --claim-enter-delay: 0ms;
+    animation: claim-row-enter var(--claim-motion-enter)
+      var(--claim-motion-ease) var(--claim-enter-delay) backwards;
+    transition:
+      background-color var(--claim-motion-quick) ease,
+      border-color var(--claim-motion-quick) ease;
+  }
+  .claim-editor .claim-row:nth-child(2) {
+    --claim-enter-delay: 28ms;
+  }
+  .claim-editor .claim-row:nth-child(3) {
+    --claim-enter-delay: 56ms;
+  }
+  .claim-editor .claim-row:nth-child(4) {
+    --claim-enter-delay: 84ms;
+  }
+  .claim-editor :is(.claim-pick, .claim-priority, .claim-remove) {
+    transition:
+      background-color var(--claim-motion-quick) ease,
+      color var(--claim-motion-quick) ease;
+  }
+  .review-workspace .claim-editor .claim-row textarea {
+    transition:
+      background-color var(--claim-motion-quick) ease,
+      border-color var(--claim-motion-quick) ease;
+  }
+  .claim-editor .claim-count-track span {
+    transition: background-color var(--claim-motion-quick) ease;
+  }
+  .claim-editor .claim-proposal summary svg {
+    transition: rotate var(--claim-motion-enter) var(--claim-motion-ease);
+  }
+  .claim-editor .claim-proposal[open] > p {
+    animation: claim-disclosure-enter var(--claim-motion-enter)
+      var(--claim-motion-ease) both;
+  }
+}
+
+@keyframes claim-row-enter {
+  from {
+    opacity: 0.86;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes claim-disclosure-enter {
+  from {
+    opacity: 0.78;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

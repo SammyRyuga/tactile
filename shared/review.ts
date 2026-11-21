@@ -69,7 +69,7 @@ export const sourceSchema = z.object({
     .optional(),
   url: z.union([
     z.url({ protocol: /^https?$/ }),
-    z.string().regex(/^\/demo-evidence\.html#[a-z-]+$/),
+    z.string().regex(/^\/(?:demo|example)-evidence\.html#[a-z-]+$/),
   ]),
 });
 
@@ -144,7 +144,7 @@ export function toMarkdown(
   const lines = [
     "# Tactile decision review",
     "",
-    report.mode === "demo" ? "Mode: Bundled demo" : "Mode: Live review",
+    report.mode === "demo" ? "Mode: Bundled example" : "Mode: Live review",
     "",
     "## Proposal",
     "",

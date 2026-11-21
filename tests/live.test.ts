@@ -326,3 +326,78 @@ test("hosted live endpoints require a verified session and limit each account", 
     },
   );
 });
+
+test("personal keys require authentication, stay scoped to the sign-in session, and are never echoed", async () => {
+  const accessToken = (id: string) =>
+    `header.${Buffer.from(JSON.stringify({ session_id: id })).toString("base64url")}.signature`;
+  const token = accessToken("10000000-0000-4000-8000-000000000001");
+  const otherSession = accessToken("10000000-0000-4000-8000-000000000002");
+  const key = "synthetic-test-key-value";
+  await withServer(
+    createApp(undefined, {
+      verifySession: async (value) =>
+        [token, otherSession].includes(value) ? "test-account" : null,
+    }),
+    async (url) => {
+      const endpoint = url + "/api/settings/provider";
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+      assert.equal((await fetch(endpoint)).status, 401);
+      assert.equal((await post(url + "/api/reviews", input)).status, 401);
+      const saved = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key }),
+      });
+      assert.equal(saved.status, 201);
+      assert.doesNotMatch(await saved.text(), /synthetic-test-key-value/);
+      assert.deepEqual(
+        await (await fetch(url + "/api/status", { headers })).json(),
+        { live: true },
+      );
+      assert.deepEqual(
+        await (
+          await fetch(endpoint, {
+            headers: { Authorization: `Bearer ${otherSession}` },
+          })
+        ).json(),
+        { saved: false },
+      );
+      assert.equal(
+        (await fetch(endpoint, { method: "DELETE", headers })).status,
+        200,
+      );
+      assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
+        saved: false,
+      });
+    },
+  );
+});
+
+test("Meta research calls Meta's Responses API with its search format", async () => {
+  const provider = createProvider(
+    "synthetic-test-key",
+    "muse-spark-1.3",
+    async (url, init) => {
+      assert.equal(url, "https://api.meta.ai/v1/responses");
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, "muse-spark-1.3");
+      assert.equal(body.store, false);
+      assert.deepEqual(body.tools, [
+        { type: "web_search", search_context_size: "high" },
+      ]);
+      assert.equal("max_tool_calls" in body, false);
+      return success("A cited statement with enough context.", [citation]);
+    },
+    "meta",
+  );
+  const result = await provider.research(
+    "Find documentation.",
+    { claim: "Test claim" },
+    signal,
+    { maxToolCalls: 3 },
+  );
+  assert.equal(result.citations.length, 1);
+});

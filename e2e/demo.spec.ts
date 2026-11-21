@@ -1,13 +1,19 @@
 import { expect, test } from "@playwright/test";
+import { mockAuthentication, signIn } from "./auth-fixture.ts";
 
-test("guest reviews a demo, explores its trail, exports, and restores the report", async ({
+test("signed-in user reviews an example, exports, and restores the report", async ({
   page,
 }) => {
+  await mockAuthentication(page);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Decisions, under load." }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Try the demo", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Sign in to review", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/login\?next=/);
+  await signIn(page);
   await expect(
     page.getByRole("heading", { name: "Confirm the claims" }),
   ).toBeVisible();
@@ -44,12 +50,14 @@ test("the case selector opens the corresponding bundled review", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await mockAuthentication(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Data consistency" }).click();
   await expect(
     page.getByRole("heading", { name: "Move checkout reads to a replica" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Run this case" }).click();
+  await page.getByRole("link", { name: "Sign in to run this case" }).click();
+  await signIn(page);
   await expect(page).toHaveURL(/example=replica/);
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     /A replica always returns an order/,
@@ -68,7 +76,10 @@ test("the case selector opens the corresponding bundled review", async ({
 test("claim controls preserve the selection limit and keyboard editing", async ({
   page,
 }) => {
+  await mockAuthentication(page);
   await page.goto("/review?demo=1");
+  await expect(page).toHaveURL(/\/login\?next=/);
+  await signIn(page);
   const first = page.getByRole("checkbox", { name: "Review claim 1" });
   const fourth = page.getByRole("checkbox", { name: "Review claim 4" });
   await expect(fourth).toBeDisabled();
@@ -90,4 +101,36 @@ test("claim controls preserve the selection limit and keyboard editing", async (
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("settings require sign-in and store the appearance preference across reloads", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  let saved = false;
+  await page.route("**/api/settings/provider", (route) => {
+    const method = route.request().method();
+    if (method === "POST") saved = true;
+    if (method === "DELETE") saved = false;
+    return route.fulfill({ json: { saved } });
+  });
+  await page.goto("/settings");
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings/);
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.locator("main").getByRole("button", { name: "Dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page
+    .getByLabel("API key", { exact: true })
+    .fill("synthetic-fixture-key");
+  await page.getByRole("button", { name: "Save key" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Key saved for this session.",
+  );
+  await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByText("Key saved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove key" }).click();
+  await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
 });

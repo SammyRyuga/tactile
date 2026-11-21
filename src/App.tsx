@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { z } from "zod";
+import { ThemeToggle } from "./Theme.tsx";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import type { FormEvent } from "react";
 import { demoClaims, demoProposal, runDemo } from "../shared/demo.ts";
@@ -147,16 +148,14 @@ export function App({
   token,
   account,
   accountId,
-  needsSignIn,
   signOut,
-  startDemo,
+  startExample,
   initialExample,
 }: {
   token?: string;
   account?: string;
   accountId?: string;
-  needsSignIn: boolean;
-  startDemo: boolean;
+  startExample: boolean;
   initialExample?: {
     id?: string;
     title?: string;
@@ -167,7 +166,7 @@ export function App({
 }) {
   const example = initialExample ?? defaultExample;
   const scenarioId = initialExample?.id;
-  const locationKey = startDemo
+  const locationKey = startExample
     ? scenarioId
       ? `example:${scenarioId}`
       : "example"
@@ -182,7 +181,7 @@ export function App({
         ? { page: "report", report: saved.report }
         : {
             page:
-              saved?.page === "claims" || (!saved && startDemo)
+              saved?.page === "claims" || (!saved && startExample)
                 ? "claims"
                 : "decision",
           },
@@ -191,10 +190,10 @@ export function App({
   const report = page === "report" ? state.report : undefined;
   const progress = page === "running" ? state.progress : undefined;
   const [proposal, setProposal] = useState(
-    saved?.proposal ?? (startDemo ? example.proposal : ""),
+    saved?.proposal ?? (startExample ? example.proposal : ""),
   );
   const [claims, setClaims] = useState<ClaimDraft[]>(
-    () => saved?.claims ?? (startDemo ? seedDraft(example.claims) : []),
+    () => saved?.claims ?? (startExample ? seedDraft(example.claims) : []),
   );
   const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
   const [availability, setAvailability] = useState<
@@ -228,10 +227,9 @@ export function App({
 
   useEffect(() => {
     const controller = new AbortController();
-    liveAvailable(controller.signal).then(
+    liveAvailable(controller.signal, token).then(
       (live) => {
-        if (!controller.signal.aborted)
-          setAvailability(live && !needsSignIn ? "live" : "demo");
+        if (!controller.signal.aborted) setAvailability(live ? "live" : "demo");
       },
       () => {
         if (!controller.signal.aborted) setAvailability("demo");
@@ -239,9 +237,10 @@ export function App({
     );
     return () => {
       controller.abort();
-      request.current?.abort();
     };
-  }, [needsSignIn]);
+  }, [token]);
+
+  useEffect(() => () => request.current?.abort(), []);
 
   useEffect(() => {
     if (previousPage.current !== page) {
@@ -374,7 +373,8 @@ export function App({
           </a>
           <nav aria-label="Project links">
             <a href="/">Home</a>
-            {needsSignIn && <a href="/login">Sign in</a>}
+            <a href="/settings">Settings</a>
+            <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
               GitHub {mark("external")}
             </a>
@@ -445,9 +445,8 @@ export function App({
                 {availability === "demo" &&
                   proposal.trim() !== example.proposal && (
                     <p className="field-note">
-                      {needsSignIn
-                        ? "Sign in to access live reviews. The example is open to everyone."
-                        : "Live reviews require a server-side provider key."}
+                      Live reviews need a provider key in{" "}
+                      <a href="/settings">Settings</a>.
                     </p>
                   )}
                 {availability === "live" && (
@@ -484,7 +483,7 @@ export function App({
                     disabled={extracting}
                     onClick={openDemo}
                   >
-                    Try the demo {mark("arrow")}
+                    Open example {mark("arrow")}
                   </button>
                 </div>
               </form>
@@ -682,7 +681,7 @@ export function App({
                     {mark("plus")} Add claim
                   </button>
                   <span className="claim-mode">
-                    {mode === "demo" ? "Bundled demo" : "Live review"}
+                    {mode === "demo" ? "Bundled example" : "Live review"}
                   </span>
                 </div>
                 <div className="actions">
@@ -716,7 +715,7 @@ export function App({
             </h2>
             <p className="section-note">
               {mode === "demo"
-                ? "Bundled demo · Reading local evidence"
+                ? "Bundled example · Reading local evidence"
                 : "Live review · Checking the confirmed claims"}
             </p>
             <ul className="activity" aria-live="polite">
@@ -752,7 +751,7 @@ export function App({
                 </h2>
                 <p className="section-note">
                   {report.mode === "demo"
-                    ? "Bundled demo evidence"
+                    ? "Bundled example evidence"
                     : "Live review"}
                 </p>
               </div>

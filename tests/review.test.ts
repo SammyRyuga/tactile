@@ -24,7 +24,7 @@ test("bundled fixture reports the dependency failure and leaves timing unresolve
   const markdown = toMarkdown(input.proposal, report);
   assert.match(markdown, /## Recommended next step/);
   assert.match(markdown, /Bundled dependency replay/);
-  assert.match(markdown, /Mode: Bundled demo/);
+  assert.match(markdown, /Mode: Bundled example/);
 });
 
 test("edited claims lose fixture citations and stay unresolved", () => {

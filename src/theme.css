@@ -1,0 +1,314 @@
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 2.65rem;
+  min-height: 2.65rem;
+  padding: 0.45rem 0.62rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 2rem;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--tint);
+}
+.theme-toggle[aria-pressed="true"] {
+  background: #cfec78;
+  border-color: #cfec78;
+  color: #172015;
+}
+.settings-page {
+  max-width: 52rem;
+  margin-block: clamp(2rem, 6vw, 4.5rem);
+  display: grid;
+  gap: 0.8rem;
+}
+.settings-title,
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+}
+.settings-title {
+  margin-bottom: 0.5rem;
+}
+.settings-title h1 {
+  font: 790 clamp(2.5rem, 6vw, 4rem)/0.96 var(--display);
+  letter-spacing: -0.06em;
+}
+.settings-page .panel {
+  padding: clamp(1rem, 4vw, 1.55rem);
+  border-color: var(--soft-line);
+  border-radius: 1.3rem;
+}
+.settings-page h2 {
+  font: 750 clamp(1.3rem, 3vw, 1.65rem)/1.1 var(--display);
+  margin: 0 0 0.35rem;
+  letter-spacing: -0.035em;
+}
+.settings-page p {
+  color: var(--quiet);
+}
+.settings-provider form {
+  display: grid;
+  margin-top: 1rem;
+}
+.settings-key-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.settings-key-field input {
+  min-width: min(100%, 15rem);
+  flex: 1;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+.settings-key-status {
+  font-size: 0.85rem;
+  font-weight: 650;
+  padding: 0.38rem 0.7rem;
+  background: var(--tint);
+  border-radius: 1rem;
+}
+.settings-hint {
+  font-size: 0.86rem;
+  margin-top: 0.5rem;
+}
+.settings-provider :is(.text-button, [role="status"]) {
+  margin-top: 0.55rem;
+}
+@media (max-width: 400px) {
+  .site-nav .topbar-body,
+  .review-topbar .topbar-body {
+    gap: 0.35rem;
+  }
+  .site-nav .wordmark,
+  .review-topbar .wordmark {
+    font-size: 1.36rem;
+    gap: 0.35rem;
+  }
+  .site-nav nav,
+  .review-topbar nav {
+    gap: 0.15rem;
+  }
+  .site-nav nav a,
+  .site-nav nav a:first-child,
+  .site-nav nav a:last-child,
+  .review-topbar nav a,
+  .review-topbar nav a:first-child {
+    padding-inline: 0.4rem;
+  }
+  .theme-toggle {
+    min-width: 2.35rem;
+    min-height: 2.35rem;
+    padding-inline: 0.42rem;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper-ground: #171b18;
+  --ink: #edf1e8;
+  --paper: #222a24;
+  --quiet: #bdcbbd;
+  --line: #58665a;
+  --soft-line: #404d41;
+  --moss: #d1eb9e;
+  --tint: #344237;
+  --blue: #293b51;
+  --forest: #222e27;
+}
+[data-theme="dark"] a {
+  color: #d1eb9e;
+}
+[data-theme="dark"]
+  :is(
+    .wordmark,
+    .site-nav nav a,
+    .review-topbar nav a,
+    .button:not(.primary),
+    .text-button
+  ) {
+  color: var(--ink);
+}
+[data-theme="dark"]
+  :is(
+    .site-nav .logo,
+    .review-topbar .logo,
+    .home-button.filled,
+    .case-controls button[aria-pressed="true"],
+    .button.primary
+  ) {
+  color: #172015;
+  background: #dafa70;
+}
+[data-theme="dark"] :is(.home-button.dark, .site-nav nav a:last-child) {
+  color: #eff4eb;
+  background: #334538;
+}
+[data-theme="dark"]
+  :is(
+    .home-button.plain,
+    .site-nav nav a:hover,
+    .review-topbar nav a:hover,
+    .theme-toggle:not([aria-pressed="true"]):hover
+  ) {
+  background: #27342b;
+}
+[data-theme="dark"]
+  :is(
+    .hero-finding,
+    .case-proposal,
+    .case-repair,
+    .trace-preview,
+    .settings-page .panel
+  ) {
+  background: var(--paper);
+  color: var(--ink);
+}
+[data-theme="dark"]
+  :is(.home-page p, .case-label, .hero-link, .home-footer, .trace-preview > p) {
+  color: var(--quiet);
+}
+[data-theme="dark"]
+  :is(.case-finding, .principle-section, .method-steps li:nth-child(3)) {
+  background: #293b51;
+}
+[data-theme="dark"]
+  :is(.method-steps li, .faq-list details, .trace-preview li) {
+  background: #2c392e;
+}
+[data-theme="dark"] .method-steps li:nth-child(2) {
+  background: #344527;
+}
+[data-theme="dark"] .home-close {
+  background: #2f4226;
+}
+[data-theme="dark"] :is(.review-topbar, .review-workspace, .auth-page) {
+  --review-ink: #edf1e8;
+  --review-muted: #bdcbbd;
+  --review-rule: #58665a;
+  --review-ground: #171b18;
+  --review-paper: #222a24;
+  --review-blue: #293b51;
+  --ink: #edf1e8;
+  --quiet: #bdcbbd;
+  --moss: #cce992;
+  --soft-line: #404d41;
+  --tint: #344237;
+}
+[data-theme="dark"]
+  :is(
+    .review-workspace .intro p,
+    .claim-editor-head p,
+    .claim-row-head .claim-name,
+    .claim-mode,
+    .review-workspace .step-count
+  ) {
+  color: #cbd7c9;
+}
+[data-theme="dark"]
+  :is(
+    .review-workspace .example,
+    .review-workspace .claim-editor .claim-row,
+    .review-workspace .finding,
+    .review-workspace .claim-editor-footer,
+    .review-workspace .claim-proposal,
+    .review-workspace .proposal,
+    .review-workspace .activity li,
+    .review-workspace .finding-note,
+    .review-workspace .review-trail
+  ) {
+  background: #27332a;
+  border-color: #48574a;
+  color: var(--ink);
+}
+[data-theme="dark"]
+  .review-workspace
+  .claim-editor
+  .claim-row[data-selected="true"] {
+  background: #2c382d;
+  border-color: #829868;
+}
+[data-theme="dark"]
+  :is(
+    .claim-pick,
+    .claim-pick:has(:disabled),
+    .review-workspace .claim-editor .claim-meta select,
+    .review-workspace .example-title,
+    .review-workspace .claim-remove,
+    .review-workspace .step-count
+  ) {
+  background: #354437;
+  border-color: #5a6c5b;
+  color: #e0eadd;
+}
+[data-theme="dark"] .claim-pick[data-checked="true"] {
+  background: #40532d;
+  color: #e6f7c3;
+}
+[data-theme="dark"] .claim-priority[data-checked="true"] {
+  background: #364c67;
+  color: #edf4ff;
+}
+[data-theme="dark"] .claim-count {
+  color: #e2edff;
+}
+[data-theme="dark"] .claim-count-track span {
+  background: #778ba6;
+}
+[data-theme="dark"] .claim-count-track span[data-filled="true"] {
+  background: #c9dcfa;
+}
+[data-theme="dark"] .claim-editor .claim-meta {
+  border-color: #435344;
+}
+[data-theme="dark"]
+  :is(
+    .review-workspace textarea,
+    .auth-page input,
+    .review-workspace .claim-editor .claim-row textarea:hover,
+    .review-workspace .claim-editor .claim-row textarea:focus
+  ) {
+  background: #1b211c;
+  color: #edf1e8;
+  border-color: #647664;
+}
+[data-theme="dark"] .review-workspace .claim-editor .claim-row textarea {
+  background: transparent;
+  border-color: transparent;
+}
+[data-theme="dark"]
+  :is(
+    .review-workspace .recommendation,
+    .review-workspace .finding-note.repair
+  ) {
+  background: #34472c;
+  color: #edf6dc;
+}
+[data-theme="dark"]
+  :is(
+    .review-workspace .account-strip,
+    .review-workspace .example p,
+    .auth-page .field-note
+  ) {
+  color: #bdcbbd;
+}
+[data-theme="dark"]
+  :is(.review-workspace .error, .settings-page .error, .auth-page .error) {
+  color: #ffc1aa;
+}
+[data-theme="dark"] :focus-visible {
+  outline-color: #c9e888;
+}

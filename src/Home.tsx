@@ -17,8 +17,8 @@ const steps = [
 ];
 const answers = [
   [
-    "Can I try it without an account?",
-    "Yes. The three bundled cases work without sign-in or a provider key. You can edit their claims, inspect the evidence, and download the report.",
+    "Do I need an account or API key?",
+    "Sign in to open the workspace. The three bundled cases use no provider key. To review a new proposal, add a Meta Model API key in Settings.",
   ],
   [
     "What does Unresolved mean?",
@@ -35,7 +35,7 @@ const answers = [
 ];
 
 function exampleHref(id: string) {
-  return id === "ci" ? "/review?demo=1" : `/review?demo=1&example=${id}`;
+  return `/review?example=${id}`;
 }
 
 export function Home({ signedIn }: { signedIn: boolean }) {
@@ -130,8 +130,9 @@ export function Home({ signedIn }: { signedIn: boolean }) {
             holds, where it breaks, and what would change the verdict.
           </p>
           <div className="home-actions" data-hero-copy>
-            <a className="home-button filled" href="/review?demo=1">
-              Try the demo <span aria-hidden="true">↗</span>
+            <a className="home-button filled" href="/review?example=ci">
+              {signedIn ? "Open an example" : "Sign in to review"}{" "}
+              <span aria-hidden="true">↗</span>
             </a>
             <a className="home-button plain" href="#examples">
               Explore cases <span aria-hidden="true">↓</span>
@@ -193,7 +194,8 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               <h3>{example.title}</h3>
               <p>{example.proposal}</p>
               <a className="home-button filled" href={exampleHref(example.id)}>
-                Run this case <span aria-hidden="true">↗</span>
+                {signedIn ? "Run this case" : "Sign in to run this case"}{" "}
+                <span aria-hidden="true">↗</span>
               </a>
             </div>
             <div className="case-finding" data-ui>
@@ -298,11 +300,8 @@ export function Home({ signedIn }: { signedIn: boolean }) {
         aria-labelledby="close-title"
       >
         <h2 id="close-title">What are you about to change?</h2>
-        <a
-          className="home-button dark"
-          href={signedIn ? "/review" : "/review?demo=1"}
-        >
-          {signedIn ? "Start a review" : "Start with the CI case"}{" "}
+        <a className="home-button dark" href={signedIn ? "/review" : "/login"}>
+          {signedIn ? "Start a review" : "Sign in"}{" "}
           <span aria-hidden="true">↗</span>
         </a>
       </section>

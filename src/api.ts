@@ -2,8 +2,14 @@ import { z } from "zod";
 import { claimSchema, reviewEventSchema } from "../shared/review.ts";
 import type { ReviewEvent, ReviewInput } from "../shared/review.ts";
 
-export async function liveAvailable(signal: AbortSignal): Promise<boolean> {
-  const response = await fetch("/api/status", { signal });
+export async function liveAvailable(
+  signal: AbortSignal,
+  token?: string,
+): Promise<boolean> {
+  const response = await fetch("/api/status", {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!response.ok) return false;
   const result = z
     .object({ live: z.boolean() })

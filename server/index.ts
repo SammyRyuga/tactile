@@ -18,14 +18,8 @@ const auth =
     ? { url: supabaseUrl, publishableKey }
     : undefined;
 const dev = process.argv.includes("--dev");
-if (
-  provider &&
-  !auth &&
-  (!dev || hosted || process.env.AUTH_REQUIRED === "true")
-) {
-  throw new Error(
-    "Live reviews require Supabase Auth outside local development.",
-  );
+if (provider && !auth) {
+  throw new Error("Live reviews require Supabase Auth.");
 }
 const hostname = process.env.RENDER_EXTERNAL_HOSTNAME;
 const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
@@ -44,6 +38,9 @@ const app = createApp(hosted && !auth ? undefined : provider, {
   trustProxy: hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
 });
+app.get("/demo-evidence.html", (_request, response) =>
+  response.redirect(301, "/example-evidence.html"),
+);
 const server = createServer(app);
 const host = hosted ? "0.0.0.0" : "127.0.0.1";
 const port = Number(process.env.PORT ?? 5173);
@@ -63,13 +60,13 @@ if (dev) {
   if (!existsSync(resolve(dist, "index.html")))
     throw new Error("Run npm run build before npm start.");
   app.use(express.static(dist));
-  app.get(["/login", "/review"], (_request, response) =>
+  app.get(["/login", "/review", "/settings"], (_request, response) =>
     response.sendFile("index.html", { root: dist }),
   );
 }
 
 server.listen(port, host, () =>
   console.log(
-    `Tactile ready at http://${host}:${port} (${provider ? "live and demo" : "demo"})`,
+    `Tactile ready at http://${host}:${port} (${provider ? "shared provider configured" : "per-session provider settings"})`,
   ),
 );

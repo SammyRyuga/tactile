@@ -39,12 +39,12 @@ const sources: Source[] = [
   {
     id: "dependency-replay",
     title: "Bundled dependency replay",
-    url: "/demo-evidence.html#dependency-replay",
+    url: "/example-evidence.html#dependency-replay",
   },
   {
     id: "ci-config",
     title: "Bundled rollout configuration",
-    url: "/demo-evidence.html#rollout-configuration",
+    url: "/example-evidence.html#rollout-configuration",
   },
 ];
 
@@ -188,7 +188,7 @@ export const demoExamples: DemoExample[] = [
       {
         id: "replica-timeline",
         title: "Bundled replica timeline",
-        url: "/demo-evidence.html#replica-timeline",
+        url: "/example-evidence.html#replica-timeline",
       },
     ],
     recommendation:
@@ -248,7 +248,7 @@ export const demoExamples: DemoExample[] = [
       {
         id: "flag-timeline",
         title: "Bundled flag timeline",
-        url: "/demo-evidence.html#flag-timeline",
+        url: "/example-evidence.html#flag-timeline",
       },
     ],
     recommendation:

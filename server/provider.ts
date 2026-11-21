@@ -47,6 +47,7 @@ export function createProvider(
   key: string,
   model: string,
   request = fetch,
+  vendor: "openai" | "meta" = "openai",
 ): ReviewProvider {
   async function respond(
     instructions: string,
@@ -60,7 +61,11 @@ export function createProvider(
         : model;
     const callSignal = AbortSignal.any([signal, AbortSignal.timeout(35_000)]);
     async function send(maxOutputTokens: number): Promise<unknown> {
-      const response = await request("https://api.openai.com/v1/responses", {
+      const endpoint =
+        vendor === "meta"
+          ? "https://api.meta.ai/v1/responses"
+          : "https://api.openai.com/v1/responses";
+      const response = await request(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -118,7 +123,9 @@ export function createProvider(
       const jsonSchema = z.toJSONSchema(schema);
       delete jsonSchema.$schema;
       const result = await respond(instruction, data, signal, {
-        ...(modelOverride ? { model: modelOverride } : {}),
+        ...(modelOverride && vendor === "openai"
+          ? { model: modelOverride }
+          : {}),
         text: {
           format: {
             type: "json_schema",
@@ -133,9 +140,21 @@ export function createProvider(
 
     async research(instruction, data, signal, options) {
       const result = await respond(instruction, data, signal, {
-        tools: [{ type: "web_search" }],
-        tool_choice: { type: "web_search" },
-        max_tool_calls: options?.maxToolCalls ?? 2,
+        ...(vendor === "meta"
+          ? {
+              tools: [
+                {
+                  type: "web_search",
+                  search_context_size:
+                    options?.maxToolCalls === 3 ? "high" : "medium",
+                },
+              ],
+            }
+          : {
+              tools: [{ type: "web_search" }],
+              tool_choice: { type: "web_search" },
+              max_tool_calls: options?.maxToolCalls ?? 2,
+            }),
       });
       const citations: Citation[] = [];
       for (const item of result) {
