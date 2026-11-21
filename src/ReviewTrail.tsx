@@ -52,9 +52,11 @@ export function ReviewTrail({
         <div className="finding-note repair">
           <h4>Smallest viable change</h4>
           <p>{finding.repair.minimalFix}</p>
-          <p>
-            <strong>Tradeoff</strong> {finding.repair.tradeoff}
-          </p>
+          {finding.repair.tradeoff && (
+            <p>
+              <strong>Tradeoff</strong> {finding.repair.tradeoff}
+            </p>
+          )}
         </div>
       )}
       {trail.length > 0 && (

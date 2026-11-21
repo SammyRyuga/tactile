@@ -117,8 +117,32 @@ async def run(command):
     researcher.fetch_page = read_public_page
     search._search_engines = search_gateway
 
+    if command["operation"] == "revise":
+        from core.reformulate import reformulate_prompt_with_steelman
+
+        case = Case(
+            id="tactile-revision",
+            raw_input=command["proposal"],
+            claims=[
+                Claim(id=change["id"], statement=change["claim"], salvaged_claim=change["salvage"])
+                for change in command["changes"]
+            ],
+        )
+        proposal, _ = await reformulate_prompt_with_steelman(
+            case, [claim.id for claim in case.claims], bridge, command.get("guidance")
+        )
+        send("case", case={"proposal": proposal})
+        return
+
     if command["operation"] == "extract":
-        case = await loop.extract_claims(command["proposal"], bridge)
+        clarification = command.get("clarification") or {}
+        case = await loop.extract_claims(
+            command["proposal"],
+            bridge,
+            context=command.get("context"),
+            clarify_round=clarification.get("round", 0),
+            previous_question=clarification.get("previousQuestion"),
+        )
     else:
         case = Case(
             id="tactile-request",

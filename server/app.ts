@@ -3,10 +3,19 @@ import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import type { ErrorRequestHandler, Request, Response } from "express";
-import { proposalSchema, reviewInputSchema } from "../shared/review.ts";
+import {
+  attachmentKindSchema,
+  limits,
+  proposalIntakeSchema,
+  proposalRevisionSchema,
+  reviewInputSchema,
+} from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 import { extractClaims, ProposalScopeError, runReview } from "./pipeline.ts";
+import { CrossfireClarification } from "./crossfire-engine.ts";
 import type { createCrossfireEngine } from "./crossfire-engine.ts";
+import { readSource } from "./source-reader.ts";
+import { z } from "zod";
 import type { PublicAuthConfig } from "./auth.ts";
 import {
   createProviderSettings,
@@ -66,6 +75,7 @@ export function createApp(
   const app = express();
   app.disable("x-powered-by");
   let active = 0;
+  let importing = false;
   const validatingKeys = new Map<string, AbortController>();
   const maxConcurrentKeyValidations = 32;
   const settings = createProviderSettings(
@@ -123,6 +133,50 @@ export function createApp(
   }
   app.get("/api/auth-config", (_request, response) =>
     response.json({ auth: options.auth ?? null }),
+  );
+  app.post(
+    "/api/ingest/file/:kind",
+    async (request, response, next) => {
+      const session = await requireSession(request, response);
+      if (!session) return;
+      const kind = attachmentKindSchema.safeParse(request.params.kind);
+      if (!kind.success || !request.is("application/octet-stream")) {
+        response
+          .status(415)
+          .json({ message: "Upload a PDF or a supported image." });
+        return;
+      }
+      response.locals.attachment = { session, kind: kind.data };
+      next();
+    },
+    express.raw({
+      type: "application/octet-stream",
+      limit: limits.attachmentBytes,
+      inflate: false,
+    }),
+    async (request, response) => {
+      const engine = options.crossfire;
+      if (!engine) {
+        response
+          .status(503)
+          .json({ message: "File extraction is temporarily unavailable." });
+        return;
+      }
+      const data: unknown = request.body;
+      if (!Buffer.isBuffer(data) || !data.length) {
+        response
+          .status(400)
+          .json({ message: "Choose a non-empty file to upload." });
+        return;
+      }
+      const { kind, session } = response.locals.attachment as {
+        kind: z.infer<typeof attachmentKindSchema>;
+        session: { account: string; token: string };
+      };
+      await importContent(response, session, (signal) =>
+        engine.ingest(kind, data, signal),
+      );
+    },
   );
   app.use("/api", express.json({ limit: "80kb" }));
 
@@ -311,6 +365,77 @@ export function createApp(
     return true;
   }
 
+  async function importContent(
+    response: Response,
+    session: { account: string; token: string },
+    read: (signal: AbortSignal) => Promise<string | undefined>,
+  ) {
+    if (importing) {
+      response.status(429).json({
+        message: "Another document is being read. Try again shortly.",
+      });
+      return;
+    }
+    const disconnected = new AbortController();
+    const abort = () => disconnected.abort();
+    const timeout = AbortSignal.timeout(40_000);
+    response.once("close", abort);
+    importing = true;
+    try {
+      if (!(await reserveQuota(session))) {
+        response
+          .status(429)
+          .json({ message: "The hourly request limit has been reached." });
+        return;
+      }
+      const text = (
+        await read(AbortSignal.any([timeout, disconnected.signal]))
+      )?.trim();
+      if (disconnected.signal.aborted) return;
+      if (!text || text.length < 12) {
+        response.status(422).json({
+          message:
+            "There was no readable text. Try a public content page, a clear screenshot, or a PDF of up to 15 pages.",
+        });
+        return;
+      }
+      response.json({
+        text: text.slice(0, limits.evidenceText),
+        truncated: text.length > limits.evidenceText,
+      });
+    } catch {
+      if (!disconnected.signal.aborted)
+        response.status(timeout.aborted ? 504 : 503).json({
+          message: timeout.aborted
+            ? "Reading the attachment took too long. Try a smaller file or paste its text."
+            : "Attachment reading is temporarily unavailable. Try again shortly.",
+        });
+    } finally {
+      importing = false;
+      response.off("close", abort);
+    }
+  }
+
+  app.post("/api/ingest/url", async (request, response) => {
+    const session = await requireSession(request, response);
+    if (!session) return;
+    const input = z
+      .object({ url: z.string().trim().min(1).max(2048) })
+      .safeParse(request.body);
+    const url = input.success ? URL.parse(input.data.url) : null;
+    if (!url || url.protocol !== "https:") {
+      response.status(400).json({ message: "Enter a public HTTPS page link." });
+      return;
+    }
+    await importContent(response, session, async (signal) => {
+      const result = await (options.sourceReader ?? readSource)(
+        url.href,
+        signal,
+      );
+      return typeof result === "string" ? result : result?.text;
+    });
+  });
+
   async function execute(
     request: Request,
     response: Response,
@@ -390,6 +515,12 @@ export function createApp(
       await run(client, signal, cache);
     } catch (error) {
       if (disconnected.signal.aborted) return;
+      if (error instanceof CrossfireClarification) {
+        response
+          .status(422)
+          .json({ message: error.message, clarification: error.details });
+        return;
+      }
       if (error instanceof ProposalScopeError) {
         response.status(422).json({ message: error.message });
         return;
@@ -417,7 +548,7 @@ export function createApp(
 
   app.post("/api/claims", (request, response) =>
     execute(request, response, async (client, signal, cache) => {
-      const parsed = proposalSchema.safeParse(request.body?.proposal);
+      const parsed = proposalIntakeSchema.safeParse(request.body);
       if (!parsed.success) {
         response.status(400).json({
           message:
@@ -425,7 +556,9 @@ export function createApp(
         });
         return;
       }
-      const cached = cache?.get(parsed.data);
+      const { proposal, ...context } = parsed.data;
+      const cacheKey = JSON.stringify(parsed.data);
+      const cached = cache?.get(cacheKey);
       if (cached) {
         console.info(
           JSON.stringify({
@@ -436,11 +569,37 @@ export function createApp(
         response.json({ claims: cached });
         return;
       }
-      const extract = options.crossfire?.extract ?? extractClaims;
-      const claims = await extract(client, parsed.data, signal);
+      const claims = options.crossfire
+        ? await options.crossfire.extract(client, proposal, signal, context)
+        : await extractClaims(client, proposal, signal);
       signal.throwIfAborted();
-      cache?.add(parsed.data, claims);
+      cache?.add(cacheKey, claims);
       response.json({ claims });
+    }),
+  );
+
+  app.post("/api/revisions", (request, response) =>
+    execute(request, response, async (client, signal) => {
+      const input = proposalRevisionSchema.safeParse(request.body);
+      if (!input.success) {
+        response.status(400).json({
+          message: "Choose at least one suggested change to revise the plan.",
+        });
+        return;
+      }
+      if (!options.crossfire) {
+        response
+          .status(503)
+          .json({ message: "Plan revision is temporarily unavailable." });
+        return;
+      }
+      const revision = await options.crossfire.revise(
+        client,
+        input.data,
+        signal,
+      );
+      signal.throwIfAborted();
+      response.json(revision);
     }),
   );
 
@@ -484,10 +643,22 @@ export function createApp(
   });
   const handleBodyError: ErrorRequestHandler = (
     error: { type?: string },
-    _request,
+    request,
     response,
     next,
   ) => {
+    if (
+      request.path.startsWith("/api/ingest/file/") &&
+      ["entity.too.large", "encoding.unsupported"].includes(error.type ?? "")
+    ) {
+      response.status(error.type === "entity.too.large" ? 413 : 415).json({
+        message:
+          error.type === "entity.too.large"
+            ? "Upload a file of 4 MB or less."
+            : "Upload the original file without compression.",
+      });
+      return;
+    }
     if (
       error.type === "entity.parse.failed" ||
       error.type === "entity.too.large"

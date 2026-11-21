@@ -1405,3 +1405,37 @@ test("authenticated deployments redirect public example URLs into the protected 
     },
   );
 });
+
+test("proposal URL import requires sign-in and returns bounded text without a model key", async () => {
+  const pageText = "Rollback requires a verified backup. ".repeat(120);
+  let fetches = 0;
+  const app = createApp(undefined, {
+    verifySession: async (token) =>
+      token === "valid-fixture" ? "account" : null,
+    sourceReader: async (url) => {
+      assert.equal(url, "https://example.org/plan");
+      fetches++;
+      return { text: pageText };
+    },
+  });
+  await withServer(app, async (url) => {
+    function send(headers: Record<string, string>, target: string) {
+      return fetch(url + "/api/ingest/url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ url: target }),
+      });
+    }
+    const blocked = await send({}, "https://example.org/plan");
+    assert.equal(blocked.status, 401);
+    const headers = { Authorization: "Bearer valid-fixture" };
+    assert.equal((await send(headers, "http://example.org/plan")).status, 400);
+    const read = await send(headers, "https://example.org/plan");
+    assert.equal(read.status, 200);
+    assert.deepEqual(await read.json(), {
+      text: pageText.slice(0, 2400),
+      truncated: true,
+    });
+    assert.equal(fetches, 1);
+  });
+});

@@ -3,6 +3,8 @@ import { motion, useReducedMotion } from "motion/react";
 import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
+import { ProposalAttachments } from "./ProposalAttachments.tsx";
+import { ProposalRevision } from "./ProposalRevision.tsx";
 import { EvidenceEditor, EngineeringEditor } from "./EvidenceEditor.tsx";
 import type { CheckDraft, EvidenceDraft } from "./EvidenceEditor.tsx";
 import {
@@ -31,6 +33,7 @@ import {
 } from "../shared/demo.ts";
 import {
   claimSchema,
+  decisionContextSchema,
   decisionMemoSections,
   projectEvidenceSchema,
   reportSchema,
@@ -43,12 +46,18 @@ import {
 } from "../shared/review.ts";
 import type {
   Claim,
+  DecisionContext,
   Finding,
   ProgressEvent,
   Report,
   ReviewEvent,
 } from "../shared/review.ts";
-import { extractLive, liveAvailable, runLive } from "./api.ts";
+import {
+  extractLive,
+  IntakeClarification,
+  liveAvailable,
+  runLive,
+} from "./api.ts";
 
 const stepLabels = ["Plan", "Claims", "Report"] as const;
 const defaultExample = {
@@ -198,6 +207,7 @@ const savedDraftSchema = z
       .optional(),
     mode: z.enum(["demo", "live"]),
     reviewers: reviewersSchema.optional(),
+    decision: decisionContextSchema.optional(),
     report: reportSchema.optional(),
   })
   .refine(({ page, report }) => page !== "report" || Boolean(report));
@@ -330,6 +340,14 @@ export function App({
   const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
     () => saved?.projectEvidence ?? [],
   );
+  const [decision, setDecision] = useState<DecisionContext | undefined>(
+    saved?.decision,
+  );
+  const inferredDecision = claims.find(({ crossfire }) => crossfire)?.crossfire;
+  const decisionFields = decision ?? {
+    reversibility: inferredDecision?.reversibility ?? null,
+    deadline: inferredDecision?.deadline ?? "",
+  };
   const [reviewerSelection, setReviewerSelection] = useState<
     Reviewer[] | undefined
   >(saved?.reviewers);
@@ -345,6 +363,11 @@ export function App({
     "checking" | "live" | "demo" | "unavailable"
   >(publicDemo ? "demo" : "checking");
   const [extracting, setExtracting] = useState(false);
+  const [readingAttachment, setReadingAttachment] = useState(false);
+  const [clarification, setClarification] = useState<{
+    details: IntakeClarification["details"];
+    round: number;
+  }>();
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -364,6 +387,7 @@ export function App({
           claims,
           projectEvidence,
           reviewers: reviewerSelection,
+          decision,
           mode,
           report,
         }),
@@ -378,6 +402,7 @@ export function App({
     claims,
     projectEvidence,
     reviewerSelection,
+    decision,
     mode,
     report,
     previewProposal,
@@ -442,30 +467,57 @@ export function App({
         );
       return;
     }
-    const parsed = proposalSchema.safeParse(proposal);
+    const context = projectEvidence.flatMap((entry) => {
+      const result = projectEvidenceSchema.safeParse(entry);
+      return result.success ? [result.data] : [];
+    });
+    const text = proposal.trim() || context[0]?.text.slice(0, 500);
+    const parsed = proposalSchema.safeParse(text);
     if (!parsed.success) {
       setError("Describe your decision in at least 20 characters.");
       proposalField.current?.focus();
       return;
     }
-    if (availability !== "live" || request.current) return;
+    if (availability !== "live" || request.current || readingAttachment) return;
     const controller = new AbortController();
     request.current = controller;
     setExtracting(true);
     setError("");
     try {
-      const result = await extractLive(parsed.data, controller.signal, token);
+      const result = await extractLive(
+        {
+          proposal: parsed.data,
+          projectEvidence: context.length ? context : undefined,
+          clarification: clarification && {
+            round: Math.min(clarification.round, 3),
+            previousQuestion: clarification.details.question,
+          },
+        },
+        controller.signal,
+        token,
+      );
       if (controller.signal.aborted) return;
       setProposal(parsed.data);
+      setClarification(undefined);
       setClaims(seedDraft(result));
+      setDecision(undefined);
       setReviewerSelection(undefined);
       setMode("live");
       dispatch({ type: "claims" });
     } catch (cause) {
-      if (!controller.signal.aborted)
+      if (controller.signal.aborted) return;
+      if (cause instanceof IntakeClarification) {
+        setProposal(parsed.data);
+        setClarification({
+          details: cause.details,
+          round: (clarification?.round ?? 0) + 1,
+        });
+        proposalField.current?.focus();
+      } else {
         setError(
           cause instanceof Error ? cause.message : "Claim extraction failed.",
         );
+      }
     } finally {
       if (request.current === controller) {
         request.current = null;
@@ -510,6 +562,7 @@ export function App({
       claims: reviewClaims,
       projectEvidence: mode === "live" ? projectEvidence : undefined,
       reviewers: mode === "live" ? reviewPanel : undefined,
+      decision: mode === "live" ? decision : undefined,
     });
     if (!input.success || selected.some((claim) => !claim.text.trim())) {
       setError(
@@ -605,10 +658,23 @@ export function App({
     dispatch({ type: "claims" });
   }
 
+  function useRevisedProposal(next: string) {
+    setCopyStatus("");
+    setProposal(next);
+    setClaims([]);
+    setDecision(undefined);
+    setClarification(undefined);
+    setReviewerSelection(undefined);
+    setError("");
+    dispatch({ type: "decision" });
+  }
+
   function restart() {
     setCopyStatus("");
     dispatch({ type: "decision" });
     setProposal(publicDemo ? example.proposal : "");
+    setClarification(undefined);
+    setDecision(undefined);
     setClaims([]);
     setReviewerSelection(undefined);
     setProjectEvidence([]);
@@ -728,6 +794,50 @@ export function App({
                     setError("");
                   }}
                 />
+                {clarification && (
+                  <div className="proposal intake-clarification" role="status">
+                    <strong>{clarification.details.question}</strong>
+                    {clarification.details.interpretation && (
+                      <p>{clarification.details.interpretation}</p>
+                    )}
+                    {clarification.details.missing.length > 0 && (
+                      <ul>
+                        {clarification.details.missing.map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <p>Add those details to your plan and try again.</p>
+                    {!!clarification.details.suggestions?.length && (
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => {
+                          setClaims(
+                            seedDraft(
+                              clarification.details.suggestions ?? [],
+                            ).map((claim) => ({ ...claim, selected: false })),
+                          );
+                          setReviewerSelection(undefined);
+                          setMode("live");
+                          setClarification(undefined);
+                          dispatch({ type: "claims" });
+                        }}
+                      >
+                        Review suggested claims
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!publicDemo && (
+                  <ProposalAttachments
+                    value={projectEvidence}
+                    onChange={setProjectEvidence}
+                    onBusyChange={setReadingAttachment}
+                    disabled={extracting}
+                    token={token}
+                  />
+                )}
                 {availability === "demo" &&
                   proposal.trim() !== example.proposal && (
                     <p className="field-note">
@@ -737,8 +847,9 @@ export function App({
                   )}
                 {availability === "live" && (
                   <p className="field-note">
-                    Tactile sends your plan to the model for review. Share only
-                    information you’re allowed to send.
+                    Tactile sends your plan and readable attachment text to the
+                    model for review. Share only information you’re allowed to
+                    send.
                   </p>
                 )}
                 {error && (
@@ -750,7 +861,11 @@ export function App({
                   <button
                     className="button primary"
                     type="submit"
-                    disabled={extracting || availability === "checking"}
+                    disabled={
+                      extracting ||
+                      readingAttachment ||
+                      availability === "checking"
+                    }
                   >
                     {publicDemo
                       ? "Inspect claims"
@@ -892,6 +1007,50 @@ export function App({
                 <details className="proposal claim-proposal">
                   <summary>Read your proposal</summary>
                   <p>{proposal}</p>
+                  {mode === "live" && (
+                    <fieldset className="reviewer-picker decision-fields">
+                      <legend>Decision context</legend>
+                      <label>
+                        Can you reverse this decision?
+                        <select
+                          value={decisionFields.reversibility ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setDecision({
+                              ...decisionFields,
+                              reversibility:
+                                value === "one_way" || value === "two_way"
+                                  ? value
+                                  : null,
+                            });
+                          }}
+                        >
+                          <option value="">Not sure</option>
+                          <option value="two_way">
+                            Yes, we can reverse it
+                          </option>
+                          <option value="one_way">
+                            No, it is hard to reverse
+                          </option>
+                        </select>
+                      </label>
+                      <label>
+                        Decision deadline (optional)
+                        <input
+                          type="text"
+                          value={decisionFields.deadline}
+                          maxLength={120}
+                          placeholder="Before the next rollout"
+                          onChange={(event) =>
+                            setDecision({
+                              ...decisionFields,
+                              deadline: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                    </fieldset>
+                  )}
                 </details>
                 {mode === "live" && (
                   <>
@@ -1288,6 +1447,14 @@ export function App({
                 <p>{reportProposal}</p>
               </details>
               <RecordedReviewRoom report={report} />
+              {report.crossfireDecision && previewProposal === undefined && (
+                <ProposalRevision
+                  proposal={reportProposal}
+                  report={report}
+                  token={token}
+                  onUse={useRevisedProposal}
+                />
+              )}
             </div>
             {unreadableCount > 0 && (
               <p className="field-note">

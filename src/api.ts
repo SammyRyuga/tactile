@@ -1,6 +1,17 @@
 import { z } from "zod";
-import { claimSchema, reviewEventSchema } from "../shared/review.ts";
-import type { ReviewEvent, ReviewInput } from "../shared/review.ts";
+import {
+  attachmentTextSchema,
+  claimSchema,
+  clarificationSchema,
+  reviewEventSchema,
+} from "../shared/review.ts";
+import type {
+  AttachmentKind,
+  ProposalIntake,
+  ProposalRevision,
+  ReviewEvent,
+  ReviewInput,
+} from "../shared/review.ts";
 
 export async function liveAvailable(
   signal: AbortSignal,
@@ -19,15 +30,16 @@ export async function liveAvailable(
 
 async function post(
   path: string,
-  body: object,
+  body: object | Blob,
   signal: AbortSignal,
   token?: string,
 ): Promise<Response> {
   const response = await fetch(path, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: body instanceof Blob ? body : JSON.stringify(body),
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type":
+        body instanceof Blob ? "application/octet-stream" : "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     signal,
@@ -35,6 +47,11 @@ async function post(
   if (response.ok) return response;
   const data: unknown = await response.json().catch(() => null);
   const parsed = z.object({ message: z.string() }).safeParse(data);
+  const clarification = z
+    .object({ clarification: clarificationSchema })
+    .safeParse(data);
+  if (response.status === 422 && clarification.success)
+    throw new IntakeClarification(clarification.data.clarification);
   throw new Error(
     parsed.success
       ? parsed.data.message
@@ -43,14 +60,45 @@ async function post(
 }
 
 export async function extractLive(
-  proposal: string,
+  input: ProposalIntake,
   signal: AbortSignal,
   token?: string,
 ) {
-  const response = await post("/api/claims", { proposal }, signal, token);
+  const response = await post("/api/claims", input, signal, token);
   return z
     .object({ claims: z.array(claimSchema).min(1).max(6) })
     .parse(await response.json()).claims;
+}
+
+export class IntakeClarification extends Error {
+  readonly details: z.infer<typeof clarificationSchema>;
+
+  constructor(details: z.infer<typeof clarificationSchema>) {
+    super(details.question);
+    this.details = details;
+  }
+}
+
+export async function importAttachment(
+  input: { url: string } | { file: File; kind: AttachmentKind },
+  signal: AbortSignal,
+  token?: string,
+) {
+  const response =
+    "file" in input
+      ? await post(`/api/ingest/file/${input.kind}`, input.file, signal, token)
+      : await post("/api/ingest/url", input, signal, token);
+  return attachmentTextSchema.parse(await response.json());
+}
+
+export async function reviseProposal(
+  input: ProposalRevision,
+  signal: AbortSignal,
+  token?: string,
+) {
+  const response = await post("/api/revisions", input, signal, token);
+  return z.object({ proposal: z.string().min(20) }).parse(await response.json())
+    .proposal;
 }
 
 export async function runLive(

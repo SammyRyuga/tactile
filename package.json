@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env server/index.ts --dev",
-    "setup:crossfire": "python3 -m venv .venv && .venv/bin/python -m pip install -r server/crossfire/requirements.txt",
+    "setup:crossfire": "${TACTILE_BOOTSTRAP_PYTHON:-python3} -m venv .venv && .venv/bin/python -m pip install -r server/crossfire/requirements.txt",
     "start": "node --env-file-if-exists=.env build/server/index.js",
     "prebuild": "node scripts/prepare-render.ts",
     "build": "vite build && tsc -p tsconfig.server.json",

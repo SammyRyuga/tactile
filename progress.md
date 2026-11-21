@@ -157,3 +157,9 @@
 ## Workspace dropdown styling
 
 - Matched the risk, engineering check, and outcome selects to the workspace palette and field sizing. Browsers that support customizable native selects also get themed open menus.
+
+## Crossfire intake and revision
+
+- Matched the pinned Crossfire input formats in the Tactile workspace. Start with a written plan alone or add a public HTTPS link, PDF, screenshot, text file, or Markdown file.
+- Pass extracted attachment text into claim extraction and review. Surface follow-up questions from Crossfire’s recovery stage and allow the user to correct the inferred decision deadline or reversibility.
+- Reuse Crossfire’s original Steelman rewrite on selected fixes and let the user edit the revised draft before applying it.

@@ -1154,3 +1154,120 @@
   margin-block: 0.35rem 0;
   padding-inline-start: 1.15rem;
 }
+
+.review-workspace .proposal-attachments {
+  margin-block: 0.75rem;
+}
+
+.proposal-attachments fieldset {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0;
+  margin: 0.8rem 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.proposal-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-block-end: 0.45rem;
+}
+
+.proposal-link input {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+  min-block-size: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--review-muted);
+  border-radius: 0.75rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+}
+
+.proposal-attachments input[type="file"] {
+  max-inline-size: 100%;
+}
+
+.proposal-attachment-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.7rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proposal-attachment-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.7rem;
+  background: var(--review-paper);
+  overflow-wrap: anywhere;
+}
+
+.proposal-attachment-list small {
+  display: block;
+  color: var(--review-muted);
+}
+
+.intake-clarification {
+  margin-block: 0.75rem;
+}
+
+.decision-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.65rem;
+  max-inline-size: 40rem;
+}
+
+.decision-fields select,
+.decision-fields input {
+  display: block;
+  inline-size: 100%;
+  margin-block-start: 0.25rem;
+}
+
+.decision-fields input {
+  min-block-size: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--review-muted);
+  border-radius: 0.75rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+}
+
+.proposal-revision .reviewer-picker,
+.revision-draft {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.proposal-revision .reviewer-picker {
+  margin-block-start: 0.8rem;
+}
+
+.proposal-revision button {
+  justify-self: start;
+}
+
+.revision-choice {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.5rem;
+  border-radius: 0.7rem;
+  background: var(--review-paper);
+}
+
+.revision-choice small {
+  display: block;
+  color: var(--review-muted);
+}

@@ -8,6 +8,7 @@ export const limits = {
   claims: 6,
   evidenceItems: 3,
   evidenceText: 2400,
+  attachmentBytes: 4 * 1024 * 1024,
 } as const;
 export const verdictSchema = z.enum([
   "Supported",
@@ -37,6 +38,10 @@ export const projectEvidenceSchema = z.object({
   id: idSchema,
   title: z.string().trim().min(1).max(100),
   text: z.string().trim().min(12).max(limits.evidenceText),
+  referenceUrl: z
+    .url({ protocol: /^https$/ })
+    .max(2048)
+    .optional(),
 });
 export const evidenceListSchema = z
   .array(projectEvidenceSchema)
@@ -45,6 +50,40 @@ export const evidenceListSchema = z
     (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
     "Evidence IDs must be unique.",
   );
+
+export const proposalIntakeSchema = z.object({
+  proposal: proposalSchema,
+  projectEvidence: evidenceListSchema.optional(),
+  clarification: z
+    .object({
+      round: z.number().int().min(1).max(3),
+      previousQuestion: z.string().trim().min(1).max(240),
+    })
+    .optional(),
+});
+export type ProposalIntake = z.infer<typeof proposalIntakeSchema>;
+
+export const clarificationSchema = z.object({
+  question: z.string().trim().min(1).max(240),
+  missing: z.array(z.string().max(240)).max(3),
+  interpretation: z.string().max(600).nullish(),
+  suggestions: z
+    .array(
+      z.object({
+        id: idSchema,
+        text: z.string().trim().min(1).max(limits.claim),
+      }),
+    )
+    .max(3)
+    .optional(),
+});
+
+export const attachmentKindSchema = z.enum(["pdf", "image"]);
+export type AttachmentKind = z.infer<typeof attachmentKindSchema>;
+export const attachmentTextSchema = z.object({
+  text: z.string().trim().min(12).max(limits.evidenceText),
+  truncated: z.boolean(),
+});
 
 const crossfireClaimSchema = z.object({
   agents: reviewersSchema,
@@ -71,8 +110,31 @@ export const claimSchema = z.object({
   crossfire: crossfireClaimSchema.optional(),
 });
 
+export const decisionContextSchema = z.object({
+  reversibility: z.enum(["one_way", "two_way"]).nullable(),
+  deadline: z.string().trim().max(120),
+});
+export type DecisionContext = z.infer<typeof decisionContextSchema>;
+
+export const proposalRevisionSchema = z.object({
+  proposal: proposalSchema,
+  guidance: z.string().trim().max(400).optional(),
+  changes: z
+    .array(
+      z.object({
+        id: idSchema,
+        claim: z.string().trim().min(1).max(limits.claim),
+        salvage: z.string().trim().min(1).max(1200),
+      }),
+    )
+    .min(1)
+    .max(limits.claims),
+});
+export type ProposalRevision = z.infer<typeof proposalRevisionSchema>;
+
 export const reviewInputSchema = z.object({
   proposal: proposalSchema,
+  decision: decisionContextSchema.optional(),
   projectEvidence: evidenceListSchema.optional(),
   reviewers: reviewersSchema.optional(),
   claims: z
@@ -321,9 +383,9 @@ export function toMarkdown(
       lines.push(
         "",
         `**Smallest viable change** ${markdownText(finding.repair.minimalFix)}`,
-        "",
-        `**Tradeoff** ${markdownText(finding.repair.tradeoff)}`,
       );
+    if (finding.repair?.tradeoff)
+      lines.push("", `**Tradeoff** ${markdownText(finding.repair.tradeoff)}`);
     if (finding.verificationDisagreement)
       lines.push(
         "",
