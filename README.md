@@ -25,13 +25,13 @@ Open `/demo` on a current build to try CI coverage, replica consistency, or feat
 ## Use the signed-in workspace
 
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
-2. Open **Workspace**, write a proposal or use **Add documents or links**, then select **Run stress test**. If the plan is too vague to test, Crossfire asks a clarifying question. To explore first, choose a case from the **Example library**.
-3. Edit the claims and choose which to test. Open **Read your proposal** to confirm whether the decision can be reversed and add an optional deadline.
-4. Check the **Adversarial panel** and choose which reviewers to include. Select **Run Tests** for a live review. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
+2. Open **Workspace**, describe your plan or add a file or link, then select **Analyze my plan**. If more detail is needed, Tactile asks a follow-up question. Choose a case from the **Example library** to try a recorded review first.
+3. In **Review assumptions**, edit the statements and choose which to check. Mark assumptions the plan depends on as critical. Open **Advanced settings** to change reviewers, the decision deadline or reversibility, risk priorities, or engineering checks.
+4. Select **Run checks**. The results show the recommendation and verdicts first. Open a finding’s **Review trail** to inspect its evidence, then copy or export the Markdown report. Recent reports are available in the same signed-in tab.
 
-**Add documents or links** accepts public HTTPS pages, PDFs (including scanned PDFs), PNG/JPEG/WebP screenshots, and text or Markdown files. You can start with an attachment alone. Each upload can be up to 4 MB and each PDF up to 15 pages. Tactile keeps up to three excerpts of up to 2,400 characters each and sends the extracted text to your configured model during claim extraction and review. Edit those excerpts under **Project evidence**.
+**Add a file or link** accepts public HTTPS pages, PDFs (including scanned PDFs), PNG/JPEG/WebP screenshots, and text or Markdown files. You can start with an attachment alone. Each upload can be up to 4 MB and each PDF up to 15 pages. Tactile keeps up to three excerpts of up to 2,400 characters each and sends the extracted text to your configured model during claim extraction and review. Edit those excerpts under **Advanced settings → Project evidence**.
 
-Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Tactile calculates the result and passes it to Crossfire as review context.
+In **Advanced settings**, open **Add an engineering check** for an assumption to enter retry, SLO, timeout, throughput, or weighted-average inputs. Tactile calculates the result and passes it to Crossfire as review context.
 
 When a live memo has Steelman fixes, **Revise your plan** lets you choose which fixes to apply and edit the revised draft before using it. In a live report, use **Settle this claim** for a downloadable measurement check, **Re-review this claim** to run one claim with additional evidence, or **Track after rollout** to save a claim in the workspace’s outcome log. The outcome log stays on this device for your account and can be exported as JSON.
 

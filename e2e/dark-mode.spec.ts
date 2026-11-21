@@ -55,19 +55,19 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
   await signIn(page);
   await expect(page).toHaveURL(/\/review$/);
   await expect(
-    page.getByRole("heading", { name: "Describe your decision" }),
+    page.getByRole("heading", { name: "Describe your plan" }),
   ).toBeVisible();
   await expect(page.getByLabel("Your plan")).toHaveValue("");
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Choose what to check" }),
+    page.getByRole("heading", { name: "Review assumptions" }),
   ).toBeVisible();
   await expectReadable(page.locator(".steps [aria-current] .step-count"));
-  await expectReadable(page.getByRole("textbox", { name: "Claim 1" }));
+  await expectReadable(page.getByRole("textbox", { name: "Assumption 1" }));
   await expectReadable(page.getByText("Included", { exact: true }).first());
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   await expectReadable(page.locator(".finding .verdict").first());
   await page.getByText("Review trail", { exact: false }).first().click();
@@ -109,9 +109,7 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     await expect(library).toHaveCSS("background-color", apricot);
     await expect(history).toHaveCSS("background-color", blue);
     await expectReadable(library.getByRole("heading"));
-    await expectReadable(
-      library.getByText("Try a sample plan. It works without an API key."),
-    );
+    await expectReadable(page.locator("#proposal-hint"));
     await expectReadable(history.getByRole("heading"));
     await expectReadable(history.getByText("Saved in this tab."));
     const example = library.getByRole("link", { name: /CI coverage/ });

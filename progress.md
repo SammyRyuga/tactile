@@ -170,3 +170,10 @@
 - The memo embeds verbatim recorded evidence with its fixture path and keeps usable web citations. Localhost links are omitted from portable exports. Saved demo reports recover coverage and excerpts while retaining their recorded verdicts.
 - Confirmed at 320 CSS pixels that the shorter rollout risk label fits and moving the demo disclosures puts the first verdict higher on the page. Labeled the copy button **Copy Markdown** and aligned the rollback claim with the in-place writer proposal.
 - Passed all 59 Node tests and 28 Chromium tests on Node 22.23.5 and 24.19.0. Fixture evaluation passed on both runtimes, and both dependency audits reported zero vulnerabilities.
+
+## Beginner review walkthrough · November 22, 2026
+
+- Simplified the workspace into Plan, Assumptions, and Results. The plan form offers optional attachments and examples. The assumption editor keeps inclusion, editing, and criticality visible and groups decision context, reviewers, project evidence, risk, and engineering checks under Advanced settings.
+- Moved the running review room and activity behind optional controls. The primary progress message uses actual review events. Results show the recommendation and findings first, with the evidence, full memo, review room, revision, export, and outcome controls available in the same workflow.
+- Inspected the before-and-after Chromium walkthrough and checked light and dark at 320 and 390 CSS pixels with reduced motion. Primary controls measured 46 CSS pixels, and the three steps stayed within the viewport. Added browser coverage for empty selections, longer edits, Back, repeated reviews, and advanced settings surviving a reload.
+- Node 22.23.5 and 24.19.0 each passed 59 automated tests, 30 Chromium tests, fixture evaluation, and both dependency audits with zero vulnerabilities. All four Crossfire integration tests passed on Windows with local fixtures.

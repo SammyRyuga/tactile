@@ -131,11 +131,12 @@ export function ProposalAttachments({
       }}
     >
       <summary>
-        Add documents or links{value.length > 0 ? ` (${value.length})` : ""}
+        Add a file or link
+        {value.length > 0 ? ` (${value.length})` : " (optional)"}
       </summary>
       <p>
-        Attach a link, PDF, screenshot, text, or Markdown file. You can also
-        start with an attachment alone.
+        Share a public link, PDF, screenshot, text, or Markdown file. You can
+        start with just an attachment.
       </p>
       <fieldset disabled={disabled || reading || full}>
         <label htmlFor={urlId}>Public page link</label>

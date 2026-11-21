@@ -267,9 +267,6 @@
 [data-theme="dark"] .claim-count-track span[data-filled="true"] {
   background: #c9dcfa;
 }
-[data-theme="dark"] .claim-editor .claim-meta {
-  border-color: #435344;
-}
 [data-theme="dark"]
   :is(
     .review-workspace textarea,
@@ -283,7 +280,7 @@
 }
 [data-theme="dark"] .review-workspace .claim-editor .claim-row textarea {
   background: transparent;
-  border-color: transparent;
+  border-color: #647664;
 }
 [data-theme="dark"]
   :is(

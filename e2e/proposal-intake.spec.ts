@@ -100,7 +100,9 @@ test("attachments seed a plan and flow through clarification, review, and revisi
   });
   await page.goto("/review");
   await signIn(page);
-  await page.getByText("Add documents or links", { exact: true }).click();
+  await page
+    .getByText("Add a file or link (optional)", { exact: true })
+    .click();
   const file = page.getByLabel("Upload a document or screenshot");
   await file.setInputFiles({
     name: "plan.md",
@@ -128,7 +130,7 @@ test("attachments seed a plan and flow through clarification, review, and revisi
     .getByRole("button", { name: "Remove attachment retry.png" })
     .click();
   await expect(page.getByText("retry.png")).toHaveCount(0);
-  const extract = page.getByRole("button", { name: "Run stress test" });
+  const extract = page.getByRole("button", { name: "Analyze my plan" });
   await extract.click();
   await expect(page.getByText("What can you roll back?")).toBeVisible();
   expect(intakes[0].proposal).toBe(plan);
@@ -140,7 +142,9 @@ test("attachments seed a plan and flow through clarification, review, and revisi
     .getByLabel("Your plan")
     .fill(`${plan} Keep the direct export until the pilot ends.`);
   await extract.click();
-  await page.getByText("Read your proposal", { exact: true }).click();
+  const advanced = page.getByText("Advanced settings", { exact: true });
+  await expect(page.getByLabel("Decision deadline (optional)")).toBeHidden();
+  await advanced.click();
   expect(intakes[1].clarification).toEqual({
     round: 1,
     previousQuestion: "What can you roll back?",
@@ -151,9 +155,10 @@ test("attachments seed a plan and flow through clarification, review, and revisi
   await page
     .getByLabel("Decision deadline (optional)")
     .fill("Before the pilot ends");
-  await page.getByRole("button", { name: "Run Tests" }).click();
+  await advanced.click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(
-    page.getByRole("heading", { name: "Decision Memo" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   expect(reviewInput?.projectEvidence).toEqual(intakes[1].projectEvidence);
   expect(reviewInput?.decision).toEqual({

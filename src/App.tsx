@@ -5,8 +5,8 @@ import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
 import { ProposalAttachments } from "./ProposalAttachments.tsx";
 import { ProposalRevision } from "./ProposalRevision.tsx";
-import { EvidenceEditor, EngineeringEditor } from "./EvidenceEditor.tsx";
 import type { CheckDraft, EvidenceDraft } from "./EvidenceEditor.tsx";
+import { ReviewSettings } from "./ReviewSettings.tsx";
 import {
   downloadText,
   MeasurementArtifact,
@@ -61,7 +61,7 @@ import {
   runLive,
 } from "./api.ts";
 
-const stepLabels = ["Plan", "Claims", "Report"] as const;
+const stepLabels = ["Plan", "Assumptions", "Results"] as const;
 const defaultExample = {
   title: "Replace full test runs on pull requests with changed-package tests",
   proposal: demoProposal,
@@ -335,6 +335,9 @@ export function App({
   const uncheckedCriticalClaims = report?.uncheckedCriticalClaims ?? [];
   const memoSections = decisionMemoSections(report?.crossfireMemo);
   const progress = page === "running" ? state.progress : undefined;
+  const completedStages = Object.values(progress ?? {}).filter(
+    (status) => status === "done",
+  ).length;
   const parsedModel = reviewModelSchema.safeParse(report?.model);
   const modelName = parsedModel.success
     ? reviewModels[parsedModel.data].name
@@ -478,7 +481,7 @@ export function App({
         setError(
           availability === "unavailable"
             ? "Live reviews are temporarily unavailable. Refresh to try again. Your plan is saved in this tab."
-            : "Add your Meta Model API key in Settings before finding claims.",
+            : "To analyze your own plan, add a Meta Model API key in Settings. You can try an example now.",
         );
       return;
     }
@@ -489,7 +492,9 @@ export function App({
     const text = proposal.trim() || context[0]?.text.slice(0, 500);
     const parsed = proposalSchema.safeParse(text);
     if (!parsed.success) {
-      setError("Describe your decision in at least 20 characters.");
+      setError(
+        "Describe your plan in at least 20 characters or add an attachment with readable text.",
+      );
       proposalField.current?.focus();
       return;
     }
@@ -530,7 +535,9 @@ export function App({
         proposalField.current?.focus();
       } else {
         setError(
-          cause instanceof Error ? cause.message : "Claim extraction failed.",
+          cause instanceof Error
+            ? cause.message
+            : "We couldn't identify assumptions. Try again.",
         );
       }
     } finally {
@@ -582,8 +589,8 @@ export function App({
     if (!input.success || selected.some((claim) => !claim.text.trim())) {
       setError(
         publicDemo
-          ? "Select at least one claim and give each selected claim a short description."
-          : "Select at least one claim, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
+          ? "Write a statement for each assumption you want to check."
+          : "Write a statement for each selected assumption. If you added checks or evidence in Advanced settings, complete their fields.",
       );
       return;
     }
@@ -700,7 +707,16 @@ export function App({
     <div className="report-details review-disclosures">
       {memoSections.length > 0 && (
         <details className="proposal memo-details">
-          <summary>Decision details</summary>
+          <summary>How we reached this result</summary>
+          {report.crossfireReviewers && (
+            <p className="section-note">
+              Reviewers{" "}
+              {report.crossfireReviewers
+                .map((id) => reviewers[id].name)
+                .join(", ")}{" "}
+              and Steelman
+            </p>
+          )}
           <div className="memo-sections">
             {memoSections.map(({ title, items }) => (
               <section key={title}>
@@ -716,7 +732,7 @@ export function App({
         </details>
       )}
       <details className="proposal">
-        <summary>Read your proposal</summary>
+        <summary>Read your plan</summary>
         <p>{reportProposal}</p>
       </details>
       <RecordedReviewRoom report={report} />
@@ -784,14 +800,12 @@ export function App({
           data-compact={page !== "decision" || undefined}
         >
           <div className={page === "decision" ? "intro" : "sr-only"}>
-            <h1>
-              {publicDemo ? "Public demo" : "Review an engineering decision"}
-            </h1>
+            <h1>{publicDemo ? "Public demo" : "Review a plan"}</h1>
             {page === "decision" && (
               <p>
                 {publicDemo
-                  ? "Replay recorded checks in your browser. No account or API key is required."
-                  : "Find out what needs to be true for your plan to work."}
+                  ? "Try a sample plan and replay its recorded checks without signing in."
+                  : "Find the assumptions your plan depends on and see what to check before moving ahead."}
               </p>
             )}
           </div>
@@ -815,11 +829,7 @@ export function App({
           <motion.div key="decision" className="decision-layout" {...enter}>
             <section className="panel">
               <h2 ref={heading} tabIndex={-1}>
-                {publicDemo
-                  ? example.title
-                  : availability === "live"
-                    ? "What decision are you testing?"
-                    : "Describe your decision"}
+                {publicDemo ? example.title : "Describe your plan"}
               </h2>
               <form onSubmit={onExtract}>
                 <label htmlFor="proposal">
@@ -827,8 +837,8 @@ export function App({
                 </label>
                 <p id="proposal-hint" className="proposal-hint">
                   {publicDemo
-                    ? "Read the plan, then choose which claims to check."
-                    : "Tell us what you want to change, why, and what should improve."}
+                    ? "Start with this plan or pick another example."
+                    : "What are you changing, and what should improve?"}
                 </p>
                 <textarea
                   ref={proposalField}
@@ -838,7 +848,7 @@ export function App({
                   readOnly={publicDemo}
                   maxLength={limits.proposal}
                   aria-describedby="proposal-hint"
-                  placeholder="We want to run fewer tests on each pull request to get feedback faster. We still need to catch bugs in packages that depend on the changed code."
+                  placeholder="We plan to run fewer tests on each pull request to get faster feedback. We still need to catch bugs in packages that depend on the changed code."
                   onChange={(event) => {
                     setProposal(event.target.value);
                     setError("");
@@ -874,7 +884,7 @@ export function App({
                           dispatch({ type: "claims" });
                         }}
                       >
-                        Review suggested claims
+                        Review suggested assumptions
                       </button>
                     )}
                   </div>
@@ -918,12 +928,10 @@ export function App({
                     }
                   >
                     {publicDemo
-                      ? "Inspect claims"
+                      ? "Review example"
                       : extracting
-                        ? "Finding claims…"
-                        : availability === "live"
-                          ? "Run stress test"
-                          : "Find claims"}
+                        ? "Finding assumptions…"
+                        : "Analyze my plan"}
                   </button>
                 </div>
               </form>
@@ -932,7 +940,6 @@ export function App({
             <aside className="workspace-sidebar">
               <section className="panel workspace-library">
                 <h2>Example library</h2>
-                <p>Try a sample plan. It works without an API key.</p>
                 <ul className="workspace-list">
                   {demoExamples.map((item) => (
                     <li key={item.id}>
@@ -1028,14 +1035,11 @@ export function App({
             <div className="claim-editor-head">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
-                  {mode === "live"
-                    ? `We identified ${claims.length} claims to test`
-                    : "Choose what to check"}
+                  Review assumptions
                 </h2>
                 <p>
-                  {mode === "live"
-                    ? "Edit the claims and choose which ones to test."
-                    : "Choose which assumptions to check."}
+                  Edit or add assumptions and choose which to check. Mark one as
+                  critical if the plan depends on it.
                 </p>
               </div>
               <div className="claim-count" role="status">
@@ -1053,113 +1057,6 @@ export function App({
               </div>
             </div>
             <form onSubmit={onReview}>
-              <div className="review-setup review-disclosures">
-                <details className="proposal claim-proposal">
-                  <summary>Read your proposal</summary>
-                  <p>{proposal}</p>
-                  {mode === "live" && (
-                    <fieldset className="reviewer-picker decision-fields">
-                      <legend>Decision context</legend>
-                      <label>
-                        Can you reverse this decision?
-                        <select
-                          value={decisionFields.reversibility ?? ""}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setDecision({
-                              ...decisionFields,
-                              reversibility:
-                                value === "one_way" || value === "two_way"
-                                  ? value
-                                  : null,
-                            });
-                          }}
-                        >
-                          <option value="">Not sure</option>
-                          <option value="two_way">
-                            Yes, we can reverse it
-                          </option>
-                          <option value="one_way">
-                            No, it is hard to reverse
-                          </option>
-                        </select>
-                      </label>
-                      <label>
-                        Decision deadline (optional)
-                        <input
-                          type="text"
-                          value={decisionFields.deadline}
-                          maxLength={120}
-                          placeholder="Before the next rollout"
-                          onChange={(event) =>
-                            setDecision({
-                              ...decisionFields,
-                              deadline: event.target.value,
-                            })
-                          }
-                        />
-                      </label>
-                    </fieldset>
-                  )}
-                </details>
-                {mode === "live" && (
-                  <>
-                    <details className="proposal reviewer-disclosure">
-                      <summary>
-                        <span>Adversarial panel</span>
-                        <small>
-                          {reviewPanel
-                            .map((id) => reviewers[id].name)
-                            .join(", ")}
-                        </small>
-                      </summary>
-                      <fieldset
-                        className="reviewer-picker"
-                        aria-label="Adversarial panel"
-                      >
-                        <div className="reviewer-options">
-                          {reviewerIds.map((id) => (
-                            <label
-                              className="check-label reviewer-option"
-                              key={id}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={reviewPanel.includes(id)}
-                                disabled={
-                                  reviewPanel.length === 1 &&
-                                  reviewPanel.includes(id)
-                                }
-                                onChange={(event) =>
-                                  setReviewerSelection(
-                                    event.target.checked
-                                      ? [...reviewPanel, id]
-                                      : reviewPanel.filter(
-                                          (reviewer) => reviewer !== id,
-                                        ),
-                                  )
-                                }
-                              />
-                              <span>
-                                <strong>{reviewers[id].name}</strong>
-                                <small>{reviewers[id].role}</small>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                        <p className="section-note">
-                          Steelman weighs their findings and prepares the
-                          verdict.
-                        </p>
-                      </fieldset>
-                    </details>
-                    <EvidenceEditor
-                      items={projectEvidence}
-                      onChange={setProjectEvidence}
-                    />
-                  </>
-                )}
-              </div>
               <div className="claim-list">
                 {claims.map((claim, index) => (
                   <div
@@ -1169,7 +1066,7 @@ export function App({
                   >
                     <div className="claim-row-head">
                       <label className="claim-name" htmlFor={claim.id}>
-                        Claim {index + 1}
+                        Assumption {index + 1}
                       </label>
                       <div className="claim-row-actions">
                         <label
@@ -1178,7 +1075,7 @@ export function App({
                         >
                           <input
                             type="checkbox"
-                            aria-label={`Review claim ${index + 1}`}
+                            aria-label={`Include assumption ${index + 1}`}
                             checked={claim.selected}
                             onChange={(event) =>
                               updateClaim(claim.id, {
@@ -1193,8 +1090,8 @@ export function App({
                         <button
                           type="button"
                           className="claim-remove"
-                          aria-label={`Remove claim ${index + 1}`}
-                          title="Remove claim"
+                          aria-label={`Remove assumption ${index + 1}`}
+                          title="Remove assumption"
                           onClick={() => {
                             const next = claims[index + 1] ?? claims[index - 1];
                             setClaims((currentClaims) =>
@@ -1216,75 +1113,55 @@ export function App({
                       id={claim.id}
                       value={claim.text}
                       rows={2}
-                      placeholder="Write a testable claim"
+                      placeholder="Write something that needs to be true"
                       maxLength={limits.claim}
                       onChange={(event) =>
                         updateClaim(claim.id, { text: event.target.value })
                       }
                     />
-                    <details className="claim-options">
-                      <summary>
-                        Claim options
-                        {claim.checkDraft && (
-                          <small>Engineering check added</small>
-                        )}
-                      </summary>
-                      <div className="claim-meta">
-                        <label>
-                          Main risk
-                          <select
-                            aria-label={`Main risk for claim ${index + 1}`}
-                            value={claim.risk ?? "logic"}
-                            onChange={(event) => {
-                              const result = claimSchema.shape.risk.safeParse(
-                                event.target.value,
-                              );
-                              if (result.success)
-                                updateClaim(claim.id, { risk: result.data });
-                            }}
-                          >
-                            <option value="logic">
-                              Does the plan make sense?
-                            </option>
-                            <option value="technical">
-                              Will the change work?
-                            </option>
-                            <option value="adoption">
-                              Rollout and operations
-                            </option>
-                            <option value="evidence">
-                              Is there enough evidence?
-                            </option>
-                          </select>
-                        </label>
-                        <label
-                          className="check-label claim-priority"
-                          data-checked={Boolean(claim.loadBearing)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={Boolean(claim.loadBearing)}
-                            onChange={(event) =>
-                              updateClaim(claim.id, {
-                                loadBearing: event.target.checked,
-                              })
-                            }
-                          />
-                          <span>Critical to the plan</span>
-                        </label>
-                      </div>
-                      {mode === "live" && (
-                        <EngineeringEditor
-                          draft={claim.checkDraft}
-                          onChange={(checkDraft) =>
-                            updateClaim(claim.id, { checkDraft })
-                          }
-                        />
-                      )}
-                    </details>
+                    <label
+                      className="check-label claim-priority"
+                      data-checked={Boolean(claim.loadBearing)}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Critical assumption ${index + 1}`}
+                        checked={Boolean(claim.loadBearing)}
+                        onChange={(event) =>
+                          updateClaim(claim.id, {
+                            loadBearing: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>Critical assumption</span>
+                    </label>
                   </div>
                 ))}
               </div>
+              {!selected.length && (
+                <p className="field-note">
+                  {claims.length
+                    ? "Include at least one assumption to run checks."
+                    : "Add an assumption to start checking your plan."}
+                </p>
+              )}
+              <ReviewSettings
+                proposal={proposal}
+                claims={claims}
+                onClaimChange={updateClaim}
+                live={
+                  mode === "live"
+                    ? {
+                        decision: decisionFields,
+                        onDecisionChange: setDecision,
+                        panel: reviewPanel,
+                        onPanelChange: setReviewerSelection,
+                        evidence: projectEvidence,
+                        onEvidenceChange: setProjectEvidence,
+                      }
+                    : undefined
+                }
+              />
               {error && (
                 <p className="error" role="alert">
                   {error}
@@ -1309,7 +1186,7 @@ export function App({
                       setError("");
                     }}
                   >
-                    {mark("plus")} Add claim
+                    {mark("plus")} Add assumption
                   </button>
                 </div>
                 <div className="actions">
@@ -1321,15 +1198,14 @@ export function App({
                       setError("");
                     }}
                   >
-                    Back to decision
+                    Back to plan
                   </button>
                   <button
                     type="submit"
                     className="button primary"
                     disabled={!selected.length}
                   >
-                    {mode === "live" ? "Run Tests" : "Run review"}{" "}
-                    {mark("arrow")}
+                    Run checks {mark("arrow")}
                   </button>
                 </div>
               </div>
@@ -1340,21 +1216,31 @@ export function App({
         {page === "running" && (
           <motion.section key="running" className="panel" {...enter}>
             <h2 ref={heading} tabIndex={-1}>
-              Reviewing your claims
+              Checking your assumptions
             </h2>
             <p className="section-note">
-              {mode === "demo"
-                ? "Bundled example · Replaying recorded checks"
-                : "Live review · Checking the confirmed claims"}
+              {mode === "demo" ? "Recorded example" : "Live review"}
             </p>
-            <LiveReviewRoom
-              claims={state.claims}
-              progress={state.progress}
-              updates={state.updates}
-              panel={mode === "live" ? reviewPanel : undefined}
-            />
+            <p className="review-progress" role="status">
+              {progress?.Synthesis === "running"
+                ? "Putting the results together…"
+                : completedStages
+                  ? `${completedStages} review ${completedStages === 1 ? "stage" : "stages"} complete.`
+                  : mode === "demo"
+                    ? "Replaying the recorded checks…"
+                    : "Checking the assumptions you selected…"}
+            </p>
+            <details className="proposal review-room-disclosure">
+              <summary>Explore the review room</summary>
+              <LiveReviewRoom
+                claims={state.claims}
+                progress={state.progress}
+                updates={state.updates}
+                panel={mode === "live" ? reviewPanel : undefined}
+              />
+            </details>
             <details className="proposal review-activity">
-              <summary>Review activity</summary>
+              <summary>See check activity</summary>
               <ul className="activity">
                 {stages
                   .filter((stage) => {
@@ -1426,9 +1312,7 @@ export function App({
             <div className="split report-header">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
-                  {report.crossfireDecision
-                    ? "Decision Memo"
-                    : "Decision report"}
+                  Review results
                 </h2>
                 <p className="section-note">
                   {report.mode === "demo"
@@ -1438,42 +1322,12 @@ export function App({
                   {report.verifier?.distinct &&
                     ` · Verified by ${report.verifier.model}`}
                 </p>
-                {report.crossfireReviewers && (
-                  <p className="section-note">
-                    {report.crossfireReviewers
-                      .map((id) => reviewers[id].name)
-                      .join(", ")}{" "}
-                    and Steelman
-                  </p>
-                )}
               </div>
             </div>
             <div className="recommendation">
               <h3>{report.crossfireDecision ?? "Recommended next step"}</h3>
               <p>{report.recommendation}</p>
             </div>
-            <div className="report-actions">
-              <div className="actions report-tools">
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => void copyReport(report)}
-                >
-                  Copy Markdown
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => exportReport(reportProposal, report)}
-                >
-                  {mark("download")} Export Markdown
-                </button>
-              </div>
-              <span className="field-note report-copy-status" role="status">
-                {copyStatus}
-              </span>
-            </div>
-            {report.mode === "live" && reportDetails}
             {uncheckedCriticalClaims.length > 0 && (
               <section
                 className="claim-coverage"
@@ -1507,7 +1361,11 @@ export function App({
                   <span
                     className={`verdict ${(finding.verdict === "Survived" ? "No credible break found" : finding.verdict === "Broken" ? "Contradicted" : finding.verdict).toLowerCase().replaceAll(" ", "-")}`}
                   >
-                    {finding.verdict}
+                    {finding.verdict === "Survived"
+                      ? "No issue found"
+                      : finding.verdict === "Broken"
+                        ? "Problem found"
+                        : finding.verdict}
                   </span>
                   {finding.basis && (
                     <span className="finding-basis">
@@ -1565,7 +1423,28 @@ export function App({
                 </article>
               ))}
             </div>
-            {report.mode === "demo" && reportDetails}
+            <div className="report-actions">
+              <div className="actions report-tools">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => void copyReport(report)}
+                >
+                  Copy Markdown
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => exportReport(reportProposal, report)}
+                >
+                  {mark("download")} Export Markdown
+                </button>
+              </div>
+              <span className="field-note report-copy-status" role="status">
+                {copyStatus}
+              </span>
+            </div>
+            {reportDetails}
             {report.mode === "live" && accountId && (
               <OutcomeLog
                 accountId={accountId}
@@ -1590,7 +1469,7 @@ export function App({
                     className="button"
                     onClick={() => dispatch({ type: "claims" })}
                   >
-                    Edit claims
+                    Edit assumptions
                   </button>
                   <button
                     type="button"

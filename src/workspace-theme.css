@@ -216,6 +216,11 @@
 .review-workspace #proposal {
   min-height: clamp(10rem, 19vw, 15rem);
 }
+.review-workspace #proposal:read-only {
+  field-sizing: content;
+  min-height: 6.5rem;
+  resize: none;
+}
 .review-workspace .check-label {
   min-height: 2.75rem;
 }
@@ -354,11 +359,14 @@
 }
 .claim-pick,
 .claim-priority {
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   padding: 0.32rem 0.6rem;
   border-radius: 2rem;
   cursor: pointer;
   font-size: 0.83rem;
+}
+.claim-priority {
+  justify-self: start;
 }
 .claim-pick {
   background: #e9eae2;
@@ -385,8 +393,8 @@
 .claim-remove {
   display: grid;
   place-items: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -404,7 +412,7 @@
   min-height: 2.65rem;
   max-height: 10rem;
   padding: 0.44rem 0.5rem;
-  border: 1px solid transparent;
+  border: 1px solid var(--soft-line);
   border-radius: 0.55rem;
   background: transparent;
   color: var(--review-ink);
@@ -417,25 +425,6 @@
   border-color: #84927b;
   background: #fff;
 }
-.claim-editor .claim-meta {
-  grid-column: auto;
-  gap: 0.25rem 0.55rem;
-  padding: 0.2rem 0.5rem 0;
-  border-top: 1px solid #efefe7;
-}
-.claim-editor .claim-meta label {
-  font-size: 0.82rem;
-}
-.claim-editor .claim-meta label:has(> select) {
-  flex-wrap: wrap;
-  min-inline-size: 0;
-  max-inline-size: 100%;
-}
-
-.claim-meta select {
-  inline-size: min(19rem, 100%);
-}
-
 .claim-editor form .claim-editor-footer {
   padding: 0.7rem 0.8rem;
   border-radius: 0.9rem;
@@ -451,9 +440,6 @@
   .claim-count {
     grid-template-columns: 3.4rem auto;
     align-items: center;
-  }
-  .claim-editor .claim-meta {
-    padding-inline: 0.25rem;
   }
   .claim-editor .claim-editor-footer {
     align-items: flex-start;
@@ -820,7 +806,7 @@
 }
 
 .report-actions {
-  margin-block: 0 0.8rem;
+  margin-block: 0.9rem 0.8rem;
 }
 
 .report-tools {
@@ -1092,11 +1078,18 @@
   padding-block-end: 0.45rem;
 }
 
-.reviewer-disclosure summary small {
+.review-setup {
+  margin-block: 0.75rem;
+}
+
+.review-settings > .proposal,
+.review-settings > .reviewer-picker {
+  margin-block: 0.65rem;
+}
+
+.assumption-settings select {
   display: block;
-  color: var(--review-muted);
-  font-weight: 500;
-  overflow-wrap: anywhere;
+  inline-size: min(19rem, 100%);
 }
 
 .reviewer-picker {
@@ -1129,27 +1122,12 @@
   margin: 0.6rem 0 0;
 }
 
-.claim-options {
-  padding-inline: 0.5rem;
+.review-progress {
+  margin-block-end: 1rem;
 }
 
-.claim-options summary {
-  padding-block: 0.5rem;
-  color: var(--review-muted);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.claim-options summary small {
-  margin-inline-start: 0.55rem;
-}
-
-.claim-editor .claim-options .claim-meta {
-  padding: 0 0 0.45rem;
-  border-top: 0;
-}
-
-.review-activity {
+.review-activity,
+.review-room-disclosure {
   margin-block: 0 0.85rem;
 }
 
