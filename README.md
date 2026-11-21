@@ -20,12 +20,14 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 
 ## Try a review
 
-1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
+For a no-key walkthrough, open `/demo` on a build of this branch and choose **Inspect example claims**. The default case shows why disabling a rollout flag cannot undo completed writes. The public walkthrough runs in the browser with bundled evidence. See the [Round 1 demo script](docs/round1-demo.md).
+
+1. Sign in to review your own proposal.
 2. Open **Workspace**, enter a proposal, and select **Extract claims**. To explore first, choose a case from the **Example library**.
 3. Edit the claims, select up to three, and mark any that would change your decision if they failed as **Load-bearing**.
 4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
-The signed-in examples cover changed-package tests, replica consistency, and feature-flag rollback. They use bundled evidence and work without a provider key. Live reviews send your proposal to the configured provider and use web search where applicable. Use proposals you can share with the provider.
+The example library covers changed-package tests, replica consistency, and feature-flag rollback. Live reviews send your proposal to the configured provider and use web search where applicable. Use proposals you can share with the provider.
 
 ![Claim editor with risk categories, load-bearing controls, and a visible selection count](docs/screenshots/claims.webp)
 
@@ -39,20 +41,16 @@ To configure live reviews, paste your **Meta Model API key** in Settings. Tactil
 
 ## Quickstart
 
-Install Node.js **22.19 or later in the 22.x line**, or **24 or later**. You’ll also need a Supabase project with email/password sign-in enabled.
+Install Node.js **22.19 or later in the 22.x line**, or **24 or later**.
 
 ```sh
 git clone https://github.com/SammyRyuga/tactile.git
 cd tactile
 npm ci
-cp .env.example .env
-```
-
-Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in `.env`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
-
-```sh
 npm run dev
 ```
+
+Open [the local bundled demo](http://127.0.0.1:5173/demo). For the signed-in workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
 
 Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Supabase account. To run the production build locally, use `npm run build` followed by `npm start`.
 
@@ -71,7 +69,7 @@ Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Sup
 
 - **Claim selection.** Extract up to six claims from a proposal and confirm up to three for review.
 - **Checks by risk.** Route claims to specialist checks for assumptions, engineering feasibility, or adoption and operations. Load-bearing claims get a larger search allowance. Explicit equations in claim text are checked with deterministic arithmetic.
-- **Evidence and verdict.** Verify excerpts fetched from cited pages. Proposal-derived findings reference an explicit premise, and deterministic arithmetic can establish a contradiction directly. Keep source links and check observations visible in the report. “No credible break found” records a completed adversarial check without a detected concern. An unresolved verdict identifies evidence gaps, conflicting sources, or a failed check.
+- **Evidence and verdict.** Match quotes against fetched source text and ask a verifier to check applicability to each claim. For proposal-derived findings the verifier checks the exact excerpt against the complete proposal. Deterministic arithmetic can establish an explicit calculation error directly. “No credible break found” records a completed adversarial check without a detected concern. An unresolved verdict identifies evidence gaps, conflicting sources, or a failed check.
 - **Decision memo.** See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.

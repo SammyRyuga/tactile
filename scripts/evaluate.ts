@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { checkArithmetic } from "../server/arithmetic.ts";
 import { createProvider } from "../server/provider.ts";
 import {
   extractClaims,
   ProposalScopeError,
   runReview,
 } from "../server/pipeline.ts";
+import { demoExamples, demoReport } from "../shared/demo.ts";
+import { writeBlindReview } from "./blind-review.ts";
 import { corpus } from "./evaluation-cases.ts";
 
 const markSchema = z
@@ -38,6 +41,7 @@ const markSchema = z
     unsupportedConclusions: z.number().int().nonnegative(),
     relevantCitations: z.number().int().nonnegative(),
     totalCitations: z.number().int().nonnegative(),
+    unresolvedFindings: z.number().int().nonnegative().optional(),
   })
   .refine((mark) => mark.relevantCitations <= mark.totalCitations);
 type Mark = z.infer<typeof markSchema>;
@@ -76,12 +80,26 @@ function score(path: string) {
     .parse(JSON.parse(readFileSync(path, "utf8")));
   const unique = new Set<string>();
   const aggregate = new Map<string, Mark[]>();
+  const cases = [...corpus.development, ...corpus.holdout];
+  const split = corpus.development.some(([, id]) => id === marks[0].caseId)
+    ? corpus.development
+    : corpus.holdout;
   for (const mark of marks) {
+    if (
+      !cases.some(
+        ([category, id]) => id === mark.caseId && category === mark.category,
+      )
+    )
+      throw new Error(`Unknown case/category pair for ${mark.caseId}.`);
+    if (!split.some(([, id]) => id === mark.caseId))
+      throw new Error("Score development and holdout separately.");
     const id = JSON.stringify([mark.caseId, mark.repetition, mark.system]);
     if (unique.has(id)) throw new Error(`Duplicate score for ${id}.`);
     unique.add(id);
     for (const key of [
-      `${mark.system}/all`,
+      ...(mark.category === "out-of-scope"
+        ? []
+        : [`${mark.system}/all in scope`]),
       `${mark.system}/${mark.category}`,
     ]) {
       const rows = aggregate.get(key) ?? [];
@@ -90,43 +108,80 @@ function score(path: string) {
     }
   }
   console.table(
-    [...aggregate].map(([group, rows]) => ({
-      group,
-      cases: new Set(rows.map(({ caseId }) => caseId)).size,
-      evaluated: rows.length,
-      catchRate: rate(rows.map(({ caught }) => caught)),
-      catch95: caseInterval(rows, "caught"),
-      falseAlarmRate: rate(rows.map(({ falseAlarm }) => falseAlarm)),
-      falseAlarm95: caseInterval(rows, "falseAlarm"),
-      reassuranceReviewed: rows.reduce(
-        (sum, row) => sum + (row.reassurance?.reviewed ?? 0),
+    [...aggregate].map(([group, rows]) => {
+      const totalCitations = rows.reduce(
+        (sum, row) => sum + row.totalCitations,
         0,
-      ),
-      misleadingReassurance: rows.reduce(
-        (sum, row) => sum + (row.reassurance?.misleading ?? 0),
-        0,
-      ),
-      unsupportedConclusions: rows.reduce(
-        (sum, row) => sum + row.unsupportedConclusions,
-        0,
-      ),
-      citationRelevance:
-        rows.reduce((sum, row) => sum + row.relevantCitations, 0) /
-        (rows.reduce((sum, row) => sum + row.totalCitations, 0) || 1),
-    })),
+      );
+      return {
+        group,
+        cases: new Set(rows.map(({ caseId }) => caseId)).size,
+        evaluated: rows.length,
+        catchRate: rate(rows.map(({ caught }) => caught)),
+        catch95: caseInterval(rows, "caught"),
+        falseAlarmRate: rate(rows.map(({ falseAlarm }) => falseAlarm)),
+        falseAlarm95: caseInterval(rows, "falseAlarm"),
+        reassuranceReviewed: rows.reduce(
+          (sum, row) => sum + (row.reassurance?.reviewed ?? 0),
+          0,
+        ),
+        misleadingReassurance: rows.reduce(
+          (sum, row) => sum + (row.reassurance?.misleading ?? 0),
+          0,
+        ),
+        unsupportedConclusions: rows.reduce(
+          (sum, row) => sum + row.unsupportedConclusions,
+          0,
+        ),
+        unresolvedFindings: rows.every(
+          (row) => row.unresolvedFindings === undefined,
+        )
+          ? null
+          : rows.reduce((sum, row) => sum + (row.unresolvedFindings ?? 0), 0),
+        totalCitations,
+        citationRelevance: totalCitations
+          ? rows.reduce((sum, row) => sum + row.relevantCitations, 0) /
+            totalCitations
+          : null,
+      };
+    }),
   );
 }
 
 const [, , command = "--list", ...args] = process.argv;
 if (command === "--list") {
   console.log(JSON.stringify(corpus, null, 2));
+} else if (command === "--fixtures") {
+  const arithmetic = corpus.development
+    .filter(([category]) => category === "quantitative")
+    .map(([, caseId, proposal]) => ({
+      caseId,
+      checks: checkArithmetic(proposal),
+    }));
+  const demos = demoExamples.map(({ id, proposal, claims }) => {
+    const report = demoReport({ proposal, claims: claims.slice(0, 3) });
+    return {
+      id,
+      verdicts: report.findings.map(({ verdict }) => verdict),
+      evidence: report.sources.map(({ id }) => id),
+    };
+  });
+  console.log(JSON.stringify({ arithmetic, demos }, null, 2));
+} else if (command === "--blind") {
+  if (args.length !== 3)
+    throw new Error(
+      "Supply the run JSONL, reviewer packet path, and private answer key path.",
+    );
+  writeBlindReview(args[0], args[1], args[2]);
 } else if (command === "--score") {
   if (args.length !== 1)
     throw new Error("Supply a JSON file with human annotations.");
   score(args[0]);
 } else {
   if (command !== "--smoke" && command !== "--live")
-    throw new Error("Use --list, --score, --smoke, or --live.");
+    throw new Error(
+      "Use --list, --fixtures, --blind, --score, --smoke, or --live.",
+    );
   const reviewOnly = command === "--live" && args.includes("--review-only");
   const once = command === "--live" && args.includes("--once");
   const vendor = args.includes("--meta") ? "meta" : "openai";
@@ -156,14 +211,18 @@ if (command === "--list") {
   function metered(baseline = false) {
     const started = performance.now();
     let requests = 0;
+    let responses = 0;
     let reported = 0;
     let inputTokens = 0;
     let outputTokens = 0;
     const provider = createProvider(key as string, model, fetch, vendor, {
       verifierModel,
       requestTimeoutMs: baseline ? 55_000 : undefined,
-      onUsage(usage) {
+      onRequest() {
         requests++;
+      },
+      onUsage(usage) {
+        responses++;
         if (usage.inputTokens !== null && usage.outputTokens !== null) {
           reported++;
           inputTokens += usage.inputTokens;
@@ -175,6 +234,7 @@ if (command === "--list") {
       provider,
       metrics: () => ({
         requests,
+        responses,
         usageReportedRequests: reported,
         inputTokens: reported ? inputTokens : null,
         outputTokens: reported ? outputTokens : null,
@@ -230,20 +290,25 @@ if (command === "--list") {
       verifierModel,
     };
     const tactile = metered();
-    let claims;
+    let extracted;
     try {
-      claims = await extractClaims(
+      const claims = await extractClaims(
         tactile.provider,
         proposal,
         AbortSignal.timeout(40_000),
       );
+      extracted = { inScope: true as const, claims };
     } catch (error) {
       if (!(error instanceof ProposalScopeError)) throw error;
+      extracted = { inScope: false as const, reason: error.message };
+    }
+    if (category === "out-of-scope") {
+      const scopeResult = extracted.inScope ? { inScope: true } : extracted;
       if (reviewOnly) {
         console.log(
           JSON.stringify({
             ...meta,
-            tactile: { inScope: false, reason: error.message },
+            tactile: scopeResult,
             metrics: { tactile: tactile.metrics() },
           }),
         );
@@ -259,14 +324,27 @@ if (command === "--list") {
       console.log(
         JSON.stringify({
           ...meta,
-          tactile: { inScope: false, reason: error.message },
+          tactile: scopeResult,
           baseline,
           metrics: { tactile: tactile.metrics(), single: scoped.metrics() },
         }),
       );
       return;
     }
-    const input = { proposal, claims: claims.slice(0, 3) };
+    if (!extracted.inScope) {
+      console.log(
+        JSON.stringify({
+          ...meta,
+          tactile: extracted,
+          metrics: { tactile: tactile.metrics() },
+          error:
+            "Unexpected scope rejection. Claims-conditioned baselines were unavailable.",
+        }),
+      );
+      if (command === "--smoke") process.exitCode = 1;
+      return;
+    }
+    const input = { proposal, claims: extracted.claims.slice(0, 3) };
     const report = await runReview(
       tactile.provider,
       input,
