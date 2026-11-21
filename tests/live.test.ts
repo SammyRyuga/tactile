@@ -55,14 +55,26 @@ function mockProvider(
     qualifies?: boolean;
     needsInformation?: boolean;
     misleadingRecommendation?: boolean;
+    probe?: "verified" | "unrelated" | "private";
+    inspect?: (request: {
+      instructions: string;
+      input: string;
+      max_tool_calls?: number;
+    }) => void;
   } = {},
 ) {
   return createProvider("fixture", "fixture", async (_url, init) => {
     const body = JSON.parse(String(init?.body));
     assert.equal(body.store, false);
+    options.inspect?.(body);
     if (body.tools) {
       assert.doesNotMatch(body.input, /Checkout staging p95 was 128 ms/);
       if (options.searchDown) return new Response(null, { status: 503 });
+      if (body.instructions.includes("Cross-examine")) {
+        return success("Follow-up fixture citation.", [
+          { ...citation, url: citation.url + "/blocker" },
+        ]);
+      }
       return success(
         "Fixture: two sources conflict; applicability is uncertain.",
         options.zeroCitations
@@ -154,12 +166,17 @@ function mockProvider(
             ({ id, passage }: { id: string; passage: string }) => ({
               id,
               relation:
-                options.wrongMechanism ||
-                (options.conflict && id.endsWith("-2"))
+                options.probe === "verified" && id === "source-1-2"
                   ? "contradicts"
-                  : options.unrelated
+                  : (options.probe && id === "source-1-1") ||
+                      (options.probe === "unrelated" && id === "source-1-2")
                     ? "unrelated"
-                    : "supports",
+                    : options.wrongMechanism ||
+                        (options.conflict && id.endsWith("-2"))
+                      ? "contradicts"
+                      : options.unrelated
+                        ? "unrelated"
+                        : "supports",
               applicability: options.wrongMechanism
                 ? "different mechanism"
                 : options.unrelated
@@ -185,7 +202,9 @@ function mockProvider(
             id,
             verdict: options.conflict
               ? "Unresolved"
-              : options.internal || options.wrongMechanism
+              : options.internal ||
+                  options.wrongMechanism ||
+                  (options.probe && index === 0)
                 ? "Contradicted"
                 : options.noBreak
                   ? "No credible break found"
@@ -210,45 +229,58 @@ function mockProvider(
             sourceIds:
               options.internal || options.noBreak
                 ? []
-                : options.submittedEvidence
-                  ? [
-                      options.submittedEvidence === "another-claim"
-                        ? "project-2-1"
-                        : `project-${index + 1}-1`,
-                    ]
-                  : [
-                      options.wrongCitation
-                        ? "unknown"
-                        : options.crossClaimCitation
-                          ? `source-${2 - index}-1`
-                          : `source-${index + 1}-1`,
-                    ],
+                : options.probe && index === 0
+                  ? ["source-1-2"]
+                  : options.submittedEvidence
+                    ? [
+                        options.submittedEvidence === "another-claim"
+                          ? "project-2-1"
+                          : `project-${index + 1}-1`,
+                      ]
+                    : [
+                        options.wrongCitation
+                          ? "unknown"
+                          : options.crossClaimCitation
+                            ? `source-${2 - index}-1`
+                            : `source-${index + 1}-1`,
+                      ],
           })),
         }),
       );
     }
     return success(
       JSON.stringify({
-        findings: input.claims.map(({ id }) => ({
-          id,
-          outcome: options.internal
-            ? "concern"
-            : options.needsInformation
-              ? "needs information"
-              : "no credible concern",
-          observation: options.internal
-            ? "A shared schema can affect its consumers."
-            : "No credible failure found within the fixture.",
-          proposalExcerpt: options.recoverQuote
-            ? null
-            : options.inventedQuote
-              ? "This text does not appear in the proposal."
-              : options.shortPremise
-                ? "a shared schema"
-                : options.internal
-                  ? "a shared schema package consumed by checkout and reporting"
-                  : null,
-        })),
+        findings: JSON.parse(body.input).claims.map(
+          ({ id }: { id: string }) => ({
+            id,
+            publicBlocker:
+              options.probe &&
+              options.probe !== "private" &&
+              id === input.claims[0].id
+                ? "dependency schema changes invalidating affected package builds"
+                : null,
+            outcome:
+              options.internal || options.probe
+                ? "concern"
+                : options.needsInformation
+                  ? "needs information"
+                  : "no credible concern",
+            observation: options.probe
+              ? "Private CheckoutTeam rollout logs may show an affected consumer."
+              : options.internal
+                ? "A shared schema can affect its consumers."
+                : "No credible failure found within the fixture.",
+            proposalExcerpt: options.recoverQuote
+              ? null
+              : options.inventedQuote
+                ? "This text does not appear in the proposal."
+                : options.shortPremise
+                  ? "a shared schema"
+                  : options.internal
+                    ? "a shared schema package consumed by checkout and reporting"
+                    : null,
+          }),
+        ),
       }),
     );
   });
@@ -319,6 +351,130 @@ for (const condition of [
     assert.match(report.recommendation, /Resolve the evidence gaps/);
   });
 }
+
+test("critical claims get the full independent panel and a verified, budgeted blocker probe", async () => {
+  const requests: Array<{
+    instructions: string;
+    input: string;
+    max_tool_calls?: number;
+  }> = [];
+  const report = await runReview(
+    mockProvider({
+      probe: "verified",
+      inspect: (request) => requests.push(request),
+    }),
+    input,
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  const panel = requests.filter(({ instructions }) =>
+    instructions.includes("Return one finding per assigned ID"),
+  );
+  assert.equal(panel.length, 4);
+  assert.ok(
+    panel.every(({ input: payload }) =>
+      JSON.parse(payload).claims.some(
+        ({ id }: { id: string }) => id === input.claims[0].id,
+      ),
+    ),
+  );
+  assert.ok(
+    panel.every(({ input: payload }) =>
+      JSON.parse(payload).claims.some(
+        ({ id }: { id: string }) => id === input.claims[1].id,
+      ),
+    ),
+  );
+  const probes = requests.filter(({ instructions }) =>
+    instructions.includes("Cross-examine"),
+  );
+  assert.equal(probes.length, 1);
+  assert.equal(probes[0].max_tool_calls, 1);
+  assert.deepEqual(JSON.parse(probes[0].input), {
+    publicBlocker:
+      "dependency schema changes invalidating affected package builds",
+  });
+  assert.equal(report.findings[0].verdict, "Contradicted");
+  assert.equal(report.findings[0].basis, "source");
+  assert.deepEqual(report.findings[0].sourceIds, ["source-1-2"]);
+  assert.match(
+    report.findings[0].audit?.find(({ stage }) => stage === "Evidence")
+      ?.observation ?? "",
+    /Targeted blocker search returned citations/,
+  );
+});
+
+test("a non-empirical claim still gets three independent checks and skips routine web research", async () => {
+  const requests: string[] = [];
+  const report = await runReview(
+    mockProvider({
+      inspect: ({ instructions }) => requests.push(instructions),
+    }),
+    {
+      ...input,
+      claims: [
+        { id: "scope", risk: "logic", text: "The rollout can be paused." },
+      ],
+    },
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  assert.equal(
+    requests.filter((prompt) =>
+      prompt.includes("Return one finding per assigned ID"),
+    ).length,
+    3,
+  );
+  assert.deepEqual(report.sources, []);
+  assert.equal(
+    report.findings[0].audit?.find(({ stage }) => stage === "Evidence")?.status,
+    "skipped",
+  );
+});
+
+test("a blocker without applicable public evidence cannot establish a verdict", async () => {
+  for (const probe of ["unrelated", "private"] as const) {
+    let followUps = 0;
+    const report = await runReview(
+      mockProvider({
+        probe,
+        inspect: ({ instructions }) => {
+          if (instructions.includes("Cross-examine")) followUps++;
+        },
+      }),
+      input,
+      () => {},
+      signal,
+      { sourceReader },
+    );
+    assert.equal(followUps, probe === "private" ? 0 : 1);
+    assert.equal(report.findings[0].verdict, "Unresolved");
+    assert.deepEqual(report.findings[0].sourceIds, []);
+  }
+});
+
+test("the decision recommendation prioritizes an unresolved critical claim over a secondary miss", async () => {
+  const report = await runReview(
+    mockProvider({ wrongCitation: true }),
+    {
+      ...input,
+      claims: [
+        input.claims[0],
+        { ...input.claims[1], text: "60 * 2 = 150 exports per minute." },
+      ],
+    },
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  assert.deepEqual(
+    report.findings.map(({ verdict }) => verdict),
+    ["Unresolved", "Contradicted"],
+  );
+  assert.match(report.recommendation, /Resolve the evidence gaps/);
+});
 
 test("repeat citations collapse per claim before verification while distinct query variants survive", async () => {
   const report = await runReview(
