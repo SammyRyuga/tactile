@@ -6,11 +6,11 @@ import { createApp } from "./app.ts";
 import { createSessionVerifier, reserveReview } from "./auth.ts";
 import { createProvider } from "./provider.ts";
 
-const key = process.env.OPENAI_API_KEY?.trim();
+const hosted = process.env.RENDER === "true";
+const key = hosted ? undefined : process.env.OPENAI_API_KEY?.trim();
 const provider = key
   ? createProvider(key, process.env.OPENAI_MODEL?.trim() || "gpt-5-mini")
   : undefined;
-const hosted = process.env.RENDER === "true";
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
 const auth =
@@ -26,7 +26,7 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
-const app = createApp(hosted && !auth ? undefined : provider, {
+const app = createApp(provider, {
   auth,
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,

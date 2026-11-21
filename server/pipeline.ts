@@ -418,15 +418,21 @@ export async function runReview(
 
   const result = await check("Synthesis", () =>
     provider.structured(
-      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Supported requires supporting source passages. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
+      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. Supported requires supporting source passages. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
       {
         proposal: input.proposal,
         claims: trails.map(({ claim, checks, sources, internal }) => ({
           claim,
           proposalExcerpts: internal,
-          checks,
-          sources: sources.filter(
-            ({ relation }) => relation && relation !== "unrelated",
+          checks: checks.filter(
+            ({ stage, status }) =>
+              (stage !== "Evidence" && stage !== "Verification") ||
+              status === "failed",
+          ),
+          sources: sources.flatMap(({ id, title, passage, relation }) =>
+            relation && relation !== "unrelated"
+              ? [{ id, title, relation, passage }]
+              : [],
           ),
         })),
       },

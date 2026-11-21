@@ -518,6 +518,7 @@ test("Meta verification uses its own override and strict structured output", asy
       assert.equal(body.model, "muse-ember-1.0");
       assert.equal(body.text.format.type, "json_schema");
       assert.equal(body.text.format.strict, true);
+      assert.deepEqual(body.reasoning, { effort: "low" });
       return success("{}");
     },
     "meta",

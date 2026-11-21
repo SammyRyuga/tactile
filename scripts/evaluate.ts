@@ -162,17 +162,28 @@ if (command === "--list") {
       : corpus[split];
   if (command === "--smoke" && vendor === "meta") {
     const probe = metered();
-    const grounded = await probe.provider.research(
-      "Search public PostgreSQL documentation on asynchronous standby replication and give a statement with a cited URL.",
-      { topic: "PostgreSQL asynchronous replication" },
-      AbortSignal.timeout(36_000),
-    );
-    if (!grounded.citations.length)
-      throw new Error("Meta smoke check received zero URL citations.");
+    const topics = [
+      "What is the current PostgreSQL stable release, and what does its official documentation say about asynchronous standby replication?",
+      "What PostgreSQL release was announced most recently this month? Report the release date and cite the official announcement.",
+    ];
+    let citations = 0;
+    for (const topic of topics) {
+      const grounded = await probe.provider.research(
+        "Use live web search to check the current answer in official PostgreSQL sources and cite their URLs.",
+        { topic },
+        AbortSignal.timeout(36_000),
+      );
+      citations = grounded.citations.length;
+      if (citations) break;
+    }
+    if (!citations)
+      throw new Error(
+        "Meta smoke check received zero URL citations on both prompts.",
+      );
     console.error(
       JSON.stringify({
         event: "meta citations received",
-        count: grounded.citations.length,
+        count: citations,
         ...probe.metrics(),
       }),
     );

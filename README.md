@@ -33,7 +33,7 @@ The signed-in examples cover changed-package tests, replica consistency, and fea
 
 Open **Settings** after signing in. Use the header theme button to switch between light and dark. Tactile remembers your theme in that browser. The claim editor and other animated surfaces respect the system’s reduced-motion preference.
 
-To configure live reviews, paste your **Meta Model API key** in Settings and save it. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. A deployment can provide a shared provider key as a fallback. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
+To configure live reviews, paste your **Meta Model API key** in Settings and save it. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
 
 ![Tactile Settings in dark mode with an empty provider key field](docs/screenshots/settings.webp)
 
@@ -56,16 +56,16 @@ npm run dev
 
 Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Supabase account. To run the production build locally, use `npm run build` followed by `npm start`.
 
-| Variable                   | Purpose                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------- |
-| `SUPABASE_URL`             | Supabase project URL.                                                             |
-| `SUPABASE_PUBLISHABLE_KEY` | Public key for browser authentication and authenticated quota calls.              |
-| `OPENAI_API_KEY`           | Optional server-side key shared by the deployment. Keep it out of source control. |
-| `OPENAI_MODEL`             | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.          |
-| `OPENAI_VERIFIER_MODEL`    | Optional model for OpenAI passage verification. Defaults to the main model.       |
-| `META_VERIFIER_MODEL`      | Optional model for Meta passage verification. Defaults to Muse Spark.             |
-| `PORT`                     | HTTP port. Defaults to `5173` locally.                                            |
-| `ALLOWED_HOSTS`            | Comma-separated API hostnames for additional domains.                             |
+| Variable                   | Purpose                                                                     |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `SUPABASE_URL`             | Supabase project URL.                                                       |
+| `SUPABASE_PUBLISHABLE_KEY` | Public key for browser authentication and authenticated quota calls.        |
+| `OPENAI_API_KEY`           | Optional OpenAI key for local reviews. Keep it out of source control.       |
+| `OPENAI_MODEL`             | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.    |
+| `OPENAI_VERIFIER_MODEL`    | Optional model for OpenAI passage verification. Defaults to the main model. |
+| `META_VERIFIER_MODEL`      | Optional model for Meta passage verification. Defaults to Muse Spark.       |
+| `PORT`                     | HTTP port. Defaults to `5173` locally.                                      |
+| `ALLOWED_HOSTS`            | Comma-separated API hostnames for additional domains.                       |
 
 ## How review works
 

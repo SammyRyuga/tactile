@@ -95,7 +95,7 @@ export function createProvider(
           store: false,
           max_output_tokens: maxOutputTokens,
           ...(vendor === "meta"
-            ? { reasoning: { effort: "medium" } }
+            ? { reasoning: { effort: "tools" in options ? "medium" : "low" } }
             : requestModel.startsWith("gpt-5")
               ? { reasoning: { effort: "low" } }
               : {}),
