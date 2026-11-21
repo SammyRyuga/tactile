@@ -7,10 +7,10 @@ export async function liveAvailable(
   token?: string,
 ): Promise<boolean> {
   const response = await fetch("/api/status", {
-    signal,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!response.ok) return false;
+  if (!response.ok) throw new Error("Live status is unavailable.");
   const result = z
     .object({ live: z.boolean() })
     .safeParse(await response.json().catch(() => null));

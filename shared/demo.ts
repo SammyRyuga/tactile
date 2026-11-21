@@ -357,11 +357,18 @@ export async function runDemo(
   emit: (event: ReviewEvent) => void,
   signal: AbortSignal,
 ) {
-  // Yield between fixture stages so users can follow and cancel the local walkthrough.
-  for (const stage of stages) {
+  const report = demoReport(input);
+  const recorded = new Set(
+    report.findings.flatMap(({ audit }) =>
+      (audit ?? []).map(({ stage }) => stage),
+    ),
+  );
+  recorded.add("Synthesis");
+  for (const stage of stages.filter((stage) => recorded.has(stage))) {
     emit({ type: "progress", stage, status: "running" });
     await yieldToBrowser(signal);
     emit({ type: "progress", stage, status: "done" });
   }
-  emit({ type: "report", report: demoReport(input) });
+  signal.throwIfAborted();
+  emit({ type: "report", report });
 }
