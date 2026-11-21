@@ -14,6 +14,8 @@ export const verdictSchema = z.enum([
   "No credible break found",
   "Weakened",
   "Contradicted",
+  "Survived",
+  "Broken",
   "Unresolved",
 ]);
 export const proposalSchema = z.string().trim().min(20).max(limits.proposal);
@@ -44,12 +46,31 @@ export const evidenceListSchema = z
     "Evidence IDs must be unique.",
   );
 
+const crossfireClaimSchema = z.object({
+  agents: z
+    .array(z.enum(["devils_advocate", "builder", "operator", "researcher"]))
+    .max(4),
+  reversibility: z.enum(["one_way", "two_way"]).nullish(),
+  deadline: z.string().max(120).nullish(),
+  mechanism: z.string().max(240).nullish(),
+  terms: z
+    .array(
+      z.object({
+        term: z.string().max(240),
+        resolved: z.string().max(600),
+        search_phrasing: z.string().max(360),
+      }),
+    )
+    .max(6),
+});
+
 export const claimSchema = z.object({
   id: idSchema,
   text: z.string().trim().min(1).max(limits.claim),
   risk: riskSchema.optional(),
   loadBearing: z.boolean().optional(),
   engineeringCheck: engineeringCheckSchema.optional(),
+  crossfire: crossfireClaimSchema.optional(),
 });
 
 export const reviewInputSchema = z.object({
@@ -160,6 +181,25 @@ export const reportSchema = z.object({
   model: z.string().optional(),
   verifier: z.object({ model: z.string(), distinct: z.boolean() }).optional(),
   recommendation: z.string(),
+  crossfireDecision: z
+    .enum(["Proceed", "Proceed with Changes", "Hold", "Drop"])
+    .optional(),
+  crossfireMemo: z
+    .object({
+      survivingCore: z.string(),
+      decidingFactor: z.string().optional(),
+      dissents: z.array(z.string()),
+      nextActions: z.array(z.string()),
+      buildSpec: z
+        .object({
+          what_it_does: z.string(),
+          what_it_omits: z.string(),
+          demo_path: z.string(),
+          cheapest_experiment: z.string(),
+        })
+        .optional(),
+    })
+    .optional(),
   findings: z.array(findingSchema),
   sources: z.array(sourceSchema),
 });
@@ -210,6 +250,20 @@ function markdownSource(source: Source, origin?: string): string {
   return `[${markdownText(source.title)}](<${destination}>)`;
 }
 
+export function decisionMemoSections(memo: Report["crossfireMemo"]) {
+  if (!memo) return [];
+  return [
+    { title: "Surviving Core", items: [memo.survivingCore] },
+    { title: "Deciding Factor", items: [memo.decidingFactor ?? ""] },
+    { title: "Dissent", items: memo.dissents },
+    { title: "Next Actions", items: memo.nextActions },
+    {
+      title: "Build Spec",
+      items: memo.buildSpec ? Object.values(memo.buildSpec) : [],
+    },
+  ].filter(({ items }) => items.some(Boolean));
+}
+
 export function toMarkdown(
   proposal: string,
   report: Report,
@@ -225,11 +279,21 @@ export function toMarkdown(
     "",
     markdownBlock(proposal),
     "",
-    "## Recommended next step",
+    report.crossfireDecision
+      ? `## ${report.crossfireDecision}`
+      : "## Recommended next step",
     "",
     markdownText(report.recommendation),
   ];
 
+  for (const section of decisionMemoSections(report.crossfireMemo)) {
+    lines.push(
+      "",
+      `### ${section.title}`,
+      "",
+      ...section.items.filter(Boolean).map((item) => `- ${markdownText(item)}`),
+    );
+  }
   for (const finding of report.findings) {
     lines.push(
       "",

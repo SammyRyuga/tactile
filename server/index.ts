@@ -1,3 +1,4 @@
+import { createCrossfireEngine } from "./crossfire-engine.ts";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
@@ -28,6 +29,9 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
   .filter(Boolean);
 const app = createApp(provider, {
   auth,
+  crossfire: auth
+    ? createCrossfireEngine(process.env.TACTILE_PYTHON)
+    : undefined,
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,
   revision: hosted ? process.env.RENDER_GIT_COMMIT : undefined,

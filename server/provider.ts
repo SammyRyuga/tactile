@@ -40,6 +40,12 @@ export interface ReviewProvider {
     signal: AbortSignal,
     verification?: { model?: string },
   ): Promise<T>;
+  crossfireGenerate?(
+    instructions: string,
+    messages: { role: "user" | "assistant"; content: string }[],
+    schema: unknown,
+    signal: AbortSignal,
+  ): Promise<string>;
   research(
     instruction: string,
     data: unknown,
@@ -104,6 +110,7 @@ export function createProvider(
     data: unknown,
     signal: AbortSignal,
     options: Record<string, unknown>,
+    messages?: { role: "user" | "assistant"; content: string }[],
   ) {
     const requestModel =
       "model" in options && typeof options.model === "string"
@@ -138,7 +145,7 @@ export function createProvider(
         body: JSON.stringify({
           model: requestModel,
           instructions,
-          input: JSON.stringify(data),
+          input: messages ?? JSON.stringify(data),
           store: false,
           prompt_cache_key: promptCacheKey,
           max_output_tokens: maxOutputTokens,
@@ -219,6 +226,21 @@ export function createProvider(
         },
       });
       return schema.parse(JSON.parse(result.map(({ text }) => text).join("")));
+    },
+
+    async crossfireGenerate(instructions, messages, schema, signal) {
+      const output = await respond(
+        schema
+          ? `${instructions}
+
+Return one valid JSON value matching this schema. ${JSON.stringify(schema)}`
+          : instructions,
+        null,
+        signal,
+        {},
+        messages,
+      );
+      return output.map(({ text }) => text).join("");
     },
 
     async research(instruction, data, signal, options) {

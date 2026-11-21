@@ -79,7 +79,9 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .fill(
       "Roll out a change to checkout staging and measure latency and job throughput under load.",
     );
-  await page.getByRole("button", { name: "Find claims" }).click();
+  await page
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .click();
   await page.getByText("Project evidence", { exact: true }).click();
   expect(
     await page.evaluate(
@@ -98,7 +100,7 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await claim.getByLabel("Jobs per minute per worker").fill("120");
   await claim.getByLabel("Workers", { exact: true }).fill("5");
   await claim.getByLabel("Required jobs per second").fill("10");
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await expect(page.getByText("Reviewer-supplied evidence")).toBeVisible();
   await expect(page.getByText(quote)).toBeVisible();
   expect(submitted[0].projectEvidence?.[0].text).toBe(quote);
@@ -126,9 +128,11 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .getByRole("button", { name: "Re-review this claim" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Choose what to check" }),
+    page.getByRole("heading", {
+      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+    }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeVisible();

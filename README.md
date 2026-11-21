@@ -25,13 +25,13 @@ Open `/demo` on a current build to try CI coverage, replica consistency, or feat
 ## Use the signed-in workspace
 
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
-2. Open **Workspace**, enter a proposal, and select **Find claims**. To explore first, choose a case from the **Example library**.
+2. Open **Workspace**, enter a proposal, and select **Run stress test** for a live review. To explore first, choose a case from the **Example library**.
 3. Edit the claims, select up to three, and mark claims that could change your decision as **Critical to the plan**.
-4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
+4. Select **Run Tests** for a live review. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
-Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Tactile can cite an attachment when an exact passage applies to the claim. Attachments are sent to your configured review provider and stay out of the web-search request.
+Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Attachments become context for Crossfire’s analysis. The app sends that context to your configured model provider.
 
-Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Failed numeric requirements can determine a deterministic verdict. Passing a check verifies the calculation under the stated inputs.
+Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Tactile calculates the result and passes it to Crossfire as review context.
 
 In a live report, use **Settle this claim** for a downloadable measurement check, **Re-review this claim** to run one claim with additional evidence, or **Track after rollout** to save a claim in the workspace’s outcome log. The outcome log stays on this device for your account and can be exported as JSON.
 
@@ -60,7 +60,7 @@ npm run dev
 
 Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
-To use the workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
+To use the authenticated workspace, install Python 3.11 or newer and run `npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
 
 | Variable                   | Purpose                                                                     |
 | -------------------------- | --------------------------------------------------------------------------- |
@@ -75,18 +75,17 @@ To use the workspace, copy `.env.example` to `.env`, configure a Supabase projec
 
 ## How review works
 
-- **Claim selection.** Extract up to six claims from a proposal and confirm up to three for review.
-- **Checks by risk.** Every claim gets independent checks for assumptions, feasibility, and adoption. Technical and evidence claims also get evidence critique and public research. An unverified public blocker on a critical claim can trigger one targeted follow-up search. Explicit equations and engineering checks are evaluated directly.
-- **Evidence and verdict.** Match quotes against fetched source text and ask a verifier to check applicability to each claim. For proposal-derived findings the verifier checks the exact excerpt against the complete proposal. Deterministic arithmetic can establish an explicit calculation error directly. “No credible break found” records a completed adversarial check without a detected concern. An unresolved verdict identifies evidence gaps, conflicting sources, or a failed check.
-- **Decision memo.** The recommendation starts from the findings on critical claims. See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
+- **Claim Map.** Crossfire extracts testable assumptions and selects an adversarial panel. Confirm up to three claims before running tests.
+- **Isolated tests and cross-examination.** The selected evaluators test claims independently, look for evidence, and follow up on critical blockers.
+- **Decision Memo.** Crossfire’s Steelman reconciles findings into **Survived**, **Weakened**, **Broken**, or **Unresolved**. The memo records **Proceed**, **Proceed with Changes**, **Hold**, or **Drop**, with its deciding factor, dissent, and next actions when available.
 
-The review flow draws on [Crossfire’s adaptive routing and cross-examination](https://github.com/hriday-singh/crossfire/tree/50209fc#how-it-works). Tactile implements those ideas with its own TypeScript pipeline and exact-quote evidence checks.
+Tactile runs the pinned [Crossfire Python engine](server/crossfire/upstream/README.md) for authenticated live reviews. Tactile supplies the selected model, web search, and its bounded public-page fetcher. The browser uses the existing interface and report storage. Bundled examples retain their recorded results.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.
 
 ## Deploy to Render
 
-Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. The existing hosted service may still serve an older build.
+Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. The existing hosted service may still serve an older build. An authenticated deployment needs Python 3.11 or newer and `npm run setup:crossfire` in its build command.
 
 ## Development and evaluation
 

@@ -1,0 +1,224 @@
+"""
+Centralized catalog, routing table, and normalization for Crossfire evaluators.
+Keeps agent panel specifications and extraction contracts modular.
+"""
+from __future__ import annotations
+
+from uuid import uuid4
+from pydantic import BaseModel, Field
+from core.models import Case, TestPlanItem
+from core.textutil import format_concise_rationale, is_empirical_claim, one_line
+
+KNOWN_AGENTS: tuple[str, ...] = ("devils_advocate", "researcher", "builder", "operator")
+
+# One agent, one failure mode. The whole routing table — no keywords, because a
+# keyword table can only ever encode the scenarios someone thought of.
+AGENT_FAILURE_MODE: dict[str, str] = {
+    "devils_advocate": "assumption",
+    "researcher": "evidence",
+    "builder": "feasibility",
+    "operator": "operational_friction",
+}
+
+FAILURE_MODE_TO_AGENT: dict[str, str] = {
+    v: k for k, v in AGENT_FAILURE_MODE.items()
+}
+FAILURE_MODE_TO_AGENT["edge-case"] = "operator"
+
+
+AGENT_OBJECTIVE: dict[str, str] = {
+    "devils_advocate": "Deductively probe unstated premises, circular dependencies, and counter-incentives behind: {statement}",
+    "researcher": "Empirically verify external evidence, benchmarks, prices, or statutory sources for: {statement}",
+    "builder": "Assess technical architecture, API dependencies, execution limits, and Day-1 blockers for: {statement}",
+    "operator": "Stress-test human adoption inertia, workflow disruption, procurement red tape, and process drag for: {statement}",
+}
+
+DEFAULT_RATIONALES: dict[str, str] = {
+    "devils_advocate": "Tests unstated premises and deductive logical flaws.",
+    "researcher": "Verifies facts and regulations against empirical evidence.",
+    "builder": "Evaluates technical architecture and execution blockers.",
+    "operator": "Stress-tests human adoption and organizational friction.",
+}
+
+# Researcher is the single-pass default for secondary claims: it is the only
+# evaluator that can bring an outside source back, and a sourced contradiction
+# is the only thing that can break a claim (Stage 1a).
+SINGLE_PASS_PRIORITY: tuple[str, ...] = ("researcher", "devils_advocate", "builder", "operator")
+
+
+class AgentPick(BaseModel):
+    agent: str = Field(description="One of: devils_advocate, researcher, builder, operator")
+    rationale: str = Field(
+        description="One clear, concise sentence (under 100 characters) explaining why this test is needed."
+    )
+
+
+class ResolvedTermOutput(BaseModel):
+    term: str = Field(description="The domain phrase exactly as the user wrote it.")
+    resolved: str = Field(description="What it concretely denotes.")
+    search_phrasing: str = Field(description="How you would phrase it for a search engine.")
+
+
+class ExtractedClaims(BaseModel):
+    """Narrow extraction schema — not the frozen Case shape. Asking the model
+    to fill Case's full fields directly risks hallucinated/unrequested fields;
+    this stays small and gets mapped onto Case here."""
+
+    testable: bool = Field(
+        default=True,
+        description="False when the input names no concrete decision to test (pure ideation, open-ended life advice).",
+    )
+    redirect: str | None = Field(
+        default=None,
+        description="When testable is False: one sentence asking for the specific decision, naming what is missing.",
+    )
+    statements: list[str] = Field(default_factory=list)
+    mechanisms: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Parallel to 'statements', one entry per claim: a short shared label naming "
+            "the parent idea when several claims are mechanisms of the same thing. "
+            "Empty string for a claim that stands alone."
+        ),
+    )
+    terms: list[ResolvedTermOutput] = Field(
+        default_factory=list,
+        description="Domain jargon from the input, resolved. Omit any term you cannot resolve confidently.",
+    )
+    agents: list[AgentPick] = Field(default_factory=list)
+    reversibility: str | None = Field(
+        default=None,
+        description=(
+            "'one_way' if the decision is costly or impossible to undo once made, "
+            "'two_way' if it can be reversed cheaply. Null when the input does not say enough."
+        ),
+    )
+    deadline: str | None = Field(
+        default=None,
+        description="The deadline exactly as the user stated it. Null if none is stated. Never invent one.",
+    )
+
+
+def normalize_agents(picks: list[AgentPick]) -> tuple[list[str], dict[str, str]]:
+    """Validates the model's agent picks against the known panel.
+
+    Devil's Advocate is always present: it needs no evidence and always returns
+    a finding, so a claim can never fall out of the run entirely.
+    """
+    selected: list[str] = []
+    rationales: dict[str, str] = {}
+    for pick in picks or []:
+        agent = (pick.agent or "").strip().lower()
+        if agent == "overthinker":
+            agent = "operator"
+        if agent == "researcher":
+            agent = "researcher"
+        if agent in KNOWN_AGENTS and agent not in selected:
+            selected.append(agent)
+            rationales[agent] = format_concise_rationale(pick.rationale) or DEFAULT_RATIONALES[agent]
+
+    if "devils_advocate" not in selected:
+        selected.insert(0, "devils_advocate")
+        rationales.setdefault("devils_advocate", DEFAULT_RATIONALES["devils_advocate"])
+    if not rationales:
+        rationales = dict(DEFAULT_RATIONALES)
+
+    # Ordered by KNOWN_AGENTS so the panel reads the same way every run.
+    ordered = [a for a in KNOWN_AGENTS if a in selected]
+    return ordered, {a: rationales.get(a, DEFAULT_RATIONALES[a]) for a in ordered}
+
+
+EXTRACTION_SYSTEM_PROMPT = (
+    "You map a decision onto the discrete claims it rests on. The decision can be of "
+    "any kind — personal, financial, medical, legal, career, operational, technical, "
+    "creative. Never assume a domain.\n\n"
+    "First judge whether the input names a concrete decision or proposal that could "
+    "turn out to be a mistake. Open-ended ideation ('give me a cool idea'), vague "
+    "aspiration, or a request for general life advice is NOT testable: set testable=false "
+    "and put one sentence in 'redirect' asking for the specific decision, naming exactly "
+    "what is missing. Do not invent claims in that case.\n\n"
+    "An incoherent premise is also NOT testable. If the input rests on a category "
+    "error, a mismatch between the thing and who it is for, or a contradiction "
+    "('give wheelchairs to cyclists'), do not repair it into the sensible proposal "
+    "you assume was meant, and do not solemnly extract claims from it. Set "
+    "testable=false and say in 'redirect' exactly which part does not hold together. "
+    "Reading the input charitably is your job; rewriting it into a different "
+    "proposal is not — a memo that tests a decision the user never made is worse "
+    "than one that asks.\n\n"
+    "If it is testable, return 2 to 5 crisp, falsifiable claims. Each must be a single "
+    "assertion that could independently turn out true or false. Include both what the "
+    "user asserted outright AND the unstated assumptions the proposal silently depends "
+    "on. Write each claim so it stands on its own without the original wording.\n\n"
+    "RESOLVE THE DOMAIN TERMS.\n"
+    "For each piece of domain jargon in the input, emit a term with: the phrase as the "
+    "user wrote it, what it concretely denotes, and how you would phrase it for a "
+    "search engine. 'Holiday quotas' is not searchable; 'IRCTC Tatkal quota opening "
+    "time' is. If you cannot resolve a term confidently, omit it — an unresolved term "
+    "is harmless, a wrongly resolved one sends every search to the wrong place. Keep the "
+    "term text identical to the wording used in the claim it belongs to, so it can be "
+    "matched back.\n\n"
+    "SPLIT BUNDLED MECHANISMS.\n"
+    "An idea often bundles several mechanisms that fail independently. 'Logs in at the "
+    "exact second, solves the CAPTCHA, and guarantees a confirmed ticket' is three: the "
+    "timing race, the CAPTCHA bypass, and the confirmation guarantee. Each can be true "
+    "or false without the others. Emit one claim per mechanism and give the siblings a "
+    "shared label in 'mechanisms' (same index as the claim in 'statements') naming the "
+    "parent idea. Do not split a single mechanism into restatements of itself — the "
+    "test is whether one could fail while another holds.\n\n"
+    "JUDGE THE DOOR.\n"
+    "Set 'reversibility' to 'one_way' if undoing the decision would be costly or "
+    "impossible (signing, quitting, a large non-refundable spend, surgery, a public "
+    "launch), 'two_way' if it can be walked back cheaply (a trial, a pilot, a refundable "
+    "purchase). Leave it null if the input does not say enough. Copy any deadline the "
+    "user stated into 'deadline'; never invent one.\n\n"
+    "Then pick which adversarial tests this specific decision needs. For each chosen agent, "
+    "provide exactly ONE concise sentence (under 100 characters) clearly explaining why this "
+    "test is needed for this decision. Keep it crisp, direct, and under three lines. No filler:\n"
+    "- devils_advocate: unstated premises, counter-incentives, motivated reasoning.\n"
+    "- researcher: claims checkable against outside sources, prices, rules, records, precedent.\n"
+    "- builder: whether execution is actually achievable with the time, money, skill or access available.\n"
+    "- operator: organizational friction, human inertia, enterprise procurement red tape, regulatory liability, process drag.\n"
+    "Pick only the ones that earn their place for this decision."
+)
+
+
+def build_test_plan(
+    case: Case,
+    panel: bool = True,
+    active_agents: list[str] | None = None,
+) -> list[TestPlanItem]:
+    """Routes claims to adversarial evaluators.
+
+    All claims (load-bearing and secondary) receive multi-persona scrutiny:
+    - Empirical claims: route to Researcher (researcher), Builder (builder), Operator (operator),
+      and Devil's Advocate (devils_advocate).
+    - Non-empirical claims: omit Researcher (researcher), routing to Builder (builder),
+      Operator (operator), and Devil's Advocate (devils_advocate).
+
+    Single-pass single-evaluator routing has been eliminated to prevent routing blindspots.
+    Claims are never routed to a single persona unless explicitly restricted by a single-element
+    `active_agents` configuration.
+    """
+    if active_agents is None:
+        active_agents = list(getattr(case, "selected_agents", None) or KNOWN_AGENTS)
+    agents = [a for a in KNOWN_AGENTS if a in active_agents] or ["devils_advocate"]
+
+    items: list[TestPlanItem] = []
+    for claim in case.claims:
+        # Selective Evaluator Dispatch: omit researcher if claim is not empirical
+        claim_agents = [a for a in agents if a != "researcher" or is_empirical_claim(claim.statement)]
+        if not claim_agents:
+            claim_agents = list(agents)
+
+        target_agents = claim_agents
+
+        for agent in target_agents:
+            items.append(
+                TestPlanItem(
+                    id=str(uuid4()),
+                    target_claim=claim.id,
+                    failure_mode=AGENT_FAILURE_MODE[agent],
+                    objective=AGENT_OBJECTIVE[agent].format(statement=claim.statement),
+                )
+            )
+    return items

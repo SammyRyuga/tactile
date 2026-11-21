@@ -126,3 +126,8 @@
 
 - Added an interactive five-station view of the existing review events. The room highlights running checks and shows the status and a relevant excerpt for the selected station.
 - Completed reports offer an optional view populated from their saved audit trail. Keyboard controls, reduced-motion styling, and responsive layouts are covered by browser tests.
+
+## Crossfire review engine
+
+- Integrated the pinned Crossfire core in the authenticated live review flow. The review uses Crossfire’s extraction prompts, panel, ranking, reconciliation, and decision synthesis. The existing review room consumes translated progress events.
+- Retained Tactile’s model picker, API and report storage. Added Crossfire’s claim verdicts and memo sections to the current report layout. The gateway supplies the selected provider and Tactile’s bounded public-page reader.

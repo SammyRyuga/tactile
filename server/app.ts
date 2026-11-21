@@ -5,6 +5,7 @@ import type { ErrorRequestHandler, Request, Response } from "express";
 import { proposalSchema, reviewInputSchema } from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 import { extractClaims, ProposalScopeError, runReview } from "./pipeline.ts";
+import type { createCrossfireEngine } from "./crossfire-engine.ts";
 import type { PublicAuthConfig } from "./auth.ts";
 import {
   createProviderSettings,
@@ -58,6 +59,7 @@ export function createApp(
     metaVerifierModel?: string;
     metaRequest?: typeof fetch;
     sourceReader?: NonNullable<Parameters<typeof runReview>[4]>["sourceReader"];
+    crossfire?: ReturnType<typeof createCrossfireEngine>;
   } = {},
 ) {
   const app = express();
@@ -425,7 +427,8 @@ export function createApp(
         response.json({ claims: cached });
         return;
       }
-      const claims = await extractClaims(client, parsed.data, signal);
+      const extract = options.crossfire?.extract ?? extractClaims;
+      const claims = await extract(client, parsed.data, signal);
       signal.throwIfAborted();
       cache?.add(parsed.data, claims);
       response.json({ claims });
@@ -447,17 +450,19 @@ export function createApp(
       const emit = (event: ReviewEvent) => {
         if (!response.destroyed) response.write(JSON.stringify(event) + "\n");
       };
-      const report = await runReview(client, input.data, emit, signal, {
-        verifierModel: options.verifierModel,
-        sourceReader: options.sourceReader,
-        log: (entry) =>
-          console.info(
-            JSON.stringify({
-              requestId: response.getHeader("X-Request-Id"),
-              ...entry,
-            }),
-          ),
-      });
+      const report = options.crossfire
+        ? await options.crossfire.review(client, input.data, emit, signal)
+        : await runReview(client, input.data, emit, signal, {
+            verifierModel: options.verifierModel,
+            sourceReader: options.sourceReader,
+            log: (entry) =>
+              console.info(
+                JSON.stringify({
+                  requestId: response.getHeader("X-Request-Id"),
+                  ...entry,
+                }),
+              ),
+          });
       signal.throwIfAborted();
       emit({ type: "report", report });
       response.end();

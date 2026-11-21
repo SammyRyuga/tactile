@@ -23,6 +23,7 @@ import {
 } from "../shared/demo.ts";
 import {
   claimSchema,
+  decisionMemoSections,
   projectEvidenceSchema,
   reportSchema,
   limits,
@@ -665,7 +666,11 @@ export function App({
           <motion.div key="decision" className="decision-layout" {...enter}>
             <section className="panel">
               <h2 ref={heading} tabIndex={-1}>
-                {publicDemo ? example.title : "Describe your decision"}
+                {publicDemo
+                  ? example.title
+                  : availability === "live"
+                    ? "What decision are you testing?"
+                    : "Describe your decision"}
               </h2>
               <form onSubmit={onExtract}>
                 <label htmlFor="proposal">
@@ -718,7 +723,9 @@ export function App({
                       ? "Inspect claims"
                       : extracting
                         ? "Finding claims…"
-                        : "Find claims"}
+                        : availability === "live"
+                          ? "Run stress test"
+                          : "Find claims"}
                   </button>
                 </div>
               </form>
@@ -805,11 +812,14 @@ export function App({
             <div className="claim-editor-head">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
-                  Choose what to check
+                  {mode === "live"
+                    ? `We identified ${claims.length} claims to test`
+                    : "Choose what to check"}
                 </h2>
                 <p>
-                  A claim is something that must be true for your plan to work.
-                  Edit the claims and pick up to {limits.selected} to check.
+                  {mode === "live"
+                    ? "Review the extracted assumptions below. You can edit, remove, or add claims before running tests."
+                    : `A claim is something that must be true for your plan to work. Edit the claims and pick up to ${limits.selected} to check.`}
                 </p>
               </div>
               <div className="claim-count" role="status">
@@ -1004,7 +1014,8 @@ export function App({
                     className="button primary"
                     disabled={!selected.length}
                   >
-                    Run review {mark("arrow")}
+                    {mode === "live" ? "Run Tests" : "Run review"}{" "}
+                    {mark("arrow")}
                   </button>
                 </div>
               </div>
@@ -1088,7 +1099,9 @@ export function App({
             <div className="split report-header">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
-                  Decision report
+                  {report.crossfireDecision
+                    ? "Decision Memo"
+                    : "Decision report"}
                 </h2>
                 <p className="section-note">
                   {report.mode === "demo"
@@ -1120,9 +1133,21 @@ export function App({
               </span>
             </div>
             <div className="recommendation">
-              <h3>Recommended next step</h3>
+              <h3>{report.crossfireDecision ?? "Recommended next step"}</h3>
               <p>{report.recommendation}</p>
             </div>
+            {decisionMemoSections(report.crossfireMemo).map(
+              ({ title, items }) => (
+                <details className="proposal" key={title}>
+                  <summary>{title}</summary>
+                  <ul>
+                    {items.filter(Boolean).map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </details>
+              ),
+            )}
             <details className="proposal">
               <summary>Read your proposal</summary>
               <p>{reportProposal}</p>
@@ -1139,7 +1164,7 @@ export function App({
               {report.findings.map((finding) => (
                 <article key={finding.claim.id} className="finding">
                   <span
-                    className={`verdict ${finding.verdict.toLowerCase().replaceAll(" ", "-")}`}
+                    className={`verdict ${(finding.verdict === "Survived" ? "No credible break found" : finding.verdict === "Broken" ? "Contradicted" : finding.verdict).toLowerCase().replaceAll(" ", "-")}`}
                   >
                     {finding.verdict}
                   </span>

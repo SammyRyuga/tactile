@@ -60,6 +60,7 @@ test("the review room shows streamed activity and opens recorded checks from the
                         recommendation:
                           "Repeat the staging test before rollout.",
                         mode: "live",
+                        crossfireDecision: "Hold",
                         findings: [
                           {
                             claim,
@@ -99,8 +100,10 @@ test("the review room shows streamed activity and opens recorded checks from the
   await page
     .getByLabel("Your plan")
     .fill("Move invoice exports to background workers and monitor queue size.");
-  await page.getByRole("button", { name: "Find claims" }).click();
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const room = page.locator(".review-room");
   await expect(
     room.getByRole("button", { name: "Feasibility In progress" }),
@@ -127,6 +130,9 @@ test("the review room shows streamed activity and opens recorded checks from the
   await page.evaluate(() =>
     window.dispatchEvent(new Event("finish-fixture-review")),
   );
+  await expect(
+    page.getByRole("heading", { name: "Decision Memo" }),
+  ).toBeVisible();
   await page.getByText("See the review room").press("Enter");
   await expect(
     room.getByRole("button", { name: "Feasibility Complete" }),
