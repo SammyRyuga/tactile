@@ -643,21 +643,6 @@ a.button {
   }
 }
 
-.claim-meta {
-  grid-column: 2 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem 1rem;
-  font-size: 0.88rem;
-  color: var(--quiet);
-}
-.claim-meta label {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin: 0;
-}
 .finding-note {
   background: var(--tint);
   border-radius: 0.45rem;
@@ -711,9 +696,4 @@ a.button {
 .passages small {
   display: block;
   color: var(--quiet);
-}
-@media (max-width: 460px) {
-  .claim-meta {
-    grid-column: 1 / -1;
-  }
 }

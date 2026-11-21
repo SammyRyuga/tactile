@@ -105,11 +105,17 @@ test("the review room shows streamed activity and opens recorded checks from the
   await page
     .getByLabel("Your plan")
     .fill("Move invoice exports to background workers and monitor queue size.");
-  await page
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
-    .click();
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Analyze my plan" }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   const room = page.locator(".review-room");
+  await expect(
+    page.getByRole("heading", { name: "Checking your assumptions" }),
+  ).toBeFocused();
+  await expect(page.getByRole("status")).toBeVisible();
+  await expect(room).toBeHidden();
+  await page
+    .getByText("Explore the review room", { exact: true })
+    .press("Enter");
   const stations = room.getByRole("group", { name: "Review stations" });
   await expect(stations.getByRole("button")).toHaveCount(5);
   expect(
@@ -171,11 +177,11 @@ test("the review room shows streamed activity and opens recorded checks from the
     window.dispatchEvent(new Event("finish-fixture-review")),
   );
   await expect(
-    page.getByRole("heading", { name: "Decision Memo" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   const reportDisclosures = page.locator(".report-details > details");
   await expect(reportDisclosures).toHaveCount(3);
-  await page.getByText("Read your proposal", { exact: true }).press("Enter");
+  await page.getByText("Read your plan", { exact: true }).press("Enter");
   expect(
     await reportDisclosures.evaluateAll((cards) => {
       const [decision, proposal, room] = cards.map((card) =>
@@ -191,7 +197,9 @@ test("the review room shows streamed activity and opens recorded checks from the
       );
     }),
   ).toBe(true);
-  await page.getByText("Decision details", { exact: true }).press("Enter");
+  await page
+    .getByText("How we reached this result", { exact: true })
+    .press("Enter");
   await expect(page.getByText("Run the pilot in staging.")).toBeVisible();
   await page.getByText("See the review room").press("Enter");
   await expect(

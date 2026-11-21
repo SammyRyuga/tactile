@@ -20,26 +20,24 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   await signIn(page);
   await expect(page).toHaveURL(/\/review$/);
   await expect(
-    page.getByRole("heading", { name: "Describe your decision" }),
+    page.getByRole("heading", { name: "Describe your plan" }),
   ).toBeVisible();
   await expect(page.getByLabel("Your plan")).toHaveValue("");
-  await page
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
-    .click();
+  await page.getByRole("button", { name: "Analyze my plan" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Meta Model API key in Settings",
   );
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
     page.getByRole("heading", {
-      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+      name: "Review assumptions",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
-  await expect(page.getByText("Smallest viable change").first()).toBeVisible();
+  await expect(page.getByText("Suggested change").first()).toBeVisible();
   const finding = page
     .getByRole("article")
     .filter({ hasText: "Testing only the changed package" });
@@ -66,7 +64,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   ).toBe(true);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   await page.goto("/review");
   await page
@@ -79,7 +77,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .locator("xpath=ancestor::section[1]");
   const bounds = await editor.boundingBox();
   const action = await editor
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .getByRole("button", { name: "Analyze my plan" })
     .boundingBox();
   expect(bounds!.y + bounds!.height - action!.y - action!.height).toBeLessThan(
     70,
@@ -94,7 +92,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .getByRole("button", { name: /^Replace full test runs/ })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeFocused();
   await page.getByRole("button", { name: "Back to workspace" }).click();
   await expect(page.getByLabel("Your plan")).toHaveValue(
@@ -133,12 +131,12 @@ test("signed-in replica links preserve the requested bundled review", async ({
   await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dreplica/);
   await signIn(page);
   await expect(page).toHaveURL(/\/review\?example=replica/);
-  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "Assumption 1" })).toHaveValue(
     /A replica always returns an order/,
   );
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   await expect(
     page.getByText("Keep immediate order lookups on the primary", {
@@ -158,15 +156,15 @@ test("a workspace example requires sign-in and retains its evidence", async ({
   await signIn(page);
   await expect(
     page.getByRole("heading", {
-      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+      name: "Review assumptions",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await page.getByRole("button", { name: "Cancel review" }).press("Enter");
-  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "Assumption 1" })).toHaveValue(
     /reverses changes the new writer/,
   );
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   const finding = page
     .getByRole("article")
     .filter({ hasText: "reverses changes the new writer" });
@@ -198,13 +196,11 @@ test("a workspace example requires sign-in and retains its evidence", async ({
   expect(memo).toContain("Contradicted");
   expect(memo).toContain("Supported");
 
-  await page.getByRole("button", { name: "Edit claims" }).click();
+  await page.getByRole("button", { name: "Edit assumptions" }).click();
   const editedClaim =
     "Disabling the flag restores every record within a second.";
-  await page.getByRole("textbox", { name: "Claim 1" }).fill(editedClaim);
-  await page
-    .getByRole("button", { name: /^(Run review|Run Tests)$/ })
-    .press("Enter");
+  await page.getByRole("textbox", { name: "Assumption 1" }).fill(editedClaim);
+  await page.getByRole("button", { name: "Run checks" }).press("Enter");
   const editedFinding = page
     .getByRole("article")
     .filter({ hasText: editedClaim });
@@ -241,18 +237,14 @@ test("provider downtime keeps the draft available for retry", async ({
   const draft =
     "Route jobs through the new queue and verify ordering stays stable.";
   await page.getByLabel("Your plan").fill(draft);
-  await page
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
-    .click();
+  await page.getByRole("button", { name: "Analyze my plan" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "temporarily unavailable",
   );
   await page.reload();
   await expect(page.getByLabel("Your plan")).toHaveValue(draft);
-  await page
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
-    .click();
-  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+  await page.getByRole("button", { name: "Analyze my plan" }).click();
+  await expect(page.getByRole("textbox", { name: "Assumption 1" })).toHaveValue(
     "The change preserves ordering.",
   );
 });
@@ -304,8 +296,8 @@ test("claim controls select every claim and preserve keyboard editing", async ({
   await page.goto("/review?demo=1");
   await expect(page).toHaveURL(/\/login\?next=/);
   await signIn(page);
-  const first = page.getByRole("checkbox", { name: "Review claim 1" });
-  const fourth = page.getByRole("checkbox", { name: "Review claim 4" });
+  const first = page.getByRole("checkbox", { name: "Include assumption 1" });
+  const fourth = page.getByRole("checkbox", { name: "Include assumption 4" });
   await expect(fourth).toBeChecked();
   await expect(page.getByRole("status")).toContainText("4 of 4");
   await first.focus();
@@ -314,21 +306,23 @@ test("claim controls select every claim and preserve keyboard editing", async ({
   await expect(page.getByRole("status")).toContainText("3 of 4");
   await first.check();
   await expect(page.getByRole("status")).toContainText("4 of 4");
-  await page.getByRole("button", { name: "Add claim" }).click();
-  const added = page.getByRole("textbox", { name: "Claim 5" });
+  await page.getByRole("button", { name: "Add assumption" }).click();
+  const added = page.getByRole("textbox", { name: "Assumption 5" });
   await expect(added).toBeFocused();
   await added.fill("The pilot covers all supported clients.");
-  await page.getByRole("checkbox", { name: "Review claim 5" }).check();
+  await page.getByRole("checkbox", { name: "Include assumption 5" }).check();
   await expect(page.getByRole("status")).toContainText("5 of 5");
-  await page.getByRole("button", { name: "Remove claim 5" }).click();
+  await page.getByRole("button", { name: "Remove assumption 5" }).click();
   await expect(added).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Claim 4" })).toBeFocused();
+  await expect(
+    page.getByRole("textbox", { name: "Assumption 4" }),
+  ).toBeFocused();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(page.locator(".findings > article")).toHaveCount(4);
 });
 

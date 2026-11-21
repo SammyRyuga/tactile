@@ -83,31 +83,14 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .fill(
       "Roll out a change to checkout staging and measure latency and job throughput under load.",
     );
-  await page
-    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
-    .click();
+  await page.getByRole("button", { name: "Analyze my plan" }).click();
   const disclosures = page.locator(".review-setup > details");
-  await expect(disclosures).toHaveCount(3);
-  const setup = page.locator(".reviewer-disclosure");
-  await expect(setup.locator("summary")).toContainText("Devil's Advocate");
-  await expect(setup).not.toHaveAttribute("open", "");
-  await setup.locator("summary").click();
-  expect(
-    await disclosures.evaluateAll((cards) => {
-      const [proposal, panel, evidence] = cards.map((card) =>
-        card.getBoundingClientRect(),
-      );
-      return (
-        panel.left === proposal.left &&
-        evidence.left === proposal.left &&
-        panel.width === proposal.width &&
-        evidence.width === proposal.width &&
-        proposal.bottom <= panel.top &&
-        panel.bottom <= evidence.top
-      );
-    }),
-  ).toBe(true);
-  const panel = page.getByRole("group", { name: "Adversarial panel" });
+  await expect(disclosures).toHaveCount(1);
+  await expect(disclosures).not.toHaveAttribute("open", "");
+  const advanced = disclosures.locator(":scope > summary");
+  const panel = page.getByRole("group", { name: "How we'll check your plan" });
+  await expect(panel).toBeHidden();
+  await advanced.press("Enter");
   await expect(panel.getByText("Devil's Advocate")).toBeVisible();
   await panel.getByRole("checkbox", { name: /Operator/ }).uncheck();
   await page.getByText("Project evidence", { exact: true }).click();
@@ -122,9 +105,10 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     buffer: Buffer.from(quote),
   });
   await expect(page.getByLabel("Evidence excerpt 1")).toHaveValue(quote);
-  const claim = page.locator(".claim-row").nth(1);
-  await claim.getByText("Claim options").click();
-  const risk = claim.getByRole("combobox", { name: "Main risk for claim 2" });
+  const claim = page.getByRole("group", { name: "Assumption 2" });
+  const risk = claim.getByRole("combobox", {
+    name: "Main risk for assumption 2",
+  });
   await risk.press("Space");
   await expect(risk).toHaveCSS("appearance", "base-select");
   await expect(risk.locator("option:checked")).toHaveCSS(
@@ -141,7 +125,19 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await claim.getByLabel("Jobs per minute per worker").fill("120");
   await claim.getByLabel("Workers", { exact: true }).fill("5");
   await claim.getByLabel("Required jobs per second").fill("10");
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await advanced.press("Enter");
+  await expect(risk).toBeHidden();
+  await page.reload();
+  await expect(disclosures).not.toHaveAttribute("open", "");
+  await advanced.press("Enter");
+  await expect(
+    panel.getByRole("checkbox", { name: /Operator/ }),
+  ).not.toBeChecked();
+  await expect(risk).toHaveValue("evidence");
+  await claim.locator(".engineering-editor > summary").press("Enter");
+  await expect(claim.getByLabel("Required jobs per second")).toHaveValue("10");
+  await advanced.press("Enter");
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(page.getByText("Reviewer-supplied evidence")).toBeVisible();
   await expect(page.getByText(quote)).toBeVisible();
   expect(submitted[0].reviewers).toEqual([
@@ -176,12 +172,12 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .click();
   await expect(
     page.getByRole("heading", {
-      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+      name: "Review assumptions",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   await expect(
-    page.getByRole("heading", { name: "Decision report" }),
+    page.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
   expect(submitted[1].claims.map(({ id }) => id)).toEqual(["load"]);
   await page.getByText("Record rollout outcomes").click();

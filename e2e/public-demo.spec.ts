@@ -45,13 +45,13 @@ test("the public demo replays all three cases and exports the recorded memo", as
 
   const report = page.locator(".report");
   async function runRecordedCase() {
-    await page.getByRole("button", { name: "Inspect claims" }).press("Enter");
+    await page.getByRole("button", { name: "Review example" }).press("Enter");
     await expect(
-      page.getByRole("heading", { name: "Choose what to check" }),
+      page.getByRole("heading", { name: "Review assumptions" }),
     ).toBeFocused();
-    await page.getByRole("button", { name: "Run review" }).press("Enter");
+    await page.getByRole("button", { name: "Run checks" }).press("Enter");
     await expect(
-      report.getByRole("heading", { name: "Decision report" }),
+      report.getByRole("heading", { name: "Review results" }),
     ).toBeFocused();
     await expect(report.getByText("Bundled example evidence")).toBeVisible();
     expect(
@@ -140,21 +140,21 @@ test("the public demo replays all three cases and exports the recorded memo", as
   expect(memo).toContain("Supported");
   await page.reload();
   await expect(
-    report.getByRole("heading", { name: "Decision report" }),
+    report.getByRole("heading", { name: "Review results" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit claims" }).click();
+  await page.getByRole("button", { name: "Edit assumptions" }).click();
   const edited = "The service reduces first-month hosting costs by 30 percent.";
-  await page.getByRole("textbox", { name: "Claim 1" }).fill(edited);
-  await page.getByText("Claim options", { exact: true }).first().press("Enter");
+  await page.getByRole("textbox", { name: "Assumption 1" }).fill(edited);
+  await page.getByText("Advanced settings", { exact: true }).press("Enter");
   await page
-    .getByRole("combobox", { name: "Main risk for claim 1" })
+    .getByRole("combobox", { name: "Main risk for assumption 1" })
     .selectOption("evidence");
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "Assumption 1" })).toHaveValue(
     edited,
   );
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
   const editedFinding = report.getByRole("article").filter({ hasText: edited });
   await expect(
     editedFinding.getByText("Unresolved", { exact: true }),
@@ -210,4 +210,62 @@ test("invalid demo cases can recover and anonymous settings stay protected", asy
   expect(settings.status()).toBe(401);
   expect(settings.headers()["cache-control"]).toBe("no-store");
   expect(settings.headers()["x-content-type-options"]).toBe("nosniff");
+});
+
+test("the beginner flow keeps advanced controls optional and restores the chosen example on Back", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
+  if (testInfo.project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 840 });
+  await page.goto("/demo?example=flag");
+  const activeStep = page.locator(".steps [aria-current=step]");
+  await expect(activeStep).toContainText("Plan");
+  await page.getByRole("button", { name: "Review example" }).press("Enter");
+  await expect(activeStep).toContainText("Assumptions");
+  await expect(
+    page.getByRole("checkbox", { name: "Critical assumption 1" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("combobox", { name: "Main risk for assumption 1" }),
+  ).toBeHidden();
+  await page.getByRole("checkbox", { name: "Include assumption 1" }).uncheck();
+  await page.getByRole("checkbox", { name: "Include assumption 2" }).uncheck();
+  const run = page.getByRole("button", { name: "Run checks" });
+  await expect(run).toBeDisabled();
+  await expect(
+    page.getByText("Include at least one assumption to run checks."),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: "Include assumption 1" }).check();
+  const long =
+    "Every affected record must be restored after switching the feature off, including records written by requests already running when the flag changed.";
+  await page.getByRole("textbox", { name: "Assumption 1" }).fill(long);
+  await run.press("Enter");
+  await expect(activeStep).toContainText("Results");
+  await expect(
+    page.getByRole("heading", { name: "Review results" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("article").getByText("Unresolved", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Choose another example" })
+    .press("Enter");
+  await page.getByRole("link", { name: /CI coverage/ }).press("Enter");
+  await expect(page).toHaveURL(/example=ci$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/example=flag$/);
+  await expect(page.getByLabel("Bundled plan")).toHaveValue(
+    /new record writer/,
+  );
+  await page.getByRole("button", { name: "Review example" }).press("Enter");
+  await run.press("Enter");
+  await expect(
+    page.getByRole("article").getByText("Contradicted", { exact: true }),
+  ).toBeVisible();
 });

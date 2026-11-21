@@ -50,7 +50,7 @@ export function ReviewTrail({
       ) : null}
       {finding.repair && (
         <div className="finding-note repair">
-          <h4>Smallest viable change</h4>
+          <h4>Suggested change</h4>
           <p>{finding.repair.minimalFix}</p>
           {finding.repair.tradeoff && (
             <p>
