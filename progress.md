@@ -88,3 +88,10 @@
 - Reused identical claim extraction for five minutes within the signed-in model session. Verified that changing the model clears the cache.
 - Kept the workflow and example library behind sign-in. Previous example links direct users to their signed-in workspace.
 - Verified all 46 unit and HTTP tests and 20 desktop and mobile browser tests. Meta accepted the test key for all three models and reported zero cached input tokens in the two-request probe.
+
+## Compute 50 final validation · November 21, 2026
+
+- Started on `feat/compute50-final-validation` from current `main`. The workspace and model-picker revision `62c6379` passed both CI jobs. The subsequent CodeQL addition `4ff38ac` passed CodeQL and failed Prettier in the main CI workflow. Formatted the workflow and verified it with Prettier’s AST check.
+- Updated React and React DOM together to 19.3.1. The lockfile resolves a single React version and scheduler 0.28.0. Clean installs, `npm run check` (46 tests), and `npm run test:e2e` (20 Chromium tests) passed on Node 22.23.5 and 24.19.0. Fixture evaluation still returned the expected verdicts. The production dependency audit reported zero vulnerabilities. The full audit reported the existing ESLint/minimatch advisory.
+- Kept TypeScript at 5.9.3. The current `typescript-eslint` 8.73.0 release declares a TypeScript peer range below 6.1.0. See the [dependency review](docs/dependency-review.md).
+- Updated the [Round 1 walkthrough](docs/round1-demo.md) for the signed-in bundled run. Render returned HTTP 200 for the homepage, health endpoint, and bundled evidence page, and the legacy example URL redirected to the current workspace route. Browser tests with auth fixtures verified the sign-in gate, review, evidence link, and Markdown download. Authenticated Render rehearsal and independent human and citation grading remain pending.
