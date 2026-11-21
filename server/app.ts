@@ -8,6 +8,7 @@ import type { PublicAuthConfig } from "./auth.ts";
 import {
   createProviderSettings,
   personalKeySchema,
+  providerSessionId,
   validateMetaKey,
 } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
@@ -31,6 +32,7 @@ export function createApp(
   app.disable("x-powered-by");
   let active = 0;
   const validatingKeys = new Map<string, AbortController>();
+  const maxConcurrentKeyValidations = 32;
   const settings = createProviderSettings(options.metaVerifierModel);
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
@@ -135,16 +137,29 @@ export function createApp(
         .json({ message: "Enter a valid Meta Model API key." });
       return;
     }
-    if (validatingKeys.has(session.token) || validatingKeys.size >= 4) {
+    const id = providerSessionId(session.account, session.token);
+    if (!id) {
+      response
+        .status(401)
+        .json({ message: "Sign in again before saving a provider key." });
+      return;
+    }
+    if (validatingKeys.has(id)) {
       response.status(429).json({
         message: "A key validation is already in progress. Try again shortly.",
       });
       return;
     }
+    if (validatingKeys.size >= maxConcurrentKeyValidations) {
+      response
+        .status(429)
+        .json({ message: "Key validation is busy. Try again shortly." });
+      return;
+    }
     const controller = new AbortController();
     const stop = () => controller.abort();
     response.once("close", stop);
-    validatingKeys.set(session.token, controller);
+    validatingKeys.set(id, controller);
     let status: number;
     try {
       status = await validateMetaKey(
@@ -155,7 +170,7 @@ export function createApp(
     } catch {
       status = 503;
     } finally {
-      validatingKeys.delete(session.token);
+      validatingKeys.delete(id);
       response.off("close", stop);
     }
     if (response.destroyed) return;
@@ -163,6 +178,20 @@ export function createApp(
       response
         .status(409)
         .json({ message: "The key validation was canceled." });
+      return;
+    }
+    if (status === 400) {
+      console.info(
+        JSON.stringify({
+          event: "meta_key_validation_request_rejected",
+          requestId: response.getHeader("X-Request-Id"),
+          upstreamStatus: status,
+        }),
+      );
+      response.status(502).json({
+        message:
+          "Meta declined the validation request. Your key could not be checked. Try again shortly.",
+      });
       return;
     }
     if (status !== 200) {
@@ -193,7 +222,8 @@ export function createApp(
   app.delete("/api/settings/provider", async (request, response) => {
     const session = await requireSession(request, response);
     if (!session) return;
-    validatingKeys.get(session.token)?.abort();
+    const id = providerSessionId(session.account, session.token);
+    if (id) validatingKeys.get(id)?.abort();
     settings.clear(session.account, session.token);
     response.json({ saved: false });
   });

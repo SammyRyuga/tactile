@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createProvider } from "./provider.ts";
+import { createProvider, metaStructuredEffort } from "./provider.ts";
 
 const metaModel = "muse-spark-1.3";
 const maxSessions = 500;
@@ -32,7 +32,7 @@ export async function validateMetaKey(
       input: "Reply with OK.",
       store: false,
       max_output_tokens: 64,
-      reasoning: { effort: "minimal" },
+      reasoning: { effort: metaStructuredEffort },
     }),
   });
   if (!response.ok) {
@@ -45,7 +45,7 @@ export async function validateMetaKey(
   return result.success ? 200 : 502;
 }
 
-function sessionKey(
+export function providerSessionId(
   account: string,
   verifiedToken: string,
 ): string | undefined {
@@ -63,7 +63,7 @@ function sessionKey(
 export function createProviderSettings(metaVerifierModel?: string) {
   const keys = new Map<string, { key: string; expiresAt: number }>();
   function get(account: string, token: string) {
-    const id = sessionKey(account, token);
+    const id = providerSessionId(account, token);
     if (!id) return undefined;
     const entry = keys.get(id);
     if (entry && entry.expiresAt <= Date.now()) {
@@ -76,7 +76,7 @@ export function createProviderSettings(metaVerifierModel?: string) {
   return {
     get,
     save(account: string, token: string, key: string) {
-      const id = sessionKey(account, token);
+      const id = providerSessionId(account, token);
       if (!id) return undefined;
       const now = Date.now();
       for (const [key, entry] of keys) {
@@ -91,7 +91,7 @@ export function createProviderSettings(metaVerifierModel?: string) {
       return expiresAt;
     },
     clear(account: string, token: string) {
-      const id = sessionKey(account, token);
+      const id = providerSessionId(account, token);
       if (id) keys.delete(id);
     },
     provider(account: string, token: string) {

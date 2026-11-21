@@ -172,3 +172,18 @@ test("arithmetic tolerates floating-point noise in money-to-cents conversions", 
     false,
   );
 });
+
+test("implicit integer rounding is distinguished from exact arithmetic errors", () => {
+  for (const [text, correct, rounding] of [
+    ["100 / 3 = 33.3", true, undefined],
+    ["100 / 3 = 33", false, "nearest integer"],
+    ["1000 / 7 = 142 requests", false, "floor"],
+    ["100 / 3 = exactly 33", false, undefined],
+    ["100 / 3 = 33 (rounded to 0 decimal places)", true, undefined],
+    ["100 / 3 = 30 requests", false, undefined],
+  ] as const) {
+    const [finding] = checkArithmetic(text);
+    assert.equal(finding?.correct, correct, text);
+    assert.equal(finding?.rounding, rounding, text);
+  }
+});

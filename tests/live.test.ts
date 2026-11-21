@@ -419,6 +419,28 @@ test("arithmetic decides an explicit mismatch even when synthesis fails", async 
   );
 });
 
+test("an unstated integer rounding rule weakens a claim without calling it contradicted", async () => {
+  const report = await runReview(
+    mockProvider({ malformed: true }),
+    {
+      ...input,
+      claims: [
+        {
+          id: "capacity",
+          risk: "logic",
+          text: "Budget 1000 / 7 = 142 requests per worker.",
+        },
+      ],
+    },
+    () => {},
+    signal,
+  );
+  assert.equal(report.findings[0].verdict, "Weakened");
+  assert.equal(report.findings[0].basis, "arithmetic");
+  assert.match(report.findings[0].rationale, /142\.857.*floor/);
+  assert.match(report.recommendation, /State the rounding rule/);
+});
+
 test("review input cannot expand the server search budget", async () => {
   const report = await runReview(
     mockProvider(),
@@ -591,11 +613,68 @@ test("hosted live endpoints require a verified session and limit each account", 
   );
 });
 
+function keySessionToken(id: number, revision = 1) {
+  const sessionId = `10000000-0000-4000-8000-${String(id).padStart(12, "0")}`;
+  return `header.${Buffer.from(JSON.stringify({ session_id: sessionId, revision })).toString("base64url")}.signature`;
+}
+
+test("separate sign-in sessions can validate concurrently and token refresh preserves the session guard", async () => {
+  let markEntered!: () => void;
+  let release!: () => void;
+  let failWait!: (reason: Error) => void;
+  const finishedEntering = new Promise<void>((resolve, reject) => {
+    markEntered = resolve;
+    failWait = reject;
+  });
+  const validationGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let entered = 0;
+  await withServer(
+    createApp(undefined, {
+      verifySession: async () => "test-account",
+      metaRequest: async () => {
+        if (++entered === 5) markEntered();
+        await validationGate;
+        return Response.json({ status: "completed" });
+      },
+    }),
+    async (url) => {
+      const send = (token: string) =>
+        fetch(url + "/api/settings/provider", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ key: "synthetic-test-key-value" }),
+        });
+      const requests = [1, 2, 3, 4, 5].map((id) => send(keySessionToken(id)));
+      const deadline = setTimeout(
+        () => failWait(new Error("Expected five active validations.")),
+        2000,
+      );
+      try {
+        await finishedEntering;
+        const duplicate = await send(keySessionToken(1, 2));
+        assert.equal(duplicate.status, 429);
+        assert.match(await duplicate.text(), /already in progress/);
+      } finally {
+        clearTimeout(deadline);
+        release();
+        await Promise.allSettled(requests);
+      }
+      assert.deepEqual(
+        (await Promise.all(requests)).map(({ status }) => status),
+        [201, 201, 201, 201, 201],
+      );
+    },
+  );
+});
+
 test("personal keys require authentication, stay scoped to the sign-in session, and are never echoed", async () => {
-  const accessToken = (id: string) =>
-    `header.${Buffer.from(JSON.stringify({ session_id: id })).toString("base64url")}.signature`;
-  const token = accessToken("10000000-0000-4000-8000-000000000001");
-  const otherSession = accessToken("10000000-0000-4000-8000-000000000002");
+  const token = keySessionToken(1);
+  const otherSession = keySessionToken(2);
   const key = "synthetic-test-key-value";
   await withServer(
     createApp(undefined, {
@@ -605,6 +684,10 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
         const body = JSON.parse(String(init?.body));
         assert.equal(body.model, "muse-spark-1.3");
         assert.equal(body.store, false);
+        assert.deepEqual(body.reasoning, { effort: "low" });
+        if (submitted === "Bearer validation-request-error") {
+          return new Response(null, { status: 400 });
+        }
         return submitted === `Bearer ${key}`
           ? Response.json({ status: "completed" })
           : new Response(null, { status: 401 });
@@ -636,6 +719,19 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       const rejected = await invalidKey();
       assert.equal(rejected.status, 422);
       assert.doesNotMatch(await rejected.text(), /invalid-test-key-value/);
+      assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
+        saved: false,
+      });
+      const unsupportedRequest = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: "validation-request-error" }),
+      });
+      assert.equal(unsupportedRequest.status, 502);
+      assert.match(
+        await unsupportedRequest.text(),
+        /Meta declined the validation request/,
+      );
       assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
         saved: false,
       });

@@ -457,10 +457,14 @@ export async function runReview(
         stage: "Arithmetic",
         status: "complete",
         observation: arithmetic
-          .map(
-            ({ equation, actual, correct }) =>
-              `${equation} · ${correct ? "matches" : `computed ${actual ?? "undefined"}`}`,
-          )
+          .map(({ equation, actual, correct, rounding }) => {
+            const outcome = correct
+              ? "matches"
+              : rounding
+                ? `matches after rounding to an integer (${rounding}) from ${actual}`
+                : `computed ${actual ?? "undefined"}`;
+            return `${equation} · ${outcome}`;
+          })
           .join("\n"),
       });
     checks.push(
@@ -523,7 +527,7 @@ export async function runReview(
 
   const result = await check("Synthesis", () =>
     provider.structured(
-      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. Supported requires supporting source passages. Use No credible break found only when every assigned adversarial specialist found no credible concern, no verified evidence qualifies or contradicts the claim, and no material local facts are missing. Return no source IDs for that verdict. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. Prefer an explicit proposal premise when it already decides the claim. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
+      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. An unstated integer rounding rule weakens the calculation by itself. State the rule and consider the rest of the findings in the overall recommendation. Supported requires supporting source passages. Use No credible break found only when every assigned adversarial specialist found no credible concern, no verified evidence qualifies or contradicts the claim, and no material local facts are missing. Return no source IDs for that verdict. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. Prefer an explicit proposal premise when it already decides the claim. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
       {
         proposal: input.proposal,
         claims: trails.map(({ claim, checks, sources, internal }) => ({
@@ -580,9 +584,10 @@ export async function runReview(
         sourceIds: [],
         audit: checks,
       });
-      const mismatch = mathByClaim
-        .get(claim.id)
-        ?.find(({ correct }) => !correct);
+      const equations = mathByClaim.get(claim.id) ?? [];
+      const mismatch = equations.find(
+        ({ correct, rounding }) => !correct && !rounding,
+      );
       if (mismatch) {
         const correction =
           mismatch.actual === null
@@ -594,6 +599,19 @@ export async function runReview(
           rationale: `Arithmetic check · ${mismatch.equation}. ${correction}`,
           nextStep:
             "Correct the equation, then revisit any decision that depends on its result.",
+          sourceIds: [],
+          basis: "arithmetic",
+          audit: checks,
+        };
+      }
+      const rounded = equations.find(({ rounding }) => rounding);
+      if (rounded) {
+        return {
+          claim,
+          verdict: "Weakened",
+          rationale: `Arithmetic check · ${rounded.equation}. The expression evaluates to ${rounded.actual}. The stated integer requires rounding (${rounded.rounding}).`,
+          nextStep:
+            "State the rounding rule and check whether it fits the capacity assumption.",
           sourceIds: [],
           basis: "arithmetic",
           audit: checks,
@@ -709,9 +727,15 @@ export async function runReview(
   return {
     mode: "live",
     recommendation:
-      (findings.some(({ basis }) => basis === "arithmetic")
+      (findings.some(
+        ({ basis, verdict }) =>
+          basis === "arithmetic" && verdict === "Contradicted",
+      )
         ? "Correct the contradicted calculation and reassess decisions that rely on it."
         : result?.recommendation.trim().slice(0, 800)) ||
+      (findings.some(({ basis }) => basis === "arithmetic")
+        ? "State the rounding rule and check how it affects the decision."
+        : undefined) ||
       "Review the completed checks and retry the unavailable ones before committing to the proposal.",
     findings,
     sources: annotated,

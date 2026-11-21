@@ -62,3 +62,4 @@
 - Fixed money-to-cents comparisons and numbered equations. Reports now count unreadable sources and identify why each rejected proposal premise failed its check.
 - Added reassurance scoring fields. Two blind automated reviewers agreed that one of five reassurance findings in the development pass was misleading.
 - Completed the one-pass Meta baseline comparison over all 15 development cases and published blinded automated grades. Human and citation grading remain pending.
+- Separated plausible integer rounding from exact mismatches. Aligned Meta key validation with production reasoning and isolated validation locks to Supabase sign-in sessions.

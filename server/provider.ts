@@ -57,6 +57,8 @@ const usageSchema = z.object({
   }),
 });
 
+export const metaStructuredEffort = "low";
+
 export function createProvider(
   key: string,
   model: string,
@@ -101,7 +103,11 @@ export function createProvider(
           store: false,
           max_output_tokens: maxOutputTokens,
           ...(vendor === "meta"
-            ? { reasoning: { effort: "tools" in options ? "medium" : "low" } }
+            ? {
+                reasoning: {
+                  effort: "tools" in options ? "medium" : metaStructuredEffort,
+                },
+              }
             : requestModel.startsWith("gpt-5")
               ? { reasoning: { effort: "low" } }
               : {}),
