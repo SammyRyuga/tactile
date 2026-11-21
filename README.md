@@ -20,11 +20,9 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 
 ## Try a review
 
-For a no-key walkthrough, open `/demo` on a build of this branch and choose **Inspect example claims**. The default case shows why disabling a rollout flag cannot undo completed writes. The public walkthrough runs in the browser with bundled evidence. See the [Round 1 demo script](docs/round1-demo.md).
-
-1. Sign in to review your own proposal.
-2. Open **Workspace**, enter a proposal, and select **Extract claims**. To explore first, choose a case from the **Example library**.
-3. Edit the claims, select up to three, and mark any that would change your decision if they failed as **Load-bearing**.
+1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
+2. Open **Workspace**, enter a proposal, and select **Find claims**. To explore first, choose a case from the **Example library**.
+3. Edit the claims, select up to three, and mark claims that could change your decision as **Critical to the plan**.
 4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
 Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Tactile can cite an attachment when an exact passage applies to the claim. Attachments are sent to your configured review provider and stay out of the web-search request.
@@ -41,7 +39,7 @@ The example library covers changed-package tests, replica consistency, and featu
 
 Open **Settings** after signing in. Use the header theme button to switch between light and dark. Tactile remembers your theme in that browser. The claim editor and other animated surfaces respect the system’s reduced-motion preference.
 
-To configure live reviews, paste your **Meta Model API key** in Settings. Tactile checks that the key can run Muse Spark before saving it. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
+To configure live reviews, paste your **Meta Model API key** in Settings. Choose Muse Spark, Ember, or Wonder for live reviews. Tactile checks that your key can run the selected model before saving. Your Meta account determines model access. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
 
 ![Tactile Settings in dark mode with an empty provider key field](docs/screenshots/settings.webp)
 
@@ -56,7 +54,7 @@ npm ci
 npm run dev
 ```
 
-Open [the local bundled demo](http://127.0.0.1:5173/demo). For the signed-in workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
+To use the workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect. Sign in to try the [rollout example](http://127.0.0.1:5173/review?example=flag) with bundled evidence.
 
 Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Supabase account. To run the production build locally, use `npm run build` followed by `npm start`.
 

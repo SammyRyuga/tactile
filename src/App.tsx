@@ -10,6 +10,7 @@ import {
   MeasurementArtifact,
   OutcomeLog,
 } from "./ReviewExtras.tsx";
+import { reviewModelSchema, reviewModels } from "../shared/models.ts";
 import { engineeringCheckSchema } from "../shared/engineering.ts";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import type { FormEvent } from "react";
@@ -39,7 +40,7 @@ import type {
 } from "../shared/review.ts";
 import { extractLive, liveAvailable, runLive } from "./api.ts";
 
-const stepLabels = ["Decision", "Claims", "Report"] as const;
+const stepLabels = ["Plan", "Claims", "Report"] as const;
 const defaultExample = {
   title: "Replace full test runs on pull requests with changed-package tests",
   proposal: demoProposal,
@@ -239,16 +240,13 @@ export function App({
   signOut,
   startExample,
   initialExample,
-  preview = false,
 }: {
   token?: string;
   account?: string;
   accountId?: string;
   startExample: boolean;
-  preview?: boolean;
   initialExample?: {
     id?: string;
-    title?: string;
     proposal: string;
     claims: Claim[];
   };
@@ -256,13 +254,11 @@ export function App({
 }) {
   const example = initialExample ?? defaultExample;
   const scenarioId = initialExample?.id;
-  const locationKey = preview
-    ? `preview:${scenarioId}`
-    : startExample
-      ? scenarioId
-        ? `example:${scenarioId}`
-        : "example"
-      : "workspace";
+  const locationKey = startExample
+    ? scenarioId
+      ? `example:${scenarioId}`
+      : "example"
+    : "workspace";
   const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
   const recentKey = `tactile-review-v1:${accountId ?? "guest"}:recent`;
   const [recent, setRecent] = useState(() => readRecent(recentKey));
@@ -290,6 +286,10 @@ export function App({
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
   const progress = page === "running" ? state.progress : undefined;
+  const parsedModel = reviewModelSchema.safeParse(report?.model);
+  const modelName = parsedModel.success
+    ? reviewModels[parsedModel.data].name
+    : report?.model;
   const unreadableCount =
     report?.mode === "live"
       ? uniqueSourcesByUrl(report.sources.filter(({ passage }) => !passage))
@@ -297,9 +297,7 @@ export function App({
       : 0;
   const previewProposal = page === "report" ? state.previewProposal : undefined;
   const [proposal, setProposal] = useState(
-    preview
-      ? example.proposal
-      : (saved?.proposal ?? (startExample ? example.proposal : "")),
+    saved?.proposal ?? (startExample ? example.proposal : ""),
   );
   const reportProposal = previewProposal ?? proposal;
   const [claims, setClaims] = useState<ClaimDraft[]>(
@@ -308,12 +306,10 @@ export function App({
   const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
     () => saved?.projectEvidence ?? [],
   );
-  const [mode, setMode] = useState<"demo" | "live">(
-    preview ? "demo" : (saved?.mode ?? "demo"),
-  );
+  const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
   const [availability, setAvailability] = useState<
     "checking" | "live" | "demo" | "unavailable"
-  >(preview ? "demo" : "checking");
+  >("checking");
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
@@ -360,7 +356,6 @@ export function App({
   }, [recentKey, recent]);
 
   useEffect(() => {
-    if (preview) return;
     const controller = new AbortController();
     liveAvailable(controller.signal, token).then(
       (live) => {
@@ -373,7 +368,7 @@ export function App({
     return () => {
       controller.abort();
     };
-  }, [preview, token]);
+  }, [token]);
 
   useEffect(() => () => request.current?.abort(), []);
 
@@ -394,17 +389,13 @@ export function App({
 
   async function onExtract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (preview) {
-      openDemo();
-      return;
-    }
     if (availability === "demo" || availability === "unavailable") {
       if (proposal.trim() === example.proposal) openDemo();
       else
         setError(
           availability === "unavailable"
-            ? "Live status is temporarily unavailable. Refresh to retry. Your draft is saved in this tab."
-            : "Add your Meta Model API key in Settings before extracting claims.",
+            ? "Live reviews are temporarily unavailable. Refresh to try again. Your plan is saved in this tab."
+            : "Add your Meta Model API key in Settings before finding claims.",
         );
       return;
     }
@@ -562,7 +553,7 @@ export function App({
   function restart() {
     setCopyStatus("");
     dispatch({ type: "decision" });
-    setProposal(preview ? example.proposal : "");
+    setProposal("");
     setClaims([]);
     setProjectEvidence([]);
     setError("");
@@ -580,11 +571,7 @@ export function App({
           </a>
           <nav aria-label="Project links">
             <a href="/">Home</a>
-            {preview ? (
-              <a href="/review">Workspace</a>
-            ) : (
-              <a href="/settings">Settings</a>
-            )}
+            <a href="/settings">Settings</a>
             <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
               GitHub {mark("external")}
@@ -612,16 +599,8 @@ export function App({
         )}
         <div className="review-masthead">
           <div className="intro">
-            <h1>
-              {preview
-                ? (example.title ?? "Try a bundled example")
-                : "Review an engineering decision"}
-            </h1>
-            <p>
-              {preview
-                ? "Bundled example · Runs locally without an account or provider key."
-                : "Find the assumptions your proposal depends on before you commit."}
-            </p>
+            <h1>Review an engineering decision</h1>
+            <p>Find out what needs to be true for your plan to work.</p>
           </div>
           <ol className="steps" aria-label="Review steps">
             {stepLabels.map((step, index) => (
@@ -646,15 +625,18 @@ export function App({
                 Describe your decision
               </h2>
               <form onSubmit={onExtract}>
-                <label htmlFor="proposal">Engineering proposal</label>
+                <label htmlFor="proposal">Your plan</label>
+                <p id="proposal-hint" className="proposal-hint">
+                  Tell us what you want to change, why, and what should improve.
+                </p>
                 <textarea
                   ref={proposalField}
                   id="proposal"
                   value={proposal}
                   disabled={extracting}
-                  readOnly={preview}
                   maxLength={limits.proposal}
-                  placeholder="Describe the change you’re considering, the current state, and the expected outcome. Include relevant context, constraints, or alternatives if helpful."
+                  aria-describedby="proposal-hint"
+                  placeholder="We want to run fewer tests on each pull request to get feedback faster. We still need to catch bugs in packages that depend on the changed code."
                   onChange={(event) => {
                     setProposal(event.target.value);
                     setError("");
@@ -663,14 +645,14 @@ export function App({
                 {availability === "demo" &&
                   proposal.trim() !== example.proposal && (
                     <p className="field-note">
-                      Live reviews need a provider key in{" "}
+                      To review your own plan, add a Meta API key in{" "}
                       <a href="/settings">Settings</a>.
                     </p>
                   )}
                 {availability === "live" && (
                   <p className="field-note">
-                    Live review sends your proposal to the configured provider.
-                    Use only information you can share.
+                    Tactile sends your plan to the model for review. Share only
+                    information you’re allowed to send.
                   </p>
                 )}
                 {error && (
@@ -684,11 +666,7 @@ export function App({
                     type="submit"
                     disabled={extracting || availability === "checking"}
                   >
-                    {preview
-                      ? "Inspect example claims"
-                      : extracting
-                        ? "Extracting claims…"
-                        : "Extract claims"}
+                    {extracting ? "Finding claims…" : "Find claims"}
                   </button>
                 </div>
               </form>
@@ -697,13 +675,11 @@ export function App({
             <aside className="workspace-sidebar">
               <section className="panel workspace-library">
                 <h2>Example library</h2>
-                <p>Practice with bundled evidence.</p>
+                <p>Try a sample plan. It works without an API key.</p>
                 <ul className="workspace-list">
                   {demoExamples.map((item) => (
                     <li key={item.id}>
-                      <a
-                        href={`${preview ? "/demo" : "/review"}?example=${item.id}`}
-                      >
+                      <a href={`/review?example=${item.id}`}>
                         <span>
                           <strong>{item.label}</strong>
                           <small>{item.title}</small>
@@ -770,11 +746,11 @@ export function App({
             <div className="claim-editor-head">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
-                  Confirm the claims
+                  Choose what to check
                 </h2>
                 <p>
-                  Edit the wording and choose up to {limits.selected} claims to
-                  review.
+                  A claim is something that must be true for your plan to work.
+                  Edit the claims and pick up to {limits.selected} to check.
                 </p>
               </div>
               <div className="claim-count" role="status">
@@ -882,14 +858,18 @@ export function App({
                               updateClaim(claim.id, { risk: result.data });
                           }}
                         >
-                          <option value="logic">Logic</option>
+                          <option value="logic">
+                            Does the plan make sense?
+                          </option>
                           <option value="technical">
-                            Technical feasibility
+                            Will the change work?
                           </option>
                           <option value="adoption">
-                            Adoption and operations
+                            Can the team roll it out and run it?
                           </option>
-                          <option value="evidence">Public evidence</option>
+                          <option value="evidence">
+                            Is there enough evidence?
+                          </option>
                         </select>
                       </label>
                       <label
@@ -905,7 +885,7 @@ export function App({
                             })
                           }
                         />
-                        <span>Load-bearing</span>
+                        <span>Critical to the plan</span>
                       </label>
                     </div>
                     {mode === "live" && (
@@ -1046,8 +1026,9 @@ export function App({
                   {report.mode === "demo"
                     ? "Bundled example evidence"
                     : "Live review"}
-                  {report.verifier &&
-                    ` · Verifier: ${report.verifier.model}${report.verifier.distinct ? " (separate model)" : ""}`}
+                  {modelName && ` · ${modelName}`}
+                  {report.verifier?.distinct &&
+                    ` · Verified by ${report.verifier.model}`}
                 </p>
               </div>
               <button

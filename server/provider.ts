@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { uniqueSourcesByUrl } from "../shared/review.ts";
 
@@ -30,6 +31,7 @@ export interface Citation {
 }
 
 export interface ReviewProvider {
+  modelId?: string;
   verifierInfo?(modelOverride?: string): { model: string; distinct: boolean };
   structured<T>(
     instruction: string,
@@ -49,12 +51,16 @@ export interface ReviewProvider {
 export type ProviderUsage = {
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
 };
 
 const usageSchema = z.object({
   usage: z.object({
     input_tokens: z.number().int().nonnegative(),
     output_tokens: z.number().int().nonnegative(),
+    input_tokens_details: z
+      .object({ cached_tokens: z.number().int().nonnegative().nullish() })
+      .nullish(),
   }),
 });
 
@@ -103,6 +109,14 @@ export function createProvider(
       "model" in options && typeof options.model === "string"
         ? options.model
         : model;
+    // Only stable instructions and API options contribute to the routing key.
+    const promptCacheKey =
+      vendor === "meta"
+        ? `tactile-v1-${createHash("sha256")
+            .update(JSON.stringify([requestModel, instructions, options]))
+            .digest("hex")
+            .slice(0, 24)}`
+        : undefined;
     const callSignal = AbortSignal.any([
       signal,
       AbortSignal.timeout(config.requestTimeoutMs ?? 35_000),
@@ -126,6 +140,7 @@ export function createProvider(
           instructions,
           input: JSON.stringify(data),
           store: false,
+          prompt_cache_key: promptCacheKey,
           max_output_tokens: maxOutputTokens,
           ...(vendor === "meta"
             ? {
@@ -144,6 +159,9 @@ export function createProvider(
       config.onUsage?.({
         inputTokens: usage.success ? usage.data.usage.input_tokens : null,
         outputTokens: usage.success ? usage.data.usage.output_tokens : null,
+        cachedInputTokens: usage.success
+          ? (usage.data.usage.input_tokens_details?.cached_tokens ?? null)
+          : null,
       });
       if (!response.ok) {
         await response.body?.cancel();
@@ -174,6 +192,7 @@ export function createProvider(
   }
 
   return {
+    modelId: model,
     verifierInfo,
     async structured<T>(
       instruction: string,

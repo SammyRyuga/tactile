@@ -157,6 +157,7 @@ export const findingSchema = z.object({
 
 export const reportSchema = z.object({
   mode: modeSchema,
+  model: z.string().optional(),
   verifier: z.object({ model: z.string(), distinct: z.boolean() }).optional(),
   recommendation: z.string(),
   findings: z.array(findingSchema),

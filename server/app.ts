@@ -1,3 +1,4 @@
+import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import type { ErrorRequestHandler, Request, Response } from "express";
@@ -11,6 +12,7 @@ import {
   providerSessionId,
   validateMetaKey,
 } from "./provider-settings.ts";
+import type { ClaimCache } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
 import { ProviderResponseError } from "./provider.ts";
 
@@ -62,7 +64,10 @@ export function createApp(
   let active = 0;
   const validatingKeys = new Map<string, AbortController>();
   const maxConcurrentKeyValidations = 32;
-  const settings = createProviderSettings(options.metaVerifierModel);
+  const settings = createProviderSettings(
+    options.metaVerifierModel,
+    options.metaRequest,
+  );
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
   const preAuthUsage = new Map<string, number>();
@@ -154,16 +159,20 @@ export function createApp(
     const session = await requireSession(request, response);
     if (!session) return;
     const stored = settings.get(session.account, session.token);
-    response.json({ saved: Boolean(stored), expiresAt: stored?.expiresAt });
+    response.json({
+      saved: Boolean(stored),
+      expiresAt: stored?.expiresAt,
+      model: stored?.model ?? defaultReviewModel,
+    });
   });
   app.post("/api/settings/provider", async (request, response) => {
     const session = await requireSession(request, response);
     if (!session) return;
     const parsed = personalKeySchema.safeParse(request.body);
     if (!parsed.success) {
-      response
-        .status(400)
-        .json({ message: "Enter a valid Meta Model API key." });
+      response.status(400).json({
+        message: "Choose a review model and check your Meta API key.",
+      });
       return;
     }
     const id = providerSessionId(session.account, session.token);
@@ -173,6 +182,15 @@ export function createApp(
         .json({ message: "Sign in again before saving a provider key." });
       return;
     }
+    const stored = settings.get(session.account, session.token);
+    const key = parsed.data.key ?? stored?.key;
+    if (!key) {
+      response
+        .status(400)
+        .json({ message: "Enter your Meta Model API key to save this model." });
+      return;
+    }
+    const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
     if (validatingKeys.has(id)) {
       response.status(429).json({
         message: "A key validation is already in progress. Try again shortly.",
@@ -192,9 +210,10 @@ export function createApp(
     let status: number;
     try {
       status = await validateMetaKey(
-        parsed.data.key,
+        key,
         AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
         options.metaRequest,
+        model,
       );
     } catch {
       status = 503;
@@ -228,7 +247,7 @@ export function createApp(
       const quota = [402, 429].includes(status);
       response.status(rejected ? 422 : quota ? 429 : 503).json({
         message: rejected
-          ? "Meta rejected this key or it cannot access Muse Spark. Check the key and try again."
+          ? "Meta rejected the key or your account cannot use this model. Check your key or choose another model."
           : quota
             ? "Meta could not run the validation. Check your usage limits or billing and try again."
             : "Meta key validation is temporarily unavailable. Try again shortly.",
@@ -238,7 +257,9 @@ export function createApp(
     const expiresAt = settings.save(
       session.account,
       session.token,
-      parsed.data.key,
+      key,
+      model,
+      parsed.data.key ? undefined : stored?.expiresAt,
     );
     if (!expiresAt) {
       response
@@ -246,7 +267,9 @@ export function createApp(
         .json({ message: "The key could not be saved for this session." });
       return;
     }
-    response.status(201).json({ saved: true, expiresAt });
+    response
+      .status(parsed.data.key ? 201 : 200)
+      .json({ saved: true, expiresAt, model });
   });
   app.delete("/api/settings/provider", async (request, response) => {
     const session = await requireSession(request, response);
@@ -273,7 +296,11 @@ export function createApp(
   async function execute(
     request: Request,
     response: Response,
-    run: (provider: ReviewProvider, signal: AbortSignal) => Promise<void>,
+    run: (
+      provider: ReviewProvider,
+      signal: AbortSignal,
+      cache?: ClaimCache,
+    ) => Promise<void>,
   ) {
     if (!request.is("application/json")) {
       response
@@ -285,8 +312,20 @@ export function createApp(
       ? await requireSession(request, response)
       : undefined;
     if (options.verifySession && !session) return;
+    const cache =
+      session && settings.get(session.account, session.token)?.claims;
     const client =
-      (session && settings.provider(session.account, session.token)) ??
+      (session &&
+        settings.provider(session.account, session.token, (usage) => {
+          if (usage.inputTokens === null) return;
+          console.info(
+            JSON.stringify({
+              event: "provider_token_usage",
+              requestId: response.getHeader("X-Request-Id"),
+              ...usage,
+            }),
+          );
+        })) ??
       provider;
     if (!client) {
       response.status(session ? 409 : 503).json({
@@ -330,7 +369,7 @@ export function createApp(
         }
       }
       signal.throwIfAborted();
-      await run(client, signal);
+      await run(client, signal, cache);
     } catch (error) {
       if (disconnected.signal.aborted) return;
       if (error instanceof ProposalScopeError) {
@@ -359,7 +398,7 @@ export function createApp(
   }
 
   app.post("/api/claims", (request, response) =>
-    execute(request, response, async (client, signal) => {
+    execute(request, response, async (client, signal, cache) => {
       const parsed = proposalSchema.safeParse(request.body?.proposal);
       if (!parsed.success) {
         response.status(400).json({
@@ -368,8 +407,20 @@ export function createApp(
         });
         return;
       }
+      const cached = cache?.get(parsed.data);
+      if (cached) {
+        console.info(
+          JSON.stringify({
+            event: "claim_cache_hit",
+            requestId: response.getHeader("X-Request-Id"),
+          }),
+        );
+        response.json({ claims: cached });
+        return;
+      }
       const claims = await extractClaims(client, parsed.data, signal);
       signal.throwIfAborted();
+      cache?.add(parsed.data, claims);
       response.json({ claims });
     }),
   );

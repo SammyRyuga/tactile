@@ -120,9 +120,8 @@ function Login({
               : "Sign in to Tactile"}
         </h1>
         <p className="field-note">
-          Bring your own Meta Model API key for live reviews. After signing in,
-          add it in Settings. You can also{" "}
-          <a href="/demo">try a bundled example</a>.
+          To review your own plan, add your Meta Model API key in Settings after
+          you sign in. You can try an example without a key.
         </p>
         {session ? (
           <a className="button primary" href={next}>
@@ -209,7 +208,6 @@ export function Site() {
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const [notice, setNotice] = useState("");
   const path = window.location.pathname;
-  const publicExample = path === "/demo";
   const params = new URLSearchParams(window.location.search);
   const protectedRoute = path === "/review" || path === "/settings";
   const exampleId =
@@ -227,7 +225,6 @@ export function Site() {
   const next = allowedDestination(params.get("next"));
 
   useEffect(() => {
-    if (publicExample) return;
     const controller = new AbortController();
     let unsubscribe: (() => void) | undefined;
     void (async () => {
@@ -303,7 +300,7 @@ export function Site() {
       controller.abort();
       unsubscribe?.();
     };
-  }, [protectedRoute, publicExample]);
+  }, [protectedRoute]);
 
   useEffect(() => {
     if (protectedRoute && !loading && !session && !authUnavailable) {
@@ -341,19 +338,6 @@ export function Site() {
     }
   }
 
-  if (publicExample) {
-    return (
-      <App
-        preview
-        startExample={false}
-        initialExample={
-          demoExamples.find(({ id }) => id === exampleId) ??
-          demoExamples.find(({ id }) => id === "flag")
-        }
-      />
-    );
-  }
-
   if (protectedRoute && (loading || !session)) {
     return (
       <main className="workspace">
@@ -367,7 +351,6 @@ export function Site() {
               >
                 Retry verification
               </button>
-              <a href="/demo">Try a bundled example</a>
             </div>
           </>
         ) : (

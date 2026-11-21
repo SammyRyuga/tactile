@@ -449,3 +449,77 @@
   background: var(--dark-control);
   color: var(--quiet);
 }
+
+.model-picker {
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  margin: 0 0 1rem;
+}
+
+.model-picker legend {
+  margin-block-end: 0.6rem;
+  font-weight: 700;
+}
+
+.model-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.55rem;
+}
+
+.model-option {
+  --option-tint: #dce8ff;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-inline-size: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.model-option[data-tone="lime"] {
+  --option-tint: #e8f2c9;
+}
+.model-option[data-tone="apricot"] {
+  --option-tint: #ffd6bf;
+}
+.model-option:has(:checked) {
+  background: var(--option-tint);
+  border-color: var(--moss);
+  box-shadow: inset 0 0 0 1px var(--moss);
+}
+
+.model-option:has(:focus-visible) {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+
+.model-option input {
+  accent-color: var(--moss);
+  flex-shrink: 0;
+  margin-block-start: 0.25rem;
+}
+
+.model-option small {
+  display: block;
+  font-weight: 500;
+  color: var(--quiet);
+}
+
+.model-picker:disabled .model-option {
+  cursor: default;
+}
+
+[data-theme="dark"] .model-option {
+  --option-tint: #293b51;
+}
+[data-theme="dark"] .model-option[data-tone="lime"] {
+  --option-tint: #35422a;
+}
+[data-theme="dark"] .model-option[data-tone="apricot"] {
+  --option-tint: #52362d;
+}

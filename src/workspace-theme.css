@@ -883,3 +883,9 @@
   max-inline-size: 100%;
   color: var(--review-ink);
 }
+
+.proposal-hint {
+  margin-block: 0.15rem 0.65rem;
+  font-size: 0.93rem;
+  color: var(--review-muted);
+}

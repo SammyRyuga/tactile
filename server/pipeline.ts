@@ -101,7 +101,7 @@ export async function extractClaims(
   signal: AbortSignal,
 ): Promise<Claim[]> {
   const result = await provider.structured(
-    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Preserve any explicit numeric equation verbatim in the corresponding quantitative claim. Each claim is at most 240 characters. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing.`,
+    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Preserve any explicit numeric equation verbatim in the corresponding quantitative claim. Each claim is at most 240 characters. Use short sentences and plain language while preserving exact terms, numbers, and units that affect the decision. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing.`,
     { proposal },
     extractionSchema,
     signal,
@@ -733,7 +733,7 @@ export async function runReview(
 
   const result = await check("Synthesis", () =>
     provider.structured(
-      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. An unstated integer rounding rule weakens the calculation by itself. State the rule and consider the rest of the findings in the overall recommendation. Supported requires a verified supporting public or reviewer-supplied project passage. For project evidence, state that the conclusion is limited to its documented conditions. Use No credible break found only when every assigned adversarial specialist found no credible concern, no verified evidence qualifies or contradicts the claim, and no material local facts are missing. Return no source IDs for that verdict. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. Prefer an explicit proposal premise when it already decides the claim. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
+      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Write for someone new to engineering reviews. Use plain language, explain necessary technical terms briefly, and tell the reader what to do next. Keep the rationale, next step, and each repair field to one or two sentences. An unstated integer rounding rule weakens the calculation by itself. State the rule and consider the rest of the findings in the overall recommendation. Supported requires a verified supporting public or reviewer-supplied project passage. For project evidence, state that the conclusion is limited to its documented conditions. Use No credible break found only when every assigned adversarial specialist found no credible concern, no verified evidence qualifies or contradicts the claim, and no material local facts are missing. Return no source IDs for that verdict. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. Prefer an explicit proposal premise when it already decides the claim. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
       {
         proposal: input.proposal,
         claims: trails.map(({ claim, checks, sources, project, internal }) => ({
@@ -743,8 +743,9 @@ export async function runReview(
           proposalExplanation: internal?.explanation.slice(0, 600),
           checks: checks.filter(
             ({ stage, status }) =>
-              (stage !== "Evidence" && stage !== "Verification") ||
-              status === "failed",
+              !["Evidence", "Verification", "Project evidence"].includes(
+                stage,
+              ) || status === "failed",
           ),
           sources: [
             ...project.map(({ id, title, relation, explanation }) => ({
@@ -1017,6 +1018,7 @@ export async function runReview(
   const unresolved = findings.find(({ verdict }) => verdict === "Unresolved");
   return {
     mode: "live",
+    model: provider.modelId,
     verifier:
       verification || projectJudgments
         ? provider.verifierInfo?.(options.verifierModel)

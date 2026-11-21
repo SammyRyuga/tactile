@@ -15,21 +15,21 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .click();
   await expect(page).toHaveURL(/\/login\?next=/);
   await expect(
-    page.getByText(/Bring your own Meta Model API key for live reviews/),
+    page.getByText(/add your Meta Model API key in Settings/),
   ).toBeVisible();
   await signIn(page);
   await expect(page).toHaveURL(/\/review$/);
   await expect(
     page.getByRole("heading", { name: "Describe your decision" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Engineering proposal")).toHaveValue("");
-  await page.getByRole("button", { name: "Extract claims" }).click();
+  await expect(page.getByLabel("Your plan")).toHaveValue("");
+  await page.getByRole("button", { name: "Find claims" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Meta Model API key in Settings",
   );
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Confirm the claims" }),
+    page.getByRole("heading", { name: "Choose what to check" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Run review" }).click();
   await expect(
@@ -66,16 +66,16 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   ).toBeVisible();
   await page.goto("/review");
   await page
-    .getByLabel("Engineering proposal")
+    .getByLabel("Your plan")
     .fill("A separate draft decision to preserve.");
   const history = page.getByRole("region", { name: "Recent reports" });
   await expect(history).toBeVisible();
   const editor = page
-    .getByLabel("Engineering proposal")
+    .getByLabel("Your plan")
     .locator("xpath=ancestor::section[1]");
   const bounds = await editor.boundingBox();
   const action = await editor
-    .getByRole("button", { name: "Extract claims" })
+    .getByRole("button", { name: "Find claims" })
     .boundingBox();
   expect(bounds!.y + bounds!.height - action!.y - action!.height).toBeLessThan(
     70,
@@ -91,7 +91,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeFocused();
   await page.getByRole("button", { name: "Back to workspace" }).click();
-  await expect(page.getByLabel("Engineering proposal")).toHaveValue(
+  await expect(page.getByLabel("Your plan")).toHaveValue(
     "A separate draft decision to preserve.",
   );
 });
@@ -100,21 +100,22 @@ test("the case selector opens the corresponding bundled review", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await mockAuthentication(page);
   const apiRequests: string[] = [];
   page.on("request", (request) => {
     const { pathname } = new URL(request.url());
-    if (pathname.startsWith("/api/")) apiRequests.push(pathname);
+    if (pathname === "/api/claims" || pathname === "/api/review")
+      apiRequests.push(pathname);
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Data consistency" }).click();
   await expect(
     page.getByRole("heading", { name: "Move checkout reads to a replica" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Run bundled example" }).click();
-  await expect(page).toHaveURL(/\/demo\?example=replica/);
-  apiRequests.length = 0;
-  await expect(page.getByLabel("Engineering proposal")).toHaveValue(/replica/i);
-  await page.getByRole("button", { name: "Inspect example claims" }).click();
+  await page.getByRole("link", { name: "Try this example" }).click();
+  await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dreplica/);
+  await signIn(page);
+  await expect(page).toHaveURL(/\/review\?example=replica/);
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     /A replica always returns an order/,
   );
@@ -130,20 +131,17 @@ test("the case selector opens the corresponding bundled review", async ({
   expect(apiRequests).toEqual([]);
 });
 
-test("the public rollout demo exposes the contradiction and exports its evidence", async ({
+test("the old example link requires sign-in and the rollout report exports its evidence", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
+  await mockAuthentication(page);
   await page.goto("/demo");
+  await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dflag/);
+  await signIn(page);
   await expect(
-    page.getByRole("heading", { name: "Use a feature flag as a rollback" }),
+    page.getByRole("heading", { name: "Choose what to check" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Inspect example claims" })
-    .press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "Confirm the claims" }),
-  ).toBeFocused();
   await page.getByRole("button", { name: "Run review" }).click();
   await page.getByRole("button", { name: "Cancel review" }).press("Enter");
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
@@ -202,14 +200,14 @@ test("provider downtime keeps the draft available for retry", async ({
   await signIn(page);
   const draft =
     "Route jobs through the new queue and verify ordering stays stable.";
-  await page.getByLabel("Engineering proposal").fill(draft);
-  await page.getByRole("button", { name: "Extract claims" }).click();
+  await page.getByLabel("Your plan").fill(draft);
+  await page.getByRole("button", { name: "Find claims" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "temporarily unavailable",
   );
   await page.reload();
-  await expect(page.getByLabel("Engineering proposal")).toHaveValue(draft);
-  await page.getByRole("button", { name: "Extract claims" }).click();
+  await expect(page.getByLabel("Your plan")).toHaveValue(draft);
+  await page.getByRole("button", { name: "Find claims" }).click();
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     "The change preserves ordering.",
   );
@@ -236,7 +234,7 @@ test("signup prompts for email confirmation and keeps the workspace protected", 
   await expect(page).toHaveURL(/\/login\?next=%2Freview/);
 });
 
-test("an unavailable authentication service leaves the demo accessible", async ({
+test("an unavailable authentication service keeps the workspace protected", async ({
   page,
 }) => {
   await page.route("**/api/auth-config", (route) =>
@@ -247,10 +245,12 @@ test("an unavailable authentication service leaves the demo accessible", async (
     "temporarily unavailable",
   );
   await expect(page).toHaveURL(/\/review$/);
-  await page.getByRole("link", { name: "Try a bundled example" }).click();
   await expect(
-    page.getByRole("button", { name: "Inspect example claims" }),
+    page.getByRole("button", { name: "Retry verification" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Example library" }),
+  ).toHaveCount(0);
 });
 
 test("claim controls preserve the selection limit and keyboard editing", async ({
@@ -288,6 +288,7 @@ test("settings require sign-in and store the appearance preference across reload
 }) => {
   await mockAuthentication(page);
   let saved = false;
+  let model = "muse-spark-1.3";
   await page.route("**/api/settings/provider", (route) => {
     const method = route.request().method();
     if (method === "POST") {
@@ -297,10 +298,14 @@ test("settings require sign-in and store the appearance preference across reload
           json: { message: "Meta rejected this key." },
         });
       }
+      model = route.request().postDataJSON().model;
       saved = true;
     }
-    if (method === "DELETE") saved = false;
-    return route.fulfill({ json: { saved } });
+    if (method === "DELETE") {
+      saved = false;
+      model = "muse-spark-1.3";
+    }
+    return route.fulfill({ json: { saved, model } });
   });
   await page.goto("/settings");
   await expect(page).toHaveURL(/\/login\?next=%2Fsettings/);
@@ -327,7 +332,16 @@ test("settings require sign-in and store the appearance preference across reload
     "Key validated and saved for this session.",
   );
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
+  await page.getByRole("radio", { name: /Muse Ember/ }).check();
+  await page.getByRole("button", { name: "Save model" }).click();
+  await expect(page.getByRole("status")).toContainText("Muse Ember 1.0");
   await page.reload();
+  await expect(page.getByRole("radio", { name: /Muse Ember/ })).toBeChecked();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.getByText("Key saved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Remove key" }).click();

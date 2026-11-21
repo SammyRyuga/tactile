@@ -57,10 +57,10 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
   await expect(
     page.getByRole("heading", { name: "Describe your decision" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Engineering proposal")).toHaveValue("");
+  await expect(page.getByLabel("Your plan")).toHaveValue("");
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Confirm the claims" }),
+    page.getByRole("heading", { name: "Choose what to check" }),
   ).toBeVisible();
   await expectReadable(page.locator(".steps [aria-current] .step-count"));
   await expectReadable(page.getByRole("textbox", { name: "Claim 1" }));
@@ -81,11 +81,20 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     "::placeholder",
   );
   await expectReadable(page.getByRole("button", { name: "Save key" }));
+  const selectedModel = page
+    .locator(".model-option")
+    .filter({ has: page.getByRole("radio", { checked: true }) });
+  await expectReadable(selectedModel.getByText("Muse Spark 1.3"));
+  await expectReadable(selectedModel.getByText("Start here for most reviews."));
+  await page.setViewportSize({ width: 320, height: 850 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+
   await page.goto("/review");
-  await expectReadable(
-    page.getByLabel("Engineering proposal"),
-    "::placeholder",
-  );
+  await expectReadable(page.getByLabel("Your plan"), "::placeholder");
 
   const library = page.locator(".workspace-library");
   const history = page.getByRole("region", { name: "Recent reports" });
@@ -100,7 +109,9 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     await expect(library).toHaveCSS("background-color", apricot);
     await expect(history).toHaveCSS("background-color", blue);
     await expectReadable(library.getByRole("heading"));
-    await expectReadable(library.getByText("Practice with bundled evidence."));
+    await expectReadable(
+      library.getByText("Try a sample plan. It works without an API key."),
+    );
     await expectReadable(history.getByRole("heading"));
     await expectReadable(history.getByText("Saved in this tab."));
     const example = library.getByRole("link", { name: /CI coverage/ });

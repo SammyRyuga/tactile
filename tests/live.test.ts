@@ -889,15 +889,33 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
   const token = keySessionToken(1);
   const otherSession = keySessionToken(2);
   const key = "synthetic-test-key-value";
+  const extractionModels: string[] = [];
   await withServer(
     createApp(undefined, {
       metaRequest: async (url, init) => {
         assert.equal(url, "https://api.meta.ai/v1/responses");
         const submitted = new Headers(init?.headers).get("Authorization");
         const body = JSON.parse(String(init?.body));
-        assert.equal(body.model, "muse-spark-1.3");
+        if (body.text) {
+          extractionModels.push(body.model);
+          return success(
+            JSON.stringify({
+              scope: "engineering",
+              explanation: "",
+              claims: [
+                {
+                  text: "The sample can run with Ember.",
+                  risk: "logic",
+                  loadBearing: false,
+                },
+              ],
+            }),
+          );
+        }
         assert.equal(body.store, false);
         assert.deepEqual(body.reasoning, { effort: "low" });
+        if (body.model === "muse-wonder-1.0")
+          return new Response(null, { status: 403 });
         if (submitted === "Bearer validation-request-error") {
           return new Response(null, { status: 400 });
         }
@@ -934,6 +952,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       assert.doesNotMatch(await rejected.text(), /invalid-test-key-value/);
       assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
         saved: false,
+        model: "muse-spark-1.3",
       });
       const unsupportedRequest = await fetch(endpoint, {
         method: "POST",
@@ -947,6 +966,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       );
       assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
         saved: false,
+        model: "muse-spark-1.3",
       });
       const saved = await fetch(endpoint, {
         method: "POST",
@@ -955,6 +975,47 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       });
       assert.equal(saved.status, 201);
       assert.doesNotMatch(await saved.text(), /synthetic-test-key-value/);
+      const first = await (await fetch(endpoint, { headers })).json();
+      assert.equal(first.model, "muse-spark-1.3");
+      const select = (model: string) =>
+        fetch(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ model }),
+        });
+      assert.equal((await select("unknown-model")).status, 400);
+      assert.equal((await select("muse-wonder-1.0")).status, 422);
+      assert.equal(
+        (await (await fetch(endpoint, { headers })).json()).model,
+        "muse-spark-1.3",
+      );
+      const changed = await select("muse-ember-1.0");
+      assert.equal(changed.status, 200);
+      assert.deepEqual(await changed.json(), {
+        ...first,
+        model: "muse-ember-1.0",
+      });
+      const extracted = await fetch(url + "/api/claims", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ proposal: demoProposal }),
+      });
+      assert.equal(extracted.status, 200);
+      assert.equal(
+        (await extracted.json()).claims[0].text,
+        "The sample can run with Ember.",
+      );
+      const repeat = () =>
+        fetch(url + "/api/claims", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ proposal: demoProposal }),
+        });
+      assert.equal((await repeat()).status, 200);
+      assert.deepEqual(extractionModels, ["muse-ember-1.0"]);
+      assert.equal((await select("muse-spark-1.3")).status, 200);
+      assert.equal((await repeat()).status, 200);
+      assert.deepEqual(extractionModels, ["muse-ember-1.0", "muse-spark-1.3"]);
       assert.equal((await invalidKey()).status, 422);
       assert.equal(
         (await (await fetch(endpoint, { headers })).json()).saved,
@@ -970,7 +1031,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
             headers: { Authorization: `Bearer ${otherSession}` },
           })
         ).json(),
-        { saved: false },
+        { saved: false, model: "muse-spark-1.3" },
       );
       assert.equal(
         (await fetch(endpoint, { method: "DELETE", headers })).status,
@@ -978,6 +1039,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       );
       assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
         saved: false,
+        model: "muse-spark-1.3",
       });
     },
   );
@@ -1028,4 +1090,58 @@ test("Meta verification uses its own override and strict structured output", asy
   await provider.structured("Verify a passage.", {}, z.object({}), signal, {
     model: "gpt-5-mini",
   });
+});
+
+test("Meta groups identical instruction prefixes and reports reused input tokens", async () => {
+  const requests: {
+    prompt_cache_key: string;
+    input: string;
+    store: boolean;
+  }[] = [];
+  const cached: (number | null)[] = [];
+  const provider = createProvider(
+    "synthetic",
+    "muse-spark-1.3",
+    async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        status: "completed",
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 4,
+          input_tokens_details: {
+            cached_tokens: requests.length === 2 ? 1024 : 0,
+          },
+        },
+        output: [{ content: [{ type: "output_text", text: '{"ok":true}' }] }],
+      });
+    },
+    "meta",
+    { onUsage: ({ cachedInputTokens }) => cached.push(cachedInputTokens) },
+  );
+  const schema = z.object({ ok: z.boolean() });
+  await provider.structured(
+    "Check this claim.",
+    { proposal: "First private proposal" },
+    schema,
+    signal,
+  );
+  await provider.structured(
+    "Check this claim.",
+    { proposal: "Second private proposal" },
+    schema,
+    signal,
+  );
+  await provider.structured(
+    "Use a different review rubric.",
+    {},
+    schema,
+    signal,
+  );
+  assert.match(requests[0].prompt_cache_key, /^tactile-v1-[a-f0-9]{24}$/);
+  assert.equal(requests[0].prompt_cache_key, requests[1].prompt_cache_key);
+  assert.notEqual(requests[0].prompt_cache_key, requests[2].prompt_cache_key);
+  assert.notEqual(requests[0].input, requests[1].input);
+  assert.ok(requests.every(({ store }) => !store));
+  assert.deepEqual(cached, [0, 1024, 0]);
 });
