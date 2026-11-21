@@ -105,6 +105,36 @@ test("the review room shows streamed activity and opens recorded checks from the
     .click();
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const room = page.locator(".review-room");
+  const stations = room.getByRole("group", { name: "Review stations" });
+  await expect(stations.getByRole("button")).toHaveCount(5);
+  expect(
+    await stations.getByRole("button").evaluateAll((buttons) => {
+      const scene = buttons[0].parentElement?.getBoundingClientRect();
+      if (!scene) return false;
+      const bounds = buttons.map((button) => button.getBoundingClientRect());
+      if (
+        bounds.some(
+          ({ left, right, top, bottom }) =>
+            left < scene.left ||
+            right > scene.right ||
+            top < scene.top ||
+            bottom > scene.bottom,
+        )
+      )
+        return false;
+      return bounds.every((a, index) =>
+        bounds
+          .slice(index + 1)
+          .every(
+            (b) =>
+              a.right <= b.left ||
+              b.right <= a.left ||
+              a.bottom <= b.top ||
+              b.bottom <= a.top,
+          ),
+      );
+    }),
+  ).toBe(true);
   const activity = page.locator(".review-activity");
   await expect(activity).not.toHaveAttribute("open", "");
   await activity.locator(":scope > summary").press("Enter");

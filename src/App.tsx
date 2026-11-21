@@ -123,14 +123,7 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
 type ClaimDraft = Claim & { selected: boolean; checkDraft?: CheckDraft };
 
 function mark(
-  icon:
-    | "logo"
-    | "arrow"
-    | "external"
-    | "download"
-    | "plus"
-    | "remove"
-    | "chevron",
+  icon: "logo" | "arrow" | "external" | "download" | "plus" | "remove",
 ) {
   const paths = {
     logo: "M3 18h5v-5h5V8h5V3h3",
@@ -139,7 +132,6 @@ function mark(
     download: "M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3",
     plus: "M12 5v14M5 12h14",
     remove: "M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5",
-    chevron: "m6 9 6 6 6-6",
   };
   return (
     <svg
@@ -872,7 +864,7 @@ export function App({
             <form onSubmit={onReview}>
               <div className="review-setup">
                 <details className="proposal claim-proposal">
-                  <summary>Read your proposal {mark("chevron")}</summary>
+                  <summary>Read your proposal</summary>
                   <p>{proposal}</p>
                 </details>
                 {mode === "live" && (
