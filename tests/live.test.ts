@@ -1238,7 +1238,7 @@ test("Meta research calls Meta's Responses API with its search format", async ()
       assert.deepEqual(body.tools, [
         { type: "web_search", search_context_size: "high" },
       ]);
-      assert.equal("max_tool_calls" in body, false);
+      assert.equal(body.max_tool_calls, 3);
       return success("A cited statement with enough context.", [citation]);
     },
     "meta",
@@ -1250,6 +1250,33 @@ test("Meta research calls Meta's Responses API with its search format", async ()
     { maxToolCalls: 3 },
   );
   assert.equal(result.citations.length, 1);
+});
+
+test("a Meta blocker probe stays within one web call even when output is exhausted", async () => {
+  let requests = 0;
+  const provider = createProvider(
+    "synthetic-test-key",
+    "muse-spark-1.3",
+    async (_url, init) => {
+      requests++;
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.max_tool_calls, 1);
+      assert.deepEqual(body.tools, [
+        { type: "web_search", search_context_size: "low" },
+      ]);
+      return Response.json({
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+      });
+    },
+    "meta",
+  );
+  await assert.rejects(
+    provider.research("Check a public blocker.", {}, signal, {
+      maxToolCalls: 1,
+    }),
+  );
+  assert.equal(requests, 1);
 });
 
 test("Meta verification uses its own override and strict structured output", async () => {
