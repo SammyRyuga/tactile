@@ -1,10 +1,10 @@
 # COMPUTE 50 Round 1 — Execution Handoff
 
-**Branch:** `feat/compute50-evidence-hardening` (based on `main`)  
-**Event domain:** #9 — Developer Productivity and Intelligent Automation  
-**Canonical project:** Tactile, adversarial engineering-decision review  
-**Live URL:** https://tactile-compute50.onrender.com/  
-**Status of this document:** task plan, **not** a claim that the listed work is complete.
+- **Branch:** `feat/compute50-evidence-hardening` (based on `main`)
+- **Event domain:** #9 — Developer Productivity and Intelligent Automation
+- **Canonical project:** Tactile, adversarial engineering-decision review
+- **Live URL:** https://tactile-compute50.onrender.com/
+- **Status of this document:** task plan, **not** a claim that the listed work is complete.
 
 ## Existing implementation — preserve
 
