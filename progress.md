@@ -109,3 +109,8 @@
 - Chromium exercises all three cases on desktop and mobile, with keyboard navigation, light and dark themes, reduced motion, refresh, error recovery, and Markdown download. The demo makes no application API or provider requests. Local HTTP tests verify that anonymous users cannot access provider settings or run live extraction or reviews when auth is configured. Fixture evaluation reproduces the recorded verdicts.
 - Node 22.23.5 and 24.19.0 passed clean installs, formatting, lint, types, all 47 unit and HTTP tests, production builds, all 24 Chromium tests, and fixture evaluation. Full and production dependency audits found zero vulnerabilities on both runtimes.
 - Verified that the existing Render service serves the homepage and evidence timeline, responds to `/health`, and still sends `/demo` to sign-in. Creating the separate service requires an authorized Render connection. Vercel repository access requires authorization as well. The [independent deployment guide](docs/DUAL_DEPLOYMENT.md) records setup, CI-gated deploys, preview options, and a read-only smoke suite. The independent site's URL, running revision, and runtime logs are pending provisioning.
+
+## Local Round 1 rehearsal · November 21, 2026
+
+- Rehearsed all three bundled cases on the zero-key Windows development server in desktop Chromium and at a 320 CSS-pixel mobile viewport. Verified claim edits, recorded verdicts, source destinations, Markdown exports, refresh, browser Back, and case resets. The public flow made no provider requests.
+- Corrected the review trail's singular check count and labeled its links as cited evidence. The browser regression test verifies the accessible list label and follows its bundled timeline link.

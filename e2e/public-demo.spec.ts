@@ -90,14 +90,16 @@ test("the public demo replays all three cases and exports the recorded memo", as
     rollback.getByText("Contradicted", { exact: true }),
   ).toBeVisible();
   await expect(report.getByText("Supported", { exact: true })).toBeVisible();
-  await rollback.getByText("Review trail").press("Enter");
+  const trail = rollback.getByText("Review trail");
+  await expect(trail).toHaveText("Review trail (1 check)");
+  await trail.press("Enter");
   await expect(
     rollback.getByText("Flag evaluation has no write path", { exact: false }),
   ).toBeVisible();
   const popup = page.waitForEvent("popup");
   await rollback
+    .getByRole("list", { name: "Cited evidence" })
     .getByRole("link", { name: "Bundled flag timeline" })
-    .first()
     .click();
   const evidence = await popup;
   await expect(
