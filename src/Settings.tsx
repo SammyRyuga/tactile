@@ -78,7 +78,7 @@ export function Settings({
     setMessage("");
     try {
       setKeyState(await updateKey(token, "POST", key));
-      setMessage("Key saved for this session.");
+      setMessage("Key validated and saved for this session.");
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not save the key.",
@@ -159,12 +159,17 @@ export function Settings({
               }
             />
             <button className="button primary" disabled={busy}>
-              {keyState?.saved ? "Replace key" : "Save key"}
+              {busy
+                ? "Please wait…"
+                : keyState?.saved
+                  ? "Replace key"
+                  : "Save key"}
             </button>
           </div>
           <p className="settings-hint">
-            The server holds the key for up to eight hours. It clears on
-            sign-out or restart. Meta bills usage to the key’s account.
+            Tactile checks the key with Meta before saving it for up to eight
+            hours. Signing out or restarting the server clears it. Meta bills
+            usage to the key’s account.
           </p>
         </form>
         {keyState?.saved && (

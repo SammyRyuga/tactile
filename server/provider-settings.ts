@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createProvider } from "./provider.ts";
 
+const metaModel = "muse-spark-1.3";
 const maxSessions = 500;
 const lifetime = 8 * 60 * 60 * 1000;
 
@@ -12,6 +13,37 @@ export const personalKeySchema = z.object({
     .max(512)
     .regex(/^[!-~]+$/),
 });
+
+export async function validateMetaKey(
+  key: string,
+  signal: AbortSignal,
+  request = fetch,
+) {
+  const response = await request("https://api.meta.ai/v1/responses", {
+    method: "POST",
+    redirect: "error",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    signal,
+    body: JSON.stringify({
+      model: metaModel,
+      input: "Reply with OK.",
+      store: false,
+      max_output_tokens: 64,
+      reasoning: { effort: "minimal" },
+    }),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    return response.status;
+  }
+  const result = z
+    .object({ status: z.enum(["completed", "incomplete"]) })
+    .safeParse(await response.json());
+  return result.success ? 200 : 502;
+}
 
 function sessionKey(
   account: string,
@@ -65,7 +97,7 @@ export function createProviderSettings(metaVerifierModel?: string) {
     provider(account: string, token: string) {
       const entry = get(account, token);
       return entry
-        ? createProvider(entry.key, "muse-spark-1.3", fetch, "meta", {
+        ? createProvider(entry.key, metaModel, fetch, "meta", {
             verifierModel: metaVerifierModel,
           })
         : undefined;

@@ -346,6 +346,13 @@ test("an exact proposal quote must be substantive and entail the concern", async
     );
     assert.equal(report.findings[0].verdict, "Unresolved");
     assert.equal(report.findings[0].basis, undefined);
+    const audit = report.findings[0].audit?.find(
+      ({ stage }) => stage === "Verification",
+    )?.observation;
+    assert.match(
+      audit ?? "",
+      condition === "shortPremise" ? /below the minimum/ : /Verifier rejected/,
+    );
   }
 });
 
@@ -592,6 +599,16 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
   const key = "synthetic-test-key-value";
   await withServer(
     createApp(undefined, {
+      metaRequest: async (url, init) => {
+        assert.equal(url, "https://api.meta.ai/v1/responses");
+        const submitted = new Headers(init?.headers).get("Authorization");
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.model, "muse-spark-1.3");
+        assert.equal(body.store, false);
+        return submitted === `Bearer ${key}`
+          ? Response.json({ status: "completed" })
+          : new Response(null, { status: 401 });
+      },
       verifySession: async (value) =>
         [token, otherSession].includes(value) ? "test-account" : null,
     }),
@@ -603,6 +620,25 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       };
       assert.equal((await fetch(endpoint)).status, 401);
       assert.equal((await post(url + "/api/reviews", input)).status, 401);
+      const withoutKey = await fetch(url + "/api/claims", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ proposal: demoProposal }),
+      });
+      assert.equal(withoutKey.status, 409);
+      assert.match(await withoutKey.text(), /Settings/);
+      const invalidKey = () =>
+        fetch(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ key: "invalid-test-key-value" }),
+        });
+      const rejected = await invalidKey();
+      assert.equal(rejected.status, 422);
+      assert.doesNotMatch(await rejected.text(), /invalid-test-key-value/);
+      assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
+        saved: false,
+      });
       const saved = await fetch(endpoint, {
         method: "POST",
         headers,
@@ -610,6 +646,11 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       });
       assert.equal(saved.status, 201);
       assert.doesNotMatch(await saved.text(), /synthetic-test-key-value/);
+      assert.equal((await invalidKey()).status, 422);
+      assert.equal(
+        (await (await fetch(endpoint, { headers })).json()).saved,
+        true,
+      );
       assert.deepEqual(
         await (await fetch(url + "/api/status", { headers })).json(),
         { live: true },

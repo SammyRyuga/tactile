@@ -54,3 +54,10 @@
 - Stopped the proposal panel from stretching to match report history. Simplified the sidebar and verified it in Chromium at desktop and 320px widths, in RTL, and at a 720 CSS-pixel viewport.
 - Ran one credentialed Meta pass over all 15 development cases. Twenty-five of 36 findings were unresolved. [Measured results and misses](docs/evaluation.md#meta-development-pass)
 - Restored expressive apricot and blue surfaces for the compact workspace sidebar, with corresponding light and dark contrast checks.
+
+## Personal key validation and review diagnostics
+
+- Explained the personal Meta key requirement at sign-in and surfaced a Settings error for attempts to extract claims without a saved key.
+- Added a small Muse Spark request to validate new keys before saving. A rejected replacement leaves the previously validated key available.
+- Fixed money-to-cents comparisons and numbered equations. Reports now count unreadable sources and identify why each rejected proposal premise failed its check.
+- Added reassurance scoring fields. Two blind automated reviewers agreed that one of five reassurance findings in the development pass was misleading.

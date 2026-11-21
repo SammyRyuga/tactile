@@ -236,6 +236,11 @@ export function App({
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
   const progress = page === "running" ? state.progress : undefined;
+  const unreadableCount =
+    report?.mode === "live"
+      ? uniqueSourcesByUrl(report.sources.filter(({ passage }) => !passage))
+          .length
+      : 0;
   const previewProposal = page === "report" ? state.previewProposal : undefined;
   const [proposal, setProposal] = useState(
     saved?.proposal ?? (startExample ? example.proposal : ""),
@@ -317,14 +322,18 @@ export function App({
 
   async function onExtract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (availability === "demo") {
+      if (proposal.trim() === example.proposal) openDemo();
+      else
+        setError(
+          "Add your Meta Model API key in Settings before extracting claims.",
+        );
+      return;
+    }
     const parsed = proposalSchema.safeParse(proposal);
     if (!parsed.success) {
       setError("Describe your decision in at least 20 characters.");
       proposalField.current?.focus();
-      return;
-    }
-    if (proposal.trim() === example.proposal && availability !== "live") {
-      openDemo();
       return;
     }
     if (availability !== "live" || request.current) return;
@@ -557,11 +566,7 @@ export function App({
                   <button
                     className="button primary"
                     type="submit"
-                    disabled={
-                      extracting ||
-                      (availability !== "live" &&
-                        proposal.trim() !== example.proposal)
-                    }
+                    disabled={extracting || availability === "checking"}
                   >
                     {extracting ? "Extracting claims…" : "Extract claims"}
                   </button>
@@ -906,6 +911,13 @@ export function App({
               <summary>Read your proposal</summary>
               <p>{reportProposal}</p>
             </details>
+            {unreadableCount > 0 && (
+              <p className="field-note">
+                {unreadableCount} unreadable{" "}
+                {unreadableCount === 1 ? "source" : "sources"}. See the review
+                trails for details.
+              </p>
+            )}
             <div className="findings">
               {report.findings.map((finding) => (
                 <article key={finding.claim.id} className="finding">

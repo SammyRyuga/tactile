@@ -33,7 +33,7 @@ The signed-in examples cover changed-package tests, replica consistency, and fea
 
 Open **Settings** after signing in. Use the header theme button to switch between light and dark. Tactile remembers your theme in that browser. The claim editor and other animated surfaces respect the system’s reduced-motion preference.
 
-To configure live reviews, paste your **Meta Model API key** in Settings and save it. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
+To configure live reviews, paste your **Meta Model API key** in Settings. Tactile checks that the key can run Muse Spark before saving it. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
 
 ![Tactile Settings in dark mode with an empty provider key field](docs/screenshots/settings.webp)
 

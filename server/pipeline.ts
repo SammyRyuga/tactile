@@ -336,24 +336,35 @@ export async function runReview(
   const reviewable = cited.flatMap(({ source, claim }) =>
     source.passage ? [{ id: source.id, claim, passage: source.passage }] : [],
   );
+  const premiseGates = new Map<string, string>();
   const premises = specialistResults.flatMap(({ claims, result }) =>
     claims.flatMap((claim) => {
       const finding = result?.findings.find(({ id }) => id === claim.id);
-      const quote = finding?.proposalExcerpt?.trim();
-      return finding?.outcome === "concern" &&
-        quote &&
-        quote.length >= 24 &&
-        quote.split(/\s+/).length >= 4 &&
-        input.proposal.includes(quote)
-        ? [
-            {
-              id: claim.id,
-              claim: claim.text,
-              quote,
-              concern: finding.observation,
-            },
-          ]
-        : [];
+      if (finding?.outcome !== "concern") return [];
+      const quote = finding.proposalExcerpt?.trim();
+      if (!quote) {
+        premiseGates.set(claim.id, "Specialist did not supply a quote.");
+        return [];
+      }
+      if (quote.length < 24 || quote.split(/\s+/).length < 4) {
+        premiseGates.set(claim.id, "Quote was below the minimum length.");
+        return [];
+      }
+      if (!input.proposal.includes(quote)) {
+        premiseGates.set(
+          claim.id,
+          "Quote was not found verbatim in the proposal.",
+        );
+        return [];
+      }
+      return [
+        {
+          id: claim.id,
+          claim: claim.text,
+          quote,
+          concern: finding.observation,
+        },
+      ];
     }),
   );
   const shouldVerify = reviewable.length > 0 || premises.length > 0;
@@ -411,6 +422,13 @@ export async function runReview(
       premiseJudgment.quote === premise.quote
         ? [premise.quote]
         : [];
+    const premiseDiagnostic = premise
+      ? internal.length
+        ? `Verifier accepted the premise. ${premiseJudgment?.explanation ?? ""}`
+        : premiseJudgment
+          ? `Verifier rejected the premise. ${premiseJudgment.explanation}`
+          : "Verifier did not return a usable premise judgment."
+      : premiseGates.get(claim.id);
     const assigned = specialistResults.filter(({ claims }) =>
       claims.some(({ id }) => id === claim.id),
     );
@@ -472,8 +490,8 @@ export async function runReview(
             : "skipped",
         observation:
           [
-            premise
-              ? `Proposal premise · ${premiseJudgment?.explanation ?? "Entailment was not verified."}`
+            premiseDiagnostic
+              ? `Proposal premise · ${premiseDiagnostic}`
               : undefined,
             ...sources.map((source) => {
               const judgment = verification?.judgments.find(

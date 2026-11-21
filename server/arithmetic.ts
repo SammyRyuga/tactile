@@ -57,10 +57,11 @@ function round(value: number, places: number) {
 }
 
 export function checkArithmetic(claim: string) {
-  return [...claim.matchAll(expression)].flatMap((match) => {
+  const text = claim.replace(/^[ \t]*\d{1,3}\.[ \t]+/gm, "");
+  return [...text.matchAll(expression)].flatMap((match) => {
     const [equation, left, value] = match;
-    const prefix = claim.slice(0, match.index).trimEnd();
-    const suffix = claim.slice(match.index + equation.length);
+    const prefix = text.slice(0, match.index).trimEnd();
+    const suffix = text.slice(match.index + equation.length);
     if (/[+−*/×÷-]$/.test(prefix) || /^\s*[%=×÷*+]/.test(suffix)) return [];
     const context = suffix.split(/[;\n]|\.(?=\s|$)/, 1)[0];
     const statedRounding = rounds.exec(context);
@@ -86,12 +87,13 @@ export function checkArithmetic(claim: string) {
           actual,
           correct:
             comparable !== null &&
-            (comparable === stated ||
-              (!Number.isInteger(stated) &&
-                Math.abs(comparable - stated) <=
-                  Number.EPSILON *
-                    8 *
-                    Math.max(1, Math.abs(comparable), Math.abs(stated)))),
+            Math.abs(comparable - stated) <=
+              Math.min(
+                0.25,
+                Number.EPSILON *
+                  8 *
+                  Math.max(1, Math.abs(comparable), Math.abs(stated)),
+              ),
         },
       ];
     } catch {

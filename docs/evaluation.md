@@ -42,3 +42,13 @@ The run used Muse Spark 1.3 with one repetition per case. All 15 cases completed
 Twenty unresolved findings lacked sufficient evidence and five were affected by failed checks. Of 34 cited sources, 23 returned HTTP 200, including five truncated bodies and one truncated body with no static text. Seven returned 403, two returned 402, and two were blocked by URL policy. Twelve citations ultimately had no verification judgment. This identifies fetch failures as one factor in the unresolved rate. It does not establish that fetching alone caused the earlier replica result.
 
 The run identified the feature-flag rollback contradiction and both incorrect equations in the quantitative development cases. The replica report raised immediate-read staleness in its rationale but did not establish the target verdict. The read-only canary report incorrectly treated the absence of write coverage as a defect. These are observations from one run. Baseline comparisons, independent scoring, and fresh holdout cases remain pending.
+
+### Reassurance review
+
+Two automated reviewers independently examined the five earlier “No credible break found” findings without system identities. Both marked one finding as misleading. It treated retries, duplicates, and losses as immaterial to the request count without a counting rule or evidence. Both accepted the other four within the proposals’ stated assumptions. This is a small automated review. Independent human grading is pending.
+
+For comparison runs, `npm run --silent eval -- --live development --meta --once` runs one repetition with the baselines. Timed-out baseline samples are recorded in the output. Score a best-of-N pool only when it contains its full intended sample count. Human marks can include an optional `reassurance` object with `reviewed` and `misleading` counts.
+
+### Replica diagnostic rerun
+
+The rerun returned three unresolved claims. The immediate order lookup and replication-lag findings both recorded “Specialist did not supply a quote.” The throughput finding had no cited passages. The audit identifies why the proposal-grounded verdict did not go through in this run.

@@ -58,8 +58,12 @@ export function ReviewTrail({
                   <a href={source.url} target="_blank" rel="noreferrer">
                     {source.title}
                   </a>
-                  {source.relation && (
-                    <span className="check-status">{source.relation}</span>
+                  {!source.passage && source.diagnostic ? (
+                    <span className="check-status">Source unreadable</span>
+                  ) : (
+                    source.relation && (
+                      <span className="check-status">{source.relation}</span>
+                    )
                   )}
                   {source.passage && (
                     <blockquote>

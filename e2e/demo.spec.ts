@@ -13,12 +13,19 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .getByRole("link", { name: "Sign in to workspace", exact: true })
     .click();
   await expect(page).toHaveURL(/\/login\?next=/);
+  await expect(
+    page.getByText(/Bring your own Meta Model API key for live reviews/),
+  ).toBeVisible();
   await signIn(page);
   await expect(page).toHaveURL(/\/review$/);
   await expect(
     page.getByRole("heading", { name: "Describe your decision" }),
   ).toBeVisible();
   await expect(page.getByLabel("Engineering proposal")).toHaveValue("");
+  await page.getByRole("button", { name: "Extract claims" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Meta Model API key in Settings",
+  );
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
     page.getByRole("heading", { name: "Confirm the claims" }),
@@ -152,7 +159,15 @@ test("settings require sign-in and store the appearance preference across reload
   let saved = false;
   await page.route("**/api/settings/provider", (route) => {
     const method = route.request().method();
-    if (method === "POST") saved = true;
+    if (method === "POST") {
+      if (route.request().postDataJSON().key === "rejected-fixture-key") {
+        return route.fulfill({
+          status: 422,
+          json: { message: "Meta rejected this key." },
+        });
+      }
+      saved = true;
+    }
     if (method === "DELETE") saved = false;
     return route.fulfill({ json: { saved } });
   });
@@ -164,10 +179,16 @@ test("settings require sign-in and store the appearance preference across reload
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page
     .getByLabel("API key", { exact: true })
+    .fill("rejected-fixture-key");
+  await page.getByRole("button", { name: "Save key" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Meta rejected this key.");
+  await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("API key", { exact: true })
     .fill("synthetic-fixture-key");
   await page.getByRole("button", { name: "Save key" }).click();
   await expect(page.getByRole("status")).toHaveText(
-    "Key saved for this session.",
+    "Key validated and saved for this session.",
   );
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.reload();

@@ -8,6 +8,7 @@ import type { PublicAuthConfig } from "./auth.ts";
 import {
   createProviderSettings,
   personalKeySchema,
+  validateMetaKey,
 } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
 
@@ -22,12 +23,14 @@ export function createApp(
     trustProxy?: boolean;
     verifierModel?: string;
     metaVerifierModel?: string;
+    metaRequest?: typeof fetch;
     sourceReader?: NonNullable<Parameters<typeof runReview>[4]>["sourceReader"];
   } = {},
 ) {
   const app = express();
   app.disable("x-powered-by");
   let active = 0;
+  const validatingKeys = new Map<string, AbortController>();
   const settings = createProviderSettings(options.metaVerifierModel);
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
@@ -132,6 +135,48 @@ export function createApp(
         .json({ message: "Enter a valid Meta Model API key." });
       return;
     }
+    if (validatingKeys.has(session.token) || validatingKeys.size >= 4) {
+      response.status(429).json({
+        message: "A key validation is already in progress. Try again shortly.",
+      });
+      return;
+    }
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    response.once("close", stop);
+    validatingKeys.set(session.token, controller);
+    let status: number;
+    try {
+      status = await validateMetaKey(
+        parsed.data.key,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+        options.metaRequest,
+      );
+    } catch {
+      status = 503;
+    } finally {
+      validatingKeys.delete(session.token);
+      response.off("close", stop);
+    }
+    if (response.destroyed) return;
+    if (controller.signal.aborted) {
+      response
+        .status(409)
+        .json({ message: "The key validation was canceled." });
+      return;
+    }
+    if (status !== 200) {
+      const rejected = [401, 403, 404].includes(status);
+      const quota = [402, 429].includes(status);
+      response.status(rejected ? 422 : quota ? 429 : 503).json({
+        message: rejected
+          ? "Meta rejected this key or it cannot access Muse Spark. Check the key and try again."
+          : quota
+            ? "Meta could not run the validation. Check your usage limits or billing and try again."
+            : "Meta key validation is temporarily unavailable. Try again shortly.",
+      });
+      return;
+    }
     const expiresAt = settings.save(
       session.account,
       session.token,
@@ -148,6 +193,7 @@ export function createApp(
   app.delete("/api/settings/provider", async (request, response) => {
     const session = await requireSession(request, response);
     if (!session) return;
+    validatingKeys.get(session.token)?.abort();
     settings.clear(session.account, session.token);
     response.json({ saved: false });
   });
@@ -169,8 +215,9 @@ export function createApp(
       if (!session) return;
       client = settings.provider(session.account, session.token) ?? provider;
       if (!client) {
-        response.status(503).json({
-          message: "Add a Meta Model API key in Settings to run a live review.",
+        response.status(409).json({
+          message:
+            "Add a Meta Model API key in Settings to extract claims or run a live review.",
         });
         return;
       }

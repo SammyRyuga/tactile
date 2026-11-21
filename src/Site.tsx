@@ -119,6 +119,10 @@ function Login({
               ? "Create your account"
               : "Sign in to Tactile"}
         </h1>
+        <p className="field-note">
+          Bring your own Meta Model API key for live reviews. After signing in,
+          add it in Settings. Bundled examples are available with your account.
+        </p>
         {session ? (
           <a className="button primary" href={next}>
             Continue to Tactile

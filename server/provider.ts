@@ -64,6 +64,7 @@ export function createProvider(
   vendor: "openai" | "meta" = "openai",
   config: {
     verifierModel?: string;
+    requestTimeoutMs?: number;
     onUsage?: (usage: ProviderUsage) => void;
   } = {},
 ): ReviewProvider {
@@ -77,7 +78,10 @@ export function createProvider(
       "model" in options && typeof options.model === "string"
         ? options.model
         : model;
-    const callSignal = AbortSignal.any([signal, AbortSignal.timeout(35_000)]);
+    const callSignal = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(config.requestTimeoutMs ?? 35_000),
+    ]);
     async function send(maxOutputTokens: number): Promise<unknown> {
       const endpoint =
         vendor === "meta"

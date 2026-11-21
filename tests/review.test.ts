@@ -159,3 +159,16 @@ test("source excerpt prefers the cited sentence when the fetched page contains i
     sourceExcerpt(body, "Replica commit isolation", cited).includes(cited),
   );
 });
+
+test("arithmetic tolerates floating-point noise in money-to-cents conversions", () => {
+  const text =
+    "Convert 1.1 * 100 = 110 cents; 0.07 * 100 = 7 cents; 19.99 * 100 = 1999 cents; 19.99 * 100 = 1998 cents.";
+  assert.deepEqual(
+    checkArithmetic(text).map(({ correct }) => correct),
+    [true, true, true, false],
+  );
+  assert.equal(
+    checkArithmetic("1. 60 * 2 = 100 jobs per minute")[0]?.correct,
+    false,
+  );
+});

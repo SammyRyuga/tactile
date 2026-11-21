@@ -234,6 +234,10 @@ export function toMarkdown(
           ? new URL(source.url, origin).href
           : source.url;
       lines.push(`- [${title}](<${url}>)`);
+      if (!source.passage && source.diagnostic)
+        lines.push(
+          `  - Source unreadable · ${markdownText(source.diagnostic)}`,
+        );
       if (source.passage)
         lines.push(
           `  - ${source.passageOrigin === "source" ? "Fetched source excerpt" : "Cited research excerpt"} · ${markdownText(source.passage)}`,
