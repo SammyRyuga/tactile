@@ -112,7 +112,7 @@ test("the review room shows streamed activity and opens recorded checks from the
   expect(
     await room.evaluate((element) => {
       const room = element.getBoundingClientRect();
-      return [...element.children].every((child) => {
+      return Array.from(element.children).every((child) => {
         const { left, right } = child.getBoundingClientRect();
         return left >= room.left && right <= room.right;
       });
