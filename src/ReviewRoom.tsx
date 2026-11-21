@@ -115,10 +115,12 @@ function ReviewRoom({
   const excerpt = selected.assigned.find(({ detail }) => detail);
 
   return (
-    <div className="review-room" data-panel={panel ? "crossfire" : undefined}>
+    <div className="review-room">
       <div className="room-scene" role="group" aria-label="Review stations">
         <div className="room-platform" aria-hidden="true">
-          <div className="room-deck" />
+          <div className="room-deck">
+            <div className="room-routing" />
+          </div>
         </div>
         {positions.map(({ id, label, status }) => (
           <button
@@ -131,8 +133,9 @@ function ReviewRoom({
             aria-controls={detailId}
             onClick={() => setPicked(id)}
           >
-            <span className="room-machine" aria-hidden="true">
-              <span className="room-machine-screen">
+            <span className="room-instrument" aria-hidden="true">
+              <span className="room-socket" />
+              <span className="room-hardware">
                 <i />
                 <i />
                 <i />
@@ -194,6 +197,7 @@ function ReviewRoom({
         )}
         {excerpt?.detail && (
           <div className="room-excerpt">
+            <small>Review update</small>
             {excerpt.claim && <strong>{excerpt.claim}</strong>}
             <p>{excerpt.detail}</p>
           </div>

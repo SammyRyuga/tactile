@@ -143,3 +143,8 @@
 
 - Kept the active reviewer names visible in one compact setup row and collapsed reviewer settings, evidence, and individual claim options.
 - Made the 3D room the main live view with the detailed activity log one step away. Grouped memo details and export actions to bring the recommendation and claim findings forward.
+
+## Review setup and room
+
+- Aligned the proposal, reviewer, and evidence disclosures on desktop and stacked them on narrow screens with matching indicators.
+- Rebuilt the live and recorded scene as a dimensional workbench with five distinct reviewer instruments and a separate update panel.

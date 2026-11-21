@@ -323,25 +323,6 @@
 .claim-count-track span[data-filled="true"] {
   background: #33496b;
 }
-.claim-editor .claim-proposal {
-  background: #eeefe7;
-  border: 0;
-  border-radius: 0.75rem;
-  margin-bottom: 0.9rem;
-}
-.claim-proposal summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  list-style: none;
-}
-.claim-proposal summary::-webkit-details-marker {
-  display: none;
-}
-.claim-proposal[open] summary svg {
-  rotate: 180deg;
-}
 .review-workspace .claim-editor .claim-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -511,9 +492,6 @@
   }
   .claim-editor .claim-count-track span {
     transition: background-color var(--claim-motion-quick) ease;
-  }
-  .claim-editor .claim-proposal summary svg {
-    transition: rotate var(--claim-motion-enter) var(--claim-motion-ease);
   }
   .claim-editor .claim-proposal[open] > p {
     animation: claim-disclosure-enter var(--claim-motion-enter)
@@ -943,9 +921,55 @@
   grid-column: 1 / -1;
 }
 
+.review-setup {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.review-setup > details:only-child {
+  grid-column: 1 / -1;
+}
+
+.review-setup > details:not([open]) > summary {
+  min-height: 100%;
+}
+
+.review-setup > details > summary {
+  position: relative;
+  display: block;
+  padding-inline-end: 1.75rem;
+  list-style: none;
+}
+
+.review-setup > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-setup > details > summary::after {
+  position: absolute;
+  inset-block-start: 1rem;
+  inset-inline-end: 0.45rem;
+  inline-size: 0.43rem;
+  block-size: 0.43rem;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  content: "";
+  pointer-events: none;
+  rotate: 45deg;
+}
+
+.review-setup > details[open] > summary::after {
+  rotate: 225deg;
+}
+
+@media (max-width: 700px) {
+  .review-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .reviewer-disclosure summary small {
   display: block;
-  margin-inline-start: 1.1rem;
   color: var(--review-muted);
   font-weight: 500;
   overflow-wrap: anywhere;
