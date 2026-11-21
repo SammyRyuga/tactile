@@ -7,7 +7,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(13rem, 30%);
   min-width: 0;
   margin-block: 1rem;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--room-edge);
   border-radius: 1.25rem;
   background: var(--room-case);
@@ -315,6 +315,10 @@
 @media (max-width: 720px) {
   .review-room {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .room-scene {
+    aspect-ratio: auto;
   }
 
   .room-detail {

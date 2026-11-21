@@ -4,6 +4,8 @@ import { mockAuthentication, signIn } from "./auth-fixture.ts";
 test("the review room shows streamed activity and opens recorded checks from the report", async ({
   page,
 }, testInfo) => {
+  if (testInfo.project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 820 });
   const claim = {
     id: "worker",
     risk: "technical",
@@ -107,6 +109,15 @@ test("the review room shows streamed activity and opens recorded checks from the
   await room.getByRole("button", { name: "Evidence Waiting" }).press("Enter");
   await expect(room.getByRole("heading", { name: "Evidence" })).toBeVisible();
   await expect(room.getByText("Check updates will appear here.")).toBeVisible();
+  expect(
+    await room.evaluate((element) => {
+      const room = element.getBoundingClientRect();
+      return [...element.children].every((child) => {
+        const { left, right } = child.getBoundingClientRect();
+        return left >= room.left && right <= room.right;
+      });
+    }),
+  ).toBe(true);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
