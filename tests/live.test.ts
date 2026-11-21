@@ -1436,6 +1436,12 @@ test("proposal URL import requires sign-in and returns bounded text without a mo
       text: pageText.slice(0, 2400),
       truncated: true,
     });
+    for (let index = 0; index < 5; index++)
+      assert.equal(
+        (await send(headers, "http://example.org/plan")).status,
+        400,
+      );
+    assert.equal((await send(headers, "https://example.org/plan")).status, 429);
     assert.equal(fetches, 1);
   });
 });

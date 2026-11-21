@@ -2,6 +2,7 @@ import { demoExamples } from "../shared/demo.ts";
 import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import type { ErrorRequestHandler, Request, Response } from "express";
 import {
   attachmentKindSchema,
@@ -134,8 +135,18 @@ export function createApp(
   app.get("/api/auth-config", (_request, response) =>
     response.json({ auth: options.auth ?? null }),
   );
+  const limitImports = rateLimit({
+    windowMs: 60_000,
+    limit: 8,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+      message: "Too many attachment requests. Try again in a minute.",
+    },
+  });
   app.post(
     "/api/ingest/file/:kind",
+    limitImports,
     async (request, response, next) => {
       const session = await requireSession(request, response);
       if (!session) return;
@@ -416,7 +427,7 @@ export function createApp(
     }
   }
 
-  app.post("/api/ingest/url", async (request, response) => {
+  app.post("/api/ingest/url", limitImports, async (request, response) => {
     const session = await requireSession(request, response);
     if (!session) return;
     const input = z
