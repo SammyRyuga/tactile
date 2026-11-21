@@ -105,6 +105,11 @@ test("the review room shows streamed activity and opens recorded checks from the
     .click();
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const room = page.locator(".review-room");
+  const activity = page.locator(".review-activity");
+  await expect(activity).not.toHaveAttribute("open", "");
+  await activity.locator(":scope > summary").press("Enter");
+  await expect(activity.locator(".activity")).toBeVisible();
+  await activity.locator(":scope > summary").press("Enter");
   await expect(
     room.getByRole("button", { name: "Builder In progress" }),
   ).toHaveAttribute("aria-pressed", "true");

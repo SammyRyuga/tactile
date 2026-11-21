@@ -213,8 +213,7 @@
   :is(
     .review-workspace .intro p,
     .claim-editor-head p,
-    .claim-row-head .claim-name,
-    .claim-mode
+    .claim-row-head .claim-name
   ) {
   color: #cbd7c9;
 }
