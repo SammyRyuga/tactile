@@ -91,7 +91,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The evaluation dataset has separate 15-case development and holdout sets, baselines, and a scoring rubric. Credentialed comparison results are pending. [Evaluation protocol](docs/evaluation.md) · [Project progress](progress.md) · [Contributing guide](CONTRIBUTING.md)
+The evaluation dataset has separate 15-case development and holdout sets, baselines, and a scoring rubric. A one-pass Meta baseline comparison is available, with human grading pending. [Evaluation protocol](docs/evaluation.md) · [Project progress](progress.md) · [Contributing guide](CONTRIBUTING.md)
 
 ## Credits and license
 

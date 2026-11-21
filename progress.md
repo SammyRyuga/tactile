@@ -23,7 +23,7 @@
 - Added claim routing, load-bearing labels, an engineering scope gate, explicit arithmetic checks, a passage verification pass, and an expandable trail in reports and Markdown.
 - Added specific unresolved reasons and repair tradeoffs. The review preserves its recommendation when individual claims need more information.
 - Added tab-session restoration, production security headers, and a Supabase-backed rolling account quota.
-- Added a 15-case development set and a 15-case holdout with a repeatable runner and scoring rubric. Credentialed comparative results are pending.
+- Added a 15-case development set and a 15-case holdout with a repeatable runner and scoring rubric. See the evaluation guide for the latest comparison.
 - Verified the deployed quota migration enables row-level security, denies anonymous execution, and rejects requests without a session.
 
 ## Interface redesign
@@ -43,7 +43,7 @@
 - Opened the blank proposal workspace after sign-in and moved optional cases into an example library. Added reduced-motion-aware transitions, recent reports that preserve the active draft, and clipboard export.
 - Routed search by risk, enforced the load-bearing cap at review time, and added an evidence specialist. Proposal-grounded findings survive unavailable search. Explicit arithmetic mismatches can determine a verdict.
 - Verified citation excerpts from bounded public HTTPS requests. Unavailable pages remain visible in the trail without a verification judgment. Exercised the source reader against the public PostgreSQL documentation.
-- Added a Meta verifier override, a citation smoke probe, and zero-citation diagnostics. Added a raw-proposal baseline, request metrics, and case-level uncertainty to the evaluation runner. A credentialed Meta smoke run returned citations and completed the replica review; the three verdicts remained unresolved. Comparative evaluation and independent holdout cases remain pending.
+- Added a Meta verifier override, a citation smoke probe, and zero-citation diagnostics. Added a raw-proposal baseline, request metrics, and case-level uncertainty to the evaluation runner. A credentialed Meta smoke run returned citations and completed the replica review; the three verdicts remained unresolved. Independent holdout cases remain pending.
 - Required a personal Meta key for hosted live reviews and reduced the Meta synthesis workload after observing a timeout.
 - Ran a focused live Meta rollback check. It returned a proposal-grounded contradiction and a repair.
 
@@ -61,3 +61,4 @@
 - Added a small Muse Spark request to validate new keys before saving. A rejected replacement leaves the previously validated key available.
 - Fixed money-to-cents comparisons and numbered equations. Reports now count unreadable sources and identify why each rejected proposal premise failed its check.
 - Added reassurance scoring fields. Two blind automated reviewers agreed that one of five reassurance findings in the development pass was misleading.
+- Completed the one-pass Meta baseline comparison over all 15 development cases and published blinded automated grades. Human and citation grading remain pending.
