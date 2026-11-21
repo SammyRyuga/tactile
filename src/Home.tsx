@@ -18,7 +18,7 @@ const steps = [
 const answers = [
   [
     "Do I need an account or API key?",
-    "Sign in to open the workspace. The three bundled cases use no provider key. To review a new proposal, add a Meta Model API key in Settings.",
+    "Run any bundled case without an account or provider key. To review a new proposal, sign in and add a Meta Model API key in Settings.",
   ],
   [
     "What does Unresolved mean?",
@@ -33,10 +33,6 @@ const answers = [
     "Tactile is designed for engineering proposals such as migrations, CI changes, rollouts, and performance tradeoffs. Live reviews send your proposal to the configured provider.",
   ],
 ];
-
-function exampleHref(id: string) {
-  return `/review?example=${id}`;
-}
 
 export function Home({ signedIn }: { signedIn: boolean }) {
   const root = useRef<HTMLElement>(null);
@@ -193,9 +189,11 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               <span className="case-label">The proposal</span>
               <h3>{example.title}</h3>
               <p>{example.proposal}</p>
-              <a className="home-button filled" href={exampleHref(example.id)}>
-                {signedIn ? "Run this case" : "Sign in to run this case"}{" "}
-                <span aria-hidden="true">↗</span>
+              <a
+                className="home-button filled"
+                href={`/demo?example=${example.id}`}
+              >
+                Run bundled example <span aria-hidden="true">↗</span>
               </a>
             </div>
             <div className="case-finding" data-ui>

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { mockAuthentication, signIn } from "./auth-fixture.ts";
 
 test("signed-in user reviews an example, exports, and restores the report", async ({
@@ -99,15 +100,21 @@ test("the case selector opens the corresponding bundled review", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await mockAuthentication(page);
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/api/")) apiRequests.push(pathname);
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Data consistency" }).click();
   await expect(
     page.getByRole("heading", { name: "Move checkout reads to a replica" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Sign in to run this case" }).click();
-  await signIn(page);
-  await expect(page).toHaveURL(/example=replica/);
+  await page.getByRole("link", { name: "Run bundled example" }).click();
+  await expect(page).toHaveURL(/\/demo\?example=replica/);
+  apiRequests.length = 0;
+  await expect(page.getByLabel("Engineering proposal")).toHaveValue(/replica/i);
+  await page.getByRole("button", { name: "Inspect example claims" }).click();
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     /A replica always returns an order/,
   );
@@ -119,6 +126,130 @@ test("the case selector opens the corresponding bundled review", async ({
     page.getByText("Keep immediate order lookups on the primary", {
       exact: false,
     }),
+  ).toBeVisible();
+  expect(apiRequests).toEqual([]);
+});
+
+test("the public rollout demo exposes the contradiction and exports its evidence", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
+  await page.goto("/demo");
+  await expect(
+    page.getByRole("heading", { name: "Use a feature flag as a rollback" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Inspect example claims" })
+    .press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Confirm the claims" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: "Cancel review" }).press("Enter");
+  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+    /reverses records/,
+  );
+  await page.getByRole("button", { name: "Run review" }).click();
+  const finding = page
+    .getByRole("article")
+    .filter({ hasText: "reverses records" });
+  await expect(
+    finding.getByText("Contradicted", { exact: true }),
+  ).toBeVisible();
+  await finding.getByText("Review trail").click();
+  const timeline = page.waitForEvent("popup");
+  await finding
+    .getByRole("link", { name: /timeline/i })
+    .first()
+    .click();
+  const evidence = await timeline;
+  await expect(
+    evidence.getByRole("heading", { name: "Feature flag timeline" }),
+  ).toBeVisible();
+  await evidence.close();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Markdown" }).click();
+  const memo = await readFile(await (await download).path(), "utf8");
+  expect(memo).toContain("Mode: Bundled example");
+  expect(memo).toContain("#flag-timeline");
+  expect(memo).toContain("Contradicted");
+});
+
+test("provider downtime keeps the draft available for retry", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  await page.route("**/api/status", (route) =>
+    route.fulfill({ json: { live: true } }),
+  );
+  let attempts = 0;
+  await page.route("**/api/claims", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({
+          status: 503,
+          json: {
+            message: "Provider temporarily unavailable. Try again shortly.",
+          },
+        })
+      : route.fulfill({
+          json: {
+            claims: [{ id: "claim-1", text: "The change preserves ordering." }],
+          },
+        });
+  });
+  await page.goto("/review");
+  await signIn(page);
+  const draft =
+    "Route jobs through the new queue and verify ordering stays stable.";
+  await page.getByLabel("Engineering proposal").fill(draft);
+  await page.getByRole("button", { name: "Extract claims" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "temporarily unavailable",
+  );
+  await page.reload();
+  await expect(page.getByLabel("Engineering proposal")).toHaveValue(draft);
+  await page.getByRole("button", { name: "Extract claims" }).click();
+  await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
+    "The change preserves ordering.",
+  );
+});
+
+test("signup prompts for email confirmation and keeps the workspace protected", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  await page.route("**/auth/v1/signup?*", (route) =>
+    route.fulfill({
+      json: { user: { id: "pending-fixture-user", identities: [] } },
+    }),
+  );
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Email address").fill("engineer@example.invalid");
+  await page.getByLabel("Password", { exact: true }).fill("fixture-password");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Check your email");
+  await page.goto("/review");
+  await expect(page).toHaveURL(/\/login\?next=%2Freview/);
+});
+
+test("an unavailable authentication service leaves the demo accessible", async ({
+  page,
+}) => {
+  await page.route("**/api/auth-config", (route) =>
+    route.fulfill({ status: 503 }),
+  );
+  await page.goto("/review");
+  await expect(page.getByRole("alert")).toContainText(
+    "temporarily unavailable",
+  );
+  await expect(page).toHaveURL(/\/review$/);
+  await page.getByRole("link", { name: "Try a bundled example" }).click();
+  await expect(
+    page.getByRole("button", { name: "Inspect example claims" }),
   ).toBeVisible();
 });
 

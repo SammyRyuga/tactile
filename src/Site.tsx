@@ -121,7 +121,8 @@ function Login({
         </h1>
         <p className="field-note">
           Bring your own Meta Model API key for live reviews. After signing in,
-          add it in Settings. Bundled examples are available with your account.
+          add it in Settings. You can also{" "}
+          <a href="/demo">try a bundled example</a>.
         </p>
         {session ? (
           <a className="button primary" href={next}>
@@ -205,8 +206,10 @@ export function Site() {
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authUnavailable, setAuthUnavailable] = useState(false);
   const [notice, setNotice] = useState("");
   const path = window.location.pathname;
+  const publicExample = path === "/demo";
   const params = new URLSearchParams(window.location.search);
   const protectedRoute = path === "/review" || path === "/settings";
   const exampleId =
@@ -224,20 +227,36 @@ export function Site() {
   const next = allowedDestination(params.get("next"));
 
   useEffect(() => {
+    if (publicExample) return;
     const controller = new AbortController();
     let unsubscribe: (() => void) | undefined;
     void (async () => {
       try {
         const response = await fetch("/api/auth-config", {
-          signal: controller.signal,
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(8000),
+          ]),
         });
-        if (!response.ok) return;
+        if (!response.ok)
+          throw new Error("Sign-in configuration is unavailable.");
         const { auth } = authConfig.parse(await response.json());
         if (!auth || controller.signal.aborted) return;
         const { createClient } = await import("@supabase/supabase-js");
         if (controller.signal.aborted) return;
         const supabase = createClient(auth.url, auth.publishableKey, {
           auth: { storage: window.sessionStorage },
+          global: {
+            fetch: (input, init) =>
+              fetch(input, {
+                ...init,
+                signal: AbortSignal.any([
+                  controller.signal,
+                  AbortSignal.timeout(8000),
+                  ...(init?.signal ? [init.signal] : []),
+                ]),
+              }),
+          },
         });
         setClient(supabase);
         const { data } = await supabase.auth.getSession();
@@ -246,6 +265,14 @@ export function Site() {
           const user = protectedRoute
             ? await supabase.auth.getUser(data.session.access_token)
             : { data: { user: data.session.user } };
+          if (
+            "error" in user &&
+            user.error &&
+            (!user.error.status ||
+              user.error.status === 429 ||
+              user.error.status >= 500)
+          )
+            throw new Error("Sign-in verification is temporarily unavailable.");
           if (
             !controller.signal.aborted &&
             user.data.user &&
@@ -264,7 +291,10 @@ export function Site() {
         });
         unsubscribe = () => changes.data.subscription.unsubscribe();
       } catch {
-        if (!controller.signal.aborted) setClient(null);
+        if (!controller.signal.aborted) {
+          setClient(null);
+          setAuthUnavailable(true);
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -273,15 +303,15 @@ export function Site() {
       controller.abort();
       unsubscribe?.();
     };
-  }, [protectedRoute]);
+  }, [protectedRoute, publicExample]);
 
   useEffect(() => {
-    if (protectedRoute && !loading && !session) {
+    if (protectedRoute && !loading && !session && !authUnavailable) {
       window.location.replace(
         `/login?${new URLSearchParams({ next: requested })}`,
       );
     }
-  }, [protectedRoute, loading, session, requested]);
+  }, [protectedRoute, loading, session, requested, authUnavailable]);
 
   async function signOut() {
     try {
@@ -311,12 +341,40 @@ export function Site() {
     }
   }
 
+  if (publicExample) {
+    return (
+      <App
+        preview
+        startExample={false}
+        initialExample={
+          demoExamples.find(({ id }) => id === exampleId) ??
+          demoExamples.find(({ id }) => id === "flag")
+        }
+      />
+    );
+  }
+
   if (protectedRoute && (loading || !session)) {
     return (
       <main className="workspace">
-        <p role="status">
-          {loading ? "Checking your session…" : "Opening sign-in…"}
-        </p>
+        {authUnavailable ? (
+          <>
+            <p role="alert">Sign-in verification is temporarily unavailable.</p>
+            <div className="actions">
+              <button
+                className="button"
+                onClick={() => window.location.reload()}
+              >
+                Retry verification
+              </button>
+              <a href="/demo">Try a bundled example</a>
+            </div>
+          </>
+        ) : (
+          <p role="status">
+            {loading ? "Checking your session…" : "Opening sign-in…"}
+          </p>
+        )}
       </main>
     );
   }

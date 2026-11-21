@@ -239,11 +239,13 @@ export function App({
   signOut,
   startExample,
   initialExample,
+  preview = false,
 }: {
   token?: string;
   account?: string;
   accountId?: string;
   startExample: boolean;
+  preview?: boolean;
   initialExample?: {
     id?: string;
     title?: string;
@@ -254,11 +256,13 @@ export function App({
 }) {
   const example = initialExample ?? defaultExample;
   const scenarioId = initialExample?.id;
-  const locationKey = startExample
-    ? scenarioId
-      ? `example:${scenarioId}`
-      : "example"
-    : "workspace";
+  const locationKey = preview
+    ? `preview:${scenarioId}`
+    : startExample
+      ? scenarioId
+        ? `example:${scenarioId}`
+        : "example"
+      : "workspace";
   const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
   const recentKey = `tactile-review-v1:${accountId ?? "guest"}:recent`;
   const [recent, setRecent] = useState(() => readRecent(recentKey));
@@ -293,7 +297,9 @@ export function App({
       : 0;
   const previewProposal = page === "report" ? state.previewProposal : undefined;
   const [proposal, setProposal] = useState(
-    saved?.proposal ?? (startExample ? example.proposal : ""),
+    preview
+      ? example.proposal
+      : (saved?.proposal ?? (startExample ? example.proposal : "")),
   );
   const reportProposal = previewProposal ?? proposal;
   const [claims, setClaims] = useState<ClaimDraft[]>(
@@ -302,10 +308,12 @@ export function App({
   const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
     () => saved?.projectEvidence ?? [],
   );
-  const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
+  const [mode, setMode] = useState<"demo" | "live">(
+    preview ? "demo" : (saved?.mode ?? "demo"),
+  );
   const [availability, setAvailability] = useState<
-    "checking" | "live" | "demo"
-  >("checking");
+    "checking" | "live" | "demo" | "unavailable"
+  >(preview ? "demo" : "checking");
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
@@ -352,19 +360,20 @@ export function App({
   }, [recentKey, recent]);
 
   useEffect(() => {
+    if (preview) return;
     const controller = new AbortController();
     liveAvailable(controller.signal, token).then(
       (live) => {
         if (!controller.signal.aborted) setAvailability(live ? "live" : "demo");
       },
       () => {
-        if (!controller.signal.aborted) setAvailability("demo");
+        if (!controller.signal.aborted) setAvailability("unavailable");
       },
     );
     return () => {
       controller.abort();
     };
-  }, [token]);
+  }, [preview, token]);
 
   useEffect(() => () => request.current?.abort(), []);
 
@@ -385,11 +394,17 @@ export function App({
 
   async function onExtract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (availability === "demo") {
+    if (preview) {
+      openDemo();
+      return;
+    }
+    if (availability === "demo" || availability === "unavailable") {
       if (proposal.trim() === example.proposal) openDemo();
       else
         setError(
-          "Add your Meta Model API key in Settings before extracting claims.",
+          availability === "unavailable"
+            ? "Live status is temporarily unavailable. Refresh to retry. Your draft is saved in this tab."
+            : "Add your Meta Model API key in Settings before extracting claims.",
         );
       return;
     }
@@ -547,7 +562,7 @@ export function App({
   function restart() {
     setCopyStatus("");
     dispatch({ type: "decision" });
-    setProposal("");
+    setProposal(preview ? example.proposal : "");
     setClaims([]);
     setProjectEvidence([]);
     setError("");
@@ -565,7 +580,11 @@ export function App({
           </a>
           <nav aria-label="Project links">
             <a href="/">Home</a>
-            <a href="/settings">Settings</a>
+            {preview ? (
+              <a href="/review">Workspace</a>
+            ) : (
+              <a href="/settings">Settings</a>
+            )}
             <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
               GitHub {mark("external")}
@@ -593,9 +612,15 @@ export function App({
         )}
         <div className="review-masthead">
           <div className="intro">
-            <h1>Review an engineering decision</h1>
+            <h1>
+              {preview
+                ? (example.title ?? "Try a bundled example")
+                : "Review an engineering decision"}
+            </h1>
             <p>
-              Find the assumptions your proposal depends on before you commit.
+              {preview
+                ? "Bundled example · Runs locally without an account or provider key."
+                : "Find the assumptions your proposal depends on before you commit."}
             </p>
           </div>
           <ol className="steps" aria-label="Review steps">
@@ -627,6 +652,7 @@ export function App({
                   id="proposal"
                   value={proposal}
                   disabled={extracting}
+                  readOnly={preview}
                   maxLength={limits.proposal}
                   placeholder="Describe the change you’re considering, the current state, and the expected outcome. Include relevant context, constraints, or alternatives if helpful."
                   onChange={(event) => {
@@ -658,7 +684,11 @@ export function App({
                     type="submit"
                     disabled={extracting || availability === "checking"}
                   >
-                    {extracting ? "Extracting claims…" : "Extract claims"}
+                    {preview
+                      ? "Inspect example claims"
+                      : extracting
+                        ? "Extracting claims…"
+                        : "Extract claims"}
                   </button>
                 </div>
               </form>
@@ -671,7 +701,9 @@ export function App({
                 <ul className="workspace-list">
                   {demoExamples.map((item) => (
                     <li key={item.id}>
-                      <a href={`/review?example=${item.id}`}>
+                      <a
+                        href={`${preview ? "/demo" : "/review"}?example=${item.id}`}
+                      >
                         <span>
                           <strong>{item.label}</strong>
                           <small>{item.title}</small>
@@ -948,26 +980,28 @@ export function App({
             </h2>
             <p className="section-note">
               {mode === "demo"
-                ? "Bundled example · Reading local evidence"
+                ? "Bundled example · Replaying recorded checks"
                 : "Live review · Checking the confirmed claims"}
             </p>
             <ul className="activity" aria-live="polite">
-              {stages.map((stage) => (
-                <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
-                  <strong>{stage}</strong>
-                  <span>
-                    {progress?.[stage] === "done"
-                      ? "Complete"
-                      : progress?.[stage] === "running"
-                        ? "In progress"
-                        : progress?.[stage] === "unavailable"
-                          ? "Incomplete"
-                          : progress?.[stage] === "skipped"
-                            ? "Skipped"
-                            : "Waiting"}
-                  </span>
-                </li>
-              ))}
+              {stages
+                .filter((stage) => mode === "live" || progress?.[stage])
+                .map((stage) => (
+                  <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
+                    <strong>{stage}</strong>
+                    <span>
+                      {progress?.[stage] === "done"
+                        ? "Complete"
+                        : progress?.[stage] === "running"
+                          ? "In progress"
+                          : progress?.[stage] === "unavailable"
+                            ? "Incomplete"
+                            : progress?.[stage] === "skipped"
+                              ? "Skipped"
+                              : "Waiting"}
+                    </span>
+                  </li>
+                ))}
             </ul>
             {mode === "live" && Object.keys(state.updates).length > 0 && (
               <div className="claim-activity" aria-live="polite">

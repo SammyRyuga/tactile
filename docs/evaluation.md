@@ -4,6 +4,7 @@ The development and holdout splits contain 15 cases each across sound, mixed, un
 
 ```sh
 npm run eval -- --list
+npm run eval -- --fixtures
 npm run eval -- --smoke
 npm run eval -- --smoke --meta
 npm run --silent eval -- --live development > development.jsonl
@@ -13,9 +14,9 @@ npm run eval -- --score independent-marks.json
 
 The default runner uses `OPENAI_API_KEY`. Set `META_API_KEY` locally for `--meta`. The Meta smoke test checks that the Responses API returns at least one URL citation, then exercises claim extraction and review. It prints stage diagnostics and fails if every adjudication check fails. `OPENAI_VERIFIER_MODEL` and `META_VERIFIER_MODEL` optionally select a separate verifier model for their provider. [Meta Responses schemas](https://dev.meta.ai/docs/api-reference/responses/schemas) · [Meta search grounding](https://dev.meta.ai/docs/cookbook/search-grounding)
 
-The live runner repeats each case three times and records raw outputs. Systems include Tactile, a single search-enabled critique, a best-of-N pool sized to Tactile’s provider request count, a research agent with a larger search budget, and a raw-proposal critique that receives only the original proposal. Out-of-scope cases compare the two scope gates. Metrics include elapsed time, observed HTTP responses, and input and output tokens when the provider reports them. Request counts and search settings are imperfect proxies for cost.
+The live runner repeats each case three times and records raw outputs. Systems include Tactile, a single search-enabled critique, a best-of-N pool sized to Tactile’s provider request attempts, a research agent asked to revise its hypothesis with a larger requested search budget, and a raw-proposal critique that receives only the original proposal. The single critique is also the first member of the pool. Out-of-scope cases compare the two scope gates. Metrics include elapsed time, HTTP request attempts and observed responses, and input and output tokens when the provider reports them. Meta controls search context size and OpenAI uses a tool-call budget. These are imperfect proxies for cost and do not make the systems compute-equivalent.
 
-Blind system identities and ask an independent reviewer to check the expected finding and verify each citation against its associated statement. Grade a false alarm when a response confidently asserts a substantive defect that is absent or unsupported. For best-of-N, grade the strongest response using the same rubric and report that score as an upper bound.
+Give the reviewer only the generated `blind/` directory and the [grading instructions](evaluation-grading.md). The packet randomizes candidate order and removes system labels and metrics. Output style can still suggest where a candidate came from. Unblind after grading. For best-of-N, include only complete pools and report the strongest graded sample as an upper bound.
 
 Pass the scorer one JSON object per evaluated case, repetition, and system. Each object includes `caseId`, `category`, `repetition`, `system` (`tactile`, `single`, `best-of-n`, `research-agent`, or `raw-proposal`), `caught`, `falseAlarm`, `unsupportedConclusions`, `relevantCitations`, and `totalCitations`. Score the two splits separately. Per-category and aggregate results include 95% percentile bootstrap intervals that resample whole cases, keeping repeated trials together. With only three cases per category, treat these estimates as descriptive.
 
@@ -80,8 +81,20 @@ npm run eval -- --score marked.json
 
 Grade the case files and fill out the matching CSV before opening the system key. The single critique is also the first sample in the best-of-N pool, so it appears once in the packet. The scorer chooses the strongest marked sample from a complete pool and reports case-cluster bootstrap intervals for catch and false-alarm rates.
 
+For the holdout, pass `holdout` as the last argument to `grading.ts prepare`. Keep the two splits in separate packet directories. An unexpected scope rejection on an engineering case is reported as an incomplete paired trial.
+
 ### Full development run ready for human grading
 
 All 45 trials completed across 15 development cases, three repetitions each, with Muse Spark 1.3 on Tactile revision `8cb7ae0`. Two trials were rerun after provider timeouts left incomplete baseline pools. The final set contains 36 engineering reports, nine paired scope decisions, and 255 best-of-N samples. The blinded packet contains 381 candidate outputs.
 
 Tactile returned 72 unresolved findings out of 108 (66.7%). The 95% case-cluster bootstrap interval was 53.7% to 79.6%. The remaining findings were 17 **Contradicted**, 13 **No credible break found**, five **Weakened**, and one **Supported**. These are automatically counted verdict labels. Comparative accuracy, false alarms, citation relevance, and reassurance require the human marks. This run predates the project-evidence workflow.
+
+## Round 1 evidence hardening
+
+`npm run eval -- --fixtures` reproduced the development arithmetic checks. The `workers` claim evaluates to 120 and the `headroom` claim to 100, contradicting their stated totals. The `requests` equation evaluates to 600 and matches. The bundled CI, replica, and rollout examples returned their recorded verdicts and evidence links. Browser tests opened the rollout timeline and checked the downloaded memo. These are deterministic and fixture checks.
+
+The historical misses reproduced as control-flow failures in provider fixtures. A missing quote previously skipped premise verification entirely. The verifier can now look for a contiguous exact excerpt and must explain how it contradicts or limits the actual claim. An absent, non-applicable, or non-entailing passage cannot establish a verdict. A rejected synthesis verdict can no longer authorize rollout through the report recommendation. Regression fixtures cover cross-claim citation IDs, invented excerpts, missing local facts, conflicting sources, unreadable pages, incomplete equations, and a fallback when synthesis fails after a proposal premise has been verified. They test enforcement of the verification contract. Whether the live model consistently makes the right semantic judgments remains unmeasured.
+
+Both credentialed smoke commands stopped at the missing-key check. The live comparisons above predate this branch’s hardening. Holdout cases and prewritten expectations were preserved. Independent human grading and citation review remain pending.
+
+The checkout contains the historical summaries and scoring tools. The underlying one-pass responses and per-candidate grades were unavailable for this audit, so the five false alarms in that comparison could not be individually attributed. The archived notes identify a read-only canary scope error and a misleading request-count reassurance in the earlier development pass.

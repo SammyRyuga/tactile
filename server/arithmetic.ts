@@ -68,7 +68,12 @@ export function checkArithmetic(claim: string) {
     const [equation, left, exactQualifier, value] = match;
     const prefix = text.slice(0, match.index).trimEnd();
     const suffix = text.slice(match.index + equation.length);
-    if (/[+−*/×÷-]$/.test(prefix) || /^\s*[%=×÷*+]/.test(suffix)) return [];
+    if (
+      /[+−*/×÷-]$/.test(prefix) ||
+      /^\s*[%=×÷*/+]/.test(suffix) ||
+      /^\s*[-−]\s*(?:\d|\()/.test(suffix)
+    )
+      return [];
     const context = suffix.split(/[;\n]|\.(?=\s|$)/, 1)[0];
     const statedRounding = rounds.exec(context);
     try {
@@ -100,7 +105,9 @@ export function checkArithmetic(claim: string) {
             ? "nearest integer"
             : equal(Math.floor(actual), stated)
               ? "floor"
-              : undefined
+              : equal(Math.ceil(actual), stated)
+                ? "ceiling"
+                : undefined
           : undefined;
       return [
         {

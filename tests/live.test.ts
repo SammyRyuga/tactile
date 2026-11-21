@@ -35,7 +35,9 @@ function success(text: string, annotations: unknown[] = []) {
 function mockProvider(
   options: {
     wrongCitation?: boolean;
+    crossClaimCitation?: boolean;
     conflict?: boolean;
+    zeroCitations?: boolean;
     malformed?: boolean;
     searchDown?: boolean;
     unrelated?: boolean;
@@ -49,6 +51,10 @@ function mockProvider(
     missingFacts?: boolean;
     internal?: boolean;
     inventedQuote?: boolean;
+    recoverQuote?: boolean;
+    qualifies?: boolean;
+    needsInformation?: boolean;
+    misleadingRecommendation?: boolean;
   } = {},
 ) {
   return createProvider("fixture", "fixture", async (_url, init) => {
@@ -59,20 +65,25 @@ function mockProvider(
       if (options.searchDown) return new Response(null, { status: 503 });
       return success(
         "Fixture: two sources conflict; applicability is uncertain.",
-        [
-          citation,
-          ...(options.repeatedCitations
-            ? [
-                citation,
-                {
-                  ...citation,
-                  url: citation.url + "?utm_source=model#install",
-                },
-                { ...citation, url: citation.url + "?version=2" },
-              ]
-            : []),
-          { ...citation, url: "javascript:example" },
-        ],
+        options.zeroCitations
+          ? []
+          : [
+              citation,
+              ...(options.conflict
+                ? [{ ...citation, url: citation.url + "/different" }]
+                : []),
+              ...(options.repeatedCitations
+                ? [
+                    citation,
+                    {
+                      ...citation,
+                      url: citation.url + "?utm_source=model#install",
+                    },
+                    { ...citation, url: citation.url + "?version=2" },
+                  ]
+                : []),
+              { ...citation, url: "javascript:example" },
+            ],
       );
     }
     if (body.instructions.includes("Identify one to six")) {
@@ -126,19 +137,29 @@ function mockProvider(
           premises: premises.map(
             ({ id, quote }: { id: string; quote: string }) => ({
               id,
-              quote,
-              entailsConcern: !options.nonEntailingPremise,
+              quote:
+                quote ??
+                (options.recoverQuote
+                  ? "a shared schema package consumed by checkout and reporting"
+                  : null),
+              impact: options.nonEntailingPremise
+                ? "insufficient"
+                : options.qualifies
+                  ? "qualifies"
+                  : "contradicts",
               explanation: "Fixture premise check.",
             }),
           ),
           judgments: passages.map(
             ({ id, passage }: { id: string; passage: string }) => ({
               id,
-              relation: options.wrongMechanism
-                ? "contradicts"
-                : options.unrelated
-                  ? "unrelated"
-                  : "supports",
+              relation:
+                options.wrongMechanism ||
+                (options.conflict && id.endsWith("-2"))
+                  ? "contradicts"
+                  : options.unrelated
+                    ? "unrelated"
+                    : "supports",
               applicability: options.wrongMechanism
                 ? "different mechanism"
                 : options.unrelated
@@ -157,7 +178,9 @@ function mockProvider(
       if (options.malformed) return success("{ malformed");
       return success(
         JSON.stringify({
-          recommendation: "Check before rollout.",
+          recommendation: options.misleadingRecommendation
+            ? "Proceed immediately. The claims are proven."
+            : "Check before rollout.",
           findings: input.claims.map(({ id }, index) => ({
             id,
             verdict: options.conflict
@@ -196,7 +219,9 @@ function mockProvider(
                   : [
                       options.wrongCitation
                         ? "unknown"
-                        : `source-${index + 1}-1`,
+                        : options.crossClaimCitation
+                          ? `source-${2 - index}-1`
+                          : `source-${index + 1}-1`,
                     ],
           })),
         }),
@@ -206,17 +231,23 @@ function mockProvider(
       JSON.stringify({
         findings: input.claims.map(({ id }) => ({
           id,
-          outcome: options.internal ? "concern" : "no credible concern",
+          outcome: options.internal
+            ? "concern"
+            : options.needsInformation
+              ? "needs information"
+              : "no credible concern",
           observation: options.internal
             ? "A shared schema can affect its consumers."
             : "No credible failure found within the fixture.",
-          proposalExcerpt: options.inventedQuote
-            ? "This text does not appear in the proposal."
-            : options.shortPremise
-              ? "a shared schema"
-              : options.internal
-                ? "a shared schema package consumed by checkout and reporting"
-                : null,
+          proposalExcerpt: options.recoverQuote
+            ? null
+            : options.inventedQuote
+              ? "This text does not appear in the proposal."
+              : options.shortPremise
+                ? "a shared schema"
+                : options.internal
+                  ? "a shared schema package consumed by checkout and reporting"
+                  : null,
         })),
       }),
     );
@@ -261,6 +292,7 @@ test("provider citation parsing keeps only valid URLs and parallel stages preced
 
 for (const condition of [
   "wrongCitation",
+  "crossClaimCitation",
   "conflict",
   "malformed",
   "searchDown",
@@ -284,8 +316,7 @@ for (const condition of [
           : "Evidence insufficient",
     );
     assert.ok(report.findings[0].audit?.length);
-    if (condition !== "malformed")
-      assert.equal(report.recommendation, "Check before rollout.");
+    assert.match(report.recommendation, /Resolve the evidence gaps/);
   });
 }
 
@@ -388,6 +419,39 @@ test("an exact proposal quote must be substantive and entail the concern", async
   }
 });
 
+test("verification can recover a missing quote without inventing a premise", async () => {
+  const review = (options: Parameters<typeof mockProvider>[0]) =>
+    runReview(
+      mockProvider({ internal: true, searchDown: true, ...options }),
+      input,
+      () => {},
+      signal,
+    );
+  const usable = await review({ recoverQuote: true, malformed: true });
+  assert.equal(usable.findings[0].verdict, "Contradicted");
+  assert.equal(usable.findings[0].basis, "proposal");
+  assert.ok(input.proposal.includes(usable.findings[0].proposalExcerpt!));
+  const insufficient = await review({
+    recoverQuote: true,
+    nonEntailingPremise: true,
+  });
+  assert.equal(insufficient.findings[0].verdict, "Unresolved");
+  const limitation = await review({ qualifies: true });
+  assert.equal(limitation.findings[0].verdict, "Weakened");
+});
+
+test("a rejected synthesis verdict cannot authorize rollout in the recommendation", async () => {
+  const report = await runReview(
+    mockProvider({ wrongCitation: true, misleadingRecommendation: true }),
+    input,
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  assert.equal(report.findings[0].verdict, "Unresolved");
+  assert.match(report.recommendation, /Resolve the evidence gaps/);
+});
+
 test("no credible break is distinct from positive support and requires completed checks", async () => {
   const run = (options: Parameters<typeof mockProvider>[0]) =>
     runReview(
@@ -404,6 +468,14 @@ test("no credible break is distinct from positive support and requires completed
   );
   assert.equal(
     (await run({ searchDown: true })).findings[0].verdict,
+    "Unresolved",
+  );
+  assert.equal(
+    (await run({ zeroCitations: true })).findings[0].verdict,
+    "Unresolved",
+  );
+  assert.equal(
+    (await run({ needsInformation: true })).findings[0].verdict,
     "Unresolved",
   );
 });
@@ -664,6 +736,61 @@ test("no-key HTTP mode avoids provider calls", async () => {
       proposal: demoProposal,
     });
     assert.equal(response.status, 503);
+  });
+});
+
+test("a provider rate limit returns a retryable message without its response body", async () => {
+  const provider = createProvider(
+    "fixture",
+    "fixture",
+    async () => new Response("Private upstream details", { status: 429 }),
+  );
+  await withServer(createApp(provider), async (url) => {
+    const response = await post(url + "/api/claims", {
+      proposal: input.proposal,
+    });
+    assert.equal(response.status, 429);
+    const body = await response.text();
+    assert.match(body, /usage or billing limit/);
+    assert.doesNotMatch(body, /Private upstream details/);
+  });
+});
+
+test("a busy review is rejected before it can consume account quota", async () => {
+  let enter!: () => void;
+  let release!: (allowed: boolean) => void;
+  const entered = new Promise<void>((resolve) => (enter = resolve));
+  const reserved = new Promise<boolean>((resolve) => (release = resolve));
+  let reservations = 0;
+  const app = createApp(mockProvider(), {
+    verifySession: async () => "test-account",
+    reserveUsage: async () => {
+      if (++reservations === 2) enter();
+      return reserved;
+    },
+  });
+  await withServer(app, async (url) => {
+    function extract() {
+      return fetch(url + "/api/claims", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer fixture-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ proposal: input.proposal }),
+        signal: AbortSignal.timeout(5000),
+      });
+    }
+    const active = [extract(), extract()];
+    try {
+      await entered;
+      assert.equal((await extract()).status, 429);
+      assert.equal(reservations, 2);
+    } finally {
+      release(true);
+      const responses = await Promise.all(active);
+      assert.ok(responses.every((response) => response.ok));
+    }
   });
 });
 

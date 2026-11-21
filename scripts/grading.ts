@@ -18,6 +18,7 @@ const scope = z.object({
 });
 const trialSchema = z.object({
   caseId: z.string(),
+  split: z.enum(["development", "holdout"]).optional(),
   repetition: z.number().int().min(1).max(3),
   report: reportSchema.optional(),
   single: baseline.optional(),
@@ -53,7 +54,7 @@ const keyEntry = z.object({
 });
 type KeyEntry = z.infer<typeof keyEntry>;
 
-const columns = [
+const originalColumns = [
   "candidate_id",
   "case_id",
   "repetition",
@@ -65,24 +66,32 @@ const columns = [
   "reassurance_reviewed",
   "misleading_reassurances",
 ];
+const columns = [...originalColumns, "unresolved_findings"];
 
-function prepare(raw: string, directory: string) {
+function prepare(raw: string, directory: string, split: keyof typeof corpus) {
   const lines = readFileSync(raw, "utf8").trim().split("\n");
   const lookup = new Map<string, z.infer<typeof trialSchema>>();
   for (const line of lines) {
     const trial = trialSchema.parse(JSON.parse(line));
+    if (trial.split && trial.split !== split)
+      throw new Error(
+        `Case ${trial.caseId} belongs to the ${trial.split} split.`,
+      );
     const id = `${trial.caseId}:${trial.repetition}`;
     if (lookup.has(id)) throw new Error(`Duplicate trial ${id}.`);
     lookup.set(id, trial);
   }
-  if (lookup.size !== 45)
-    throw new Error("The full grading packet requires 45 distinct trials.");
+  const cases = corpus[split];
+  if (lookup.size !== cases.length * 3)
+    throw new Error(
+      `The full ${split} grading packet requires ${cases.length * 3} distinct trials.`,
+    );
   const packet = join(directory, "blind");
   mkdirSync(packet, { recursive: true });
   const key: KeyEntry[] = [];
   const csv = [columns.join(",")];
 
-  for (const [category, caseId, proposal, expected] of corpus.development) {
+  for (const [category, caseId, proposal, expected] of cases) {
     const sections = [
       `# ${caseId}`,
       "",
@@ -163,6 +172,9 @@ function prepare(raw: string, directory: string) {
           return [
             `**${finding.verdict} · ${finding.claim.text}**`,
             finding.rationale,
+            finding.proposalExcerpt
+              ? `Verified proposal excerpt: ${finding.proposalExcerpt}`
+              : "",
             `Next step: ${finding.nextStep}`,
             finding.missingInformation
               ? `Missing information: ${finding.missingInformation}`
@@ -171,6 +183,10 @@ function prepare(raw: string, directory: string) {
               ? `Repair: ${finding.repair.minimalFix}\n\nTradeoff: ${finding.repair.tradeoff}`
               : "",
             ...links,
+            ...(finding.projectCitations ?? []).map(
+              ({ title, quote }) =>
+                `- Project evidence · ${title}\n  - Verified excerpt: ${quote}`,
+            ),
           ]
             .filter(Boolean)
             .join("\n\n");
@@ -178,7 +194,12 @@ function prepare(raw: string, directory: string) {
         record(
           ["tactile"],
           [report.recommendation, ...entries].join("\n\n"),
-          cited.length,
+          cited.length +
+            report.findings.reduce(
+              (count, finding) =>
+                count + (finding.projectCitations?.length ?? 0),
+              0,
+            ),
           report.findings.filter(
             ({ verdict }) => verdict === "No credible break found",
           ).length,
@@ -220,6 +241,7 @@ function prepare(raw: string, directory: string) {
             entry.citationCount,
             "",
             "",
+            "",
           ].join(","),
         );
         sections.push(
@@ -248,6 +270,7 @@ Read each case packet and fill the matching row in marks.csv. The systems are hi
 - unsupported_conclusions: count substantive conclusions that lack appropriate support.
 - relevant_citations: count citations whose destination directly supports the associated statement. Review the destination, since a provider-reported excerpt may be unreliable.
 - reassurance_reviewed and misleading_reassurances: for “No credible break found” findings, record how many you reviewed and how many should have stayed unresolved or been challenged. Leave these empty for other answers.
+- unresolved_findings: count distinct material questions the candidate explicitly leaves open.
 
 Enter true/false and nonnegative integers. Leave candidate ID and prefilled citation counts intact. All three repetitions are included. Out-of-scope cases compare scope handling.
 `,
@@ -267,7 +290,8 @@ function unblind(csvPath: string, keyPath: string) {
   const [header, ...lines] = readFileSync(csvPath, "utf8")
     .trim()
     .split(/\r?\n/);
-  if (cells(header).join(",") !== columns.join(","))
+  const headings = cells(header).join(",");
+  if (headings !== columns.join(",") && headings !== originalColumns.join(","))
     throw new Error("Keep the original marks CSV columns.");
   function boolean(value: string) {
     if (!/^(true|false)$/i.test(value))
@@ -291,6 +315,7 @@ function unblind(csvPath: string, keyPath: string) {
       total,
       reviewed,
       misleading,
+      unresolved,
     ] = cells(line);
     const entry = remaining.get(id);
     if (
@@ -309,6 +334,7 @@ function unblind(csvPath: string, keyPath: string) {
       unsupportedConclusions: count(unsupported),
       relevantCitations: count(relevant),
       totalCitations: count(total),
+      unresolvedFindings: unresolved ? count(unresolved) : undefined,
       reassurance:
         reviewed || misleading
           ? { reviewed: count(reviewed), misleading: count(misleading) }
@@ -349,10 +375,16 @@ function unblind(csvPath: string, keyPath: string) {
   console.log(JSON.stringify(marks, null, 2));
 }
 
-const [, , command, input, output] = process.argv;
-if (command === "prepare" && input && output) prepare(input, output);
+const [, , command, input, output, split = "development"] = process.argv;
+if (
+  command === "prepare" &&
+  input &&
+  output &&
+  (split === "development" || split === "holdout")
+)
+  prepare(input, output, split);
 else if (command === "unblind" && input && output) unblind(input, output);
 else
   throw new Error(
-    "Use grading.ts prepare <comparison.jsonl> <directory> or unblind <marks.csv> <system-key.json>.",
+    "Use grading.ts prepare <comparison.jsonl> <directory> [development|holdout] or unblind <marks.csv> <system-key.json>.",
   );

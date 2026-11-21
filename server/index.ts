@@ -61,7 +61,7 @@ if (dev) {
   if (!existsSync(resolve(dist, "index.html")))
     throw new Error("Run npm run build before npm start.");
   app.use(express.static(dist));
-  app.get(["/login", "/review", "/settings"], (_request, response) =>
+  app.get(["/demo", "/login", "/review", "/settings"], (_request, response) =>
     response.sendFile("index.html", { root: dist }),
   );
 }

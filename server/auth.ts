@@ -20,6 +20,8 @@ export function createSessionVerifier(config: PublicAuthConfig) {
 
   return async (token: string): Promise<string | null> => {
     const { data, error } = await client.auth.getUser(token);
+    if (error && (!error.status || error.status === 429 || error.status >= 500))
+      throw new Error("Sign-in verification is temporarily unavailable.");
     return error || data.user?.is_anonymous ? null : (data.user?.id ?? null);
   };
 }

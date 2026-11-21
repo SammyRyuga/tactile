@@ -74,6 +74,7 @@ export const stages = [
   "Project evidence",
   "Evidence critique",
   "Evidence",
+  "Source retrieval",
   "Verification",
   "Synthesis",
 ] as const;
@@ -135,6 +136,7 @@ export const findingSchema = z.object({
       }),
     )
     .optional(),
+  proposalExcerpt: z.string().optional(),
   rationale: z.string(),
   nextStep: z.string(),
   sourceIds: z.array(idSchema),
@@ -198,6 +200,15 @@ function markdownBlock(text: string): string {
   return [fence, text, fence].join("\n");
 }
 
+function markdownSource(source: Source, origin?: string): string {
+  const address = URL.parse(source.url, origin);
+  const destination = (address?.href ?? source.url).replace(
+    /[<>\s\\]/g,
+    encodeURIComponent,
+  );
+  return `[${markdownText(source.title)}](<${destination}>)`;
+}
+
 export function toMarkdown(
   proposal: string,
   report: Report,
@@ -229,6 +240,13 @@ export function toMarkdown(
     );
     if (finding.reason)
       lines.push("", `**Resolution status** ${finding.reason}`);
+    if (finding.proposalExcerpt)
+      lines.push(
+        "",
+        "**Verified proposal excerpt**",
+        "",
+        markdownBlock(finding.proposalExcerpt),
+      );
     if (finding.missingInformation)
       lines.push(
         "",
@@ -261,13 +279,7 @@ export function toMarkdown(
       for (const check of finding.audit) {
         const titles = uniqueSourcesByUrl(
           (check.sourceIds ?? []).flatMap((id) => sources.get(id) ?? []),
-        ).map((source) => {
-          const href =
-            source.url.startsWith("/") && origin
-              ? new URL(source.url, origin).href
-              : source.url;
-          return `[${markdownText(source.title)}](<${href}>)`;
-        });
+        ).map((source) => markdownSource(source, origin));
         lines.push(
           `- **${check.stage} · ${check.status}** ${markdownText(check.observation)}${titles.length ? ` (${titles.join(", ")})` : ""}`,
         );
@@ -280,12 +292,7 @@ export function toMarkdown(
     for (const source of uniqueSourcesByUrl(
       [...referenced].flatMap((id) => sources.get(id) ?? []),
     )) {
-      const title = markdownText(source.title);
-      const url =
-        source.url.startsWith("/") && origin
-          ? new URL(source.url, origin).href
-          : source.url;
-      lines.push(`- [${title}](<${url}>)`);
+      lines.push(`- ${markdownSource(source, origin)}`);
       if (!source.passage && source.diagnostic)
         lines.push(
           `  - Source unreadable · ${markdownText(source.diagnostic)}`,

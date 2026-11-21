@@ -41,6 +41,9 @@ export async function mockAuthentication(page: Page) {
     }),
   );
   await page.route("**/auth/v1/user", (route) => route.fulfill({ json: user }));
+  await page.route("**/api/status", (route) =>
+    route.fulfill({ json: { live: false } }),
+  );
 }
 
 export async function signIn(page: Page) {
