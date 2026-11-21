@@ -1,3 +1,4 @@
+import { uniqueSourcesByUrl } from "../shared/review.ts";
 import type { Finding, Source } from "../shared/review.ts";
 
 export function ReviewTrail({
@@ -8,8 +9,10 @@ export function ReviewTrail({
   sources: Source[];
 }) {
   const trail = finding.audit ?? [];
-  const cited = sources.filter(({ id }) =>
-    trail.some(({ sourceIds }) => sourceIds?.includes(id)),
+  const cited = uniqueSourcesByUrl(
+    sources.filter(({ id }) =>
+      trail.some(({ sourceIds }) => sourceIds?.includes(id)),
+    ),
   );
   return (
     <>

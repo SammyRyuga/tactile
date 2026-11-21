@@ -46,3 +46,10 @@
 - Added a Meta verifier override, a citation smoke probe, and zero-citation diagnostics. Added a raw-proposal baseline, request metrics, and case-level uncertainty to the evaluation runner. A credentialed Meta smoke run returned citations and completed the replica review; the three verdicts remained unresolved. Comparative evaluation and independent holdout cases remain pending.
 - Required a personal Meta key for hosted live reviews and reduced the Meta synthesis workload after observing a timeout.
 - Ran a focused live Meta rollback check. It returned a proposal-grounded contradiction and a repair.
+
+## Citation quality and workspace layout
+
+- Deduplicated research URLs per claim and required an exact, directly applicable source quote. The verifier also checks whether a proposal quote entails the specialist concern. Reports distinguish positive support from finding no credible break.
+- Added bounded redirects, compressed responses, partial-body processing, and per-source fetch diagnostics. Arithmetic now checks explicit equations in prose and covers all six quantitative corpus cases.
+- Stopped the proposal panel from stretching to match report history. Simplified the sidebar and verified it in Chromium at desktop and 320px widths, in RTL, and at a 720 CSS-pixel viewport.
+- Ran one credentialed Meta pass over all 15 development cases. Twenty-five of 36 findings were unresolved. [Measured results and misses](docs/evaluation.md#meta-development-pass)

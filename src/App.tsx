@@ -19,6 +19,7 @@ import {
   reviewInputSchema,
   stages,
   toMarkdown,
+  uniqueSourcesByUrl,
 } from "../shared/review.ts";
 import type {
   Claim,
@@ -568,11 +569,9 @@ export function App({
               </form>
             </section>
             <aside className="workspace-sidebar">
-              <section className="panel example">
+              <section className="panel workspace-library">
                 <h2>Example library</h2>
-                <p>
-                  Try a proposal and review its claims with bundled evidence.
-                </p>
+                <p>Practice with bundled evidence.</p>
                 <ul className="workspace-list">
                   {demoExamples.map((item) => (
                     <li key={item.id}>
@@ -589,21 +588,35 @@ export function App({
               </section>
               {recent.length > 0 && (
                 <section
-                  className="panel example"
+                  className="panel workspace-history"
                   aria-labelledby="recent-reports-title"
                 >
                   <h2 id="recent-reports-title">Recent reports</h2>
-                  <p>Available in this tab for your current session.</p>
+                  <p>Saved in this tab.</p>
                   <ul className="workspace-list">
                     {recent.map((entry) => (
                       <li key={entry.id}>
                         <button type="button" onClick={() => reopen(entry)}>
                           <span>
-                            <strong>
-                              {entry.proposal.split("\n")[0].slice(0, 85)}
+                            <strong className="workspace-report-title">
+                              {
+                                entry.proposal
+                                  .trim()
+                                  .split(/(?<=[.!?])\s+|\n/, 1)[0]
+                              }
                             </strong>
                             <small>
-                              {new Date(entry.savedAt).toLocaleDateString()} ·{" "}
+                              <time dateTime={entry.savedAt}>
+                                {new Date(entry.savedAt).toLocaleDateString(
+                                  undefined,
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  },
+                                )}
+                              </time>
+                              {" · "}
                               {entry.report.mode === "live"
                                 ? "Live review"
                                 : "Bundled example"}
@@ -896,7 +909,9 @@ export function App({
             <div className="findings">
               {report.findings.map((finding) => (
                 <article key={finding.claim.id} className="finding">
-                  <span className={`verdict ${finding.verdict.toLowerCase()}`}>
+                  <span
+                    className={`verdict ${finding.verdict.toLowerCase().replaceAll(" ", "-")}`}
+                  >
                     {finding.verdict}
                   </span>
                   {finding.basis && (
@@ -916,19 +931,17 @@ export function App({
                   <ReviewTrail finding={finding} sources={report.sources} />
                   {finding.sourceIds.length > 0 && (
                     <ul className="sources" aria-label="Sources">
-                      {report.sources
-                        .filter(({ id }) => finding.sourceIds.includes(id))
-                        .map((source) => (
-                          <li key={source.id}>
-                            <a
-                              href={source.url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {source.title} {mark("external")}
-                            </a>
-                          </li>
-                        ))}
+                      {uniqueSourcesByUrl(
+                        report.sources.filter(({ id }) =>
+                          finding.sourceIds.includes(id),
+                        ),
+                      ).map((source) => (
+                        <li key={source.id}>
+                          <a href={source.url} target="_blank" rel="noreferrer">
+                            {source.title} {mark("external")}
+                          </a>
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </article>

@@ -36,6 +36,13 @@ function mockProvider(
     malformed?: boolean;
     searchDown?: boolean;
     unrelated?: boolean;
+    wrongMechanism?: boolean;
+    fabricatedSourceQuote?: boolean;
+    repeatedCitations?: boolean;
+    nonEntailingPremise?: boolean;
+    shortPremise?: boolean;
+    noBreak?: boolean;
+    missingFacts?: boolean;
     internal?: boolean;
     inventedQuote?: boolean;
   } = {},
@@ -47,7 +54,20 @@ function mockProvider(
       if (options.searchDown) return new Response(null, { status: 503 });
       return success(
         "Fixture: two sources conflict; applicability is uncertain.",
-        [citation, { ...citation, url: "javascript:example" }],
+        [
+          citation,
+          ...(options.repeatedCitations
+            ? [
+                citation,
+                {
+                  ...citation,
+                  url: citation.url + "?utm_source=model#install",
+                },
+                { ...citation, url: citation.url + "?version=2" },
+              ]
+            : []),
+          { ...citation, url: "javascript:example" },
+        ],
       );
     }
     if (body.instructions.includes("Identify one to six")) {
@@ -71,19 +91,43 @@ function mockProvider(
       );
     }
     if (body.instructions.includes("Assess each research excerpt")) {
-      const { passages } = JSON.parse(body.input);
+      const { passages, premises } = JSON.parse(body.input);
       assert.ok(
         passages.every(({ passage }: { passage: string }) =>
-          passage.startsWith("Fetched page"),
+          options.wrongMechanism
+            ? passage.includes("database page")
+            : passage.startsWith("Fetched page"),
         ),
       );
       return success(
         JSON.stringify({
-          judgments: passages.map(({ id }: { id: string }) => ({
-            id,
-            relation: options.unrelated ? "unrelated" : "supports",
-            explanation: "Fixture verification.",
-          })),
+          premises: premises.map(
+            ({ id, quote }: { id: string; quote: string }) => ({
+              id,
+              quote,
+              entailsConcern: !options.nonEntailingPremise,
+              explanation: "Fixture premise check.",
+            }),
+          ),
+          judgments: passages.map(
+            ({ id, passage }: { id: string; passage: string }) => ({
+              id,
+              relation: options.wrongMechanism
+                ? "contradicts"
+                : options.unrelated
+                  ? "unrelated"
+                  : "supports",
+              applicability: options.wrongMechanism
+                ? "different mechanism"
+                : options.unrelated
+                  ? "background"
+                  : "direct",
+              quote: options.fabricatedSourceQuote
+                ? "An invented quotation from the verifier."
+                : passage,
+              explanation: "Fixture verification.",
+            }),
+          ),
         }),
       );
     }
@@ -96,9 +140,11 @@ function mockProvider(
             id,
             verdict: options.conflict
               ? "Unresolved"
-              : options.internal
+              : options.internal || options.wrongMechanism
                 ? "Contradicted"
-                : "Supported",
+                : options.noBreak
+                  ? "No credible break found"
+                  : "Supported",
             rationale: options.conflict
               ? "The sources conflict."
               : "This mock has evidence.",
@@ -106,7 +152,9 @@ function mockProvider(
             reason: options.conflict ? "Sources conflict" : null,
             missingInformation: options.conflict
               ? "A reconciled measurement."
-              : null,
+              : options.missingFacts
+                ? "Actual measurements."
+                : null,
             proposalExcerpt: options.internal
               ? "a shared schema package consumed by checkout and reporting"
               : null,
@@ -114,9 +162,10 @@ function mockProvider(
               ? "Keep affected consumers in scope."
               : null,
             tradeoff: options.internal ? "Longer checks." : null,
-            sourceIds: options.internal
-              ? []
-              : [options.wrongCitation ? "unknown" : `source-${index + 1}-1`],
+            sourceIds:
+              options.internal || options.noBreak
+                ? []
+                : [options.wrongCitation ? "unknown" : `source-${index + 1}-1`],
           })),
         }),
       );
@@ -131,9 +180,11 @@ function mockProvider(
             : "No credible failure found within the fixture.",
           proposalExcerpt: options.inventedQuote
             ? "This text does not appear in the proposal."
-            : options.internal
-              ? "a shared schema package consumed by checkout and reporting"
-              : null,
+            : options.shortPremise
+              ? "a shared schema"
+              : options.internal
+                ? "a shared schema package consumed by checkout and reporting"
+                : null,
         })),
       }),
     );
@@ -206,6 +257,61 @@ for (const condition of [
   });
 }
 
+test("repeat citations collapse per claim before verification while distinct query variants survive", async () => {
+  const report = await runReview(
+    mockProvider({ repeatedCitations: true }),
+    input,
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  const audited = report.findings[0].audit?.find(
+    ({ stage }) => stage === "Evidence",
+  )?.sourceIds;
+  assert.deepEqual(audited, ["source-1-1", "source-1-2"]);
+  assert.deepEqual(
+    report.sources.slice(0, 2).map(({ url }) => url),
+    [citation.url, citation.url + "?version=2"],
+  );
+});
+
+test("a different failure mechanism cannot contradict a claim even with a real quote", async () => {
+  const report = await runReview(
+    mockProvider({ wrongMechanism: true }),
+    {
+      proposal:
+        "The importer overwrites existing order records in place. The application has no undo job or backup.",
+      claims: [
+        {
+          ...input.claims[0],
+          text: "Overwritten order records can be rebuilt without retained prior versions.",
+        },
+      ],
+    },
+    () => {},
+    signal,
+    {
+      sourceReader: async () =>
+        "A corrupted Db2 database page can be restored from a good backup.",
+    },
+  );
+  assert.equal(report.findings[0].verdict, "Unresolved");
+  assert.deepEqual(report.findings[0].sourceIds, []);
+  assert.equal(report.sources[0].relation, "unrelated");
+});
+
+test("a verdict cannot use a fabricated verifier quote", async () => {
+  const report = await runReview(
+    mockProvider({ fabricatedSourceQuote: true }),
+    input,
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  assert.equal(report.findings[0].verdict, "Unresolved");
+  assert.equal(report.sources[0].relation, "unrelated");
+});
+
 test("proposal-derived contradiction and repair survive search failure", async () => {
   const report = await runReview(
     mockProvider({ internal: true, searchDown: true }),
@@ -228,6 +334,51 @@ test("proposal-derived contradiction and repair survive search failure", async (
     signal,
   );
   assert.equal(invented.findings[0].verdict, "Unresolved");
+});
+
+test("an exact proposal quote must be substantive and entail the concern", async () => {
+  for (const condition of ["nonEntailingPremise", "shortPremise"] as const) {
+    const report = await runReview(
+      mockProvider({ internal: true, searchDown: true, [condition]: true }),
+      input,
+      () => {},
+      signal,
+    );
+    assert.equal(report.findings[0].verdict, "Unresolved");
+    assert.equal(report.findings[0].basis, undefined);
+  }
+});
+
+test("no credible break is distinct from positive support and requires completed checks", async () => {
+  const run = (options: Parameters<typeof mockProvider>[0]) =>
+    runReview(
+      mockProvider({ noBreak: true, ...options }),
+      input,
+      () => {},
+      signal,
+      { sourceReader },
+    );
+  assert.equal((await run({})).findings[0].verdict, "No credible break found");
+  assert.equal(
+    (await run({ missingFacts: true })).findings[0].verdict,
+    "Unresolved",
+  );
+  assert.equal(
+    (await run({ searchDown: true })).findings[0].verdict,
+    "Unresolved",
+  );
+});
+
+test("HTTP and fetch diagnostics persist on unverified sources", async () => {
+  const report = await runReview(mockProvider(), input, () => {}, signal, {
+    sourceReader: async () => ({ status: 403, reason: "HTTP response" }),
+  });
+  assert.match(report.sources[0].diagnostic ?? "", /HTTP 403/);
+  assert.match(
+    report.findings[0].audit?.find(({ stage }) => stage === "Verification")
+      ?.observation ?? "",
+    /HTTP 403/,
+  );
 });
 
 test("unreadable citations cannot support a verdict", async () => {

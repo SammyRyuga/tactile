@@ -10,7 +10,6 @@ import {
   personalKeySchema,
 } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
-import type { readSource } from "./source-reader.ts";
 
 export function createApp(
   provider?: ReviewProvider,
@@ -23,7 +22,7 @@ export function createApp(
     trustProxy?: boolean;
     verifierModel?: string;
     metaVerifierModel?: string;
-    sourceReader?: typeof readSource;
+    sourceReader?: NonNullable<Parameters<typeof runReview>[4]>["sourceReader"];
   } = {},
 ) {
   const app = express();

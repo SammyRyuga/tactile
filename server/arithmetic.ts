@@ -1,5 +1,7 @@
 const number = /^(?:\d{1,3}(?:,\d{3})+|\d{1,12})(?:\.\d{1,9})?/;
-const rounds = /\s*\(rounded to (\d) decimal places?\)$/i;
+const rounds = /\(rounded to (\d) decimal places?\)/i;
+const expression =
+  /(?<![\w.,])([(+−\-\d][\d.,()+−\-*/×÷ \t]{1,149})\s*=\s*([+−-]?(?:\d{1,3}(?:,\d{3})+|\d{1,12})(?:\.\d{1,9})?)(?![\w,]|\.[.\d])/g;
 
 function evaluate(expression: string) {
   let rest = expression
@@ -55,33 +57,41 @@ function round(value: number, places: number) {
 }
 
 export function checkArithmetic(claim: string) {
-  return claim.split(/[;:\n]|\.(?=\s+[^.])/).flatMap((part) => {
-    const equation = part.trim().replace(/(?<=\d|\))\.$/, "");
-    const rounding = rounds.exec(equation);
-    const [left, right, ...extra] = equation.replace(rounds, "").split("=");
-    if (!right || extra.length || left.length > 150) return [];
-    const target = right.trim().replace(/^−/, "-");
-    const token = number.exec(target.replace(/^[+-]/, ""))?.[0];
-    if (!token || token !== target.replace(/^[+-]/, "")) return [];
+  return [...claim.matchAll(expression)].flatMap((match) => {
+    const [equation, left, value] = match;
+    const prefix = claim.slice(0, match.index).trimEnd();
+    const suffix = claim.slice(match.index + equation.length);
+    if (/[+−*/×÷-]$/.test(prefix) || /^\s*[%=×÷*+]/.test(suffix)) return [];
+    const context = suffix.split(/[;\n]|\.(?=\s|$)/, 1)[0];
+    const statedRounding = rounds.exec(context);
     try {
-      const outcome = evaluate(left);
+      const outcome = evaluate(left.trim());
       if (outcome === undefined) return [];
       const actual = Number.isFinite(outcome)
-        ? rounding
-          ? round(outcome, Number(rounding[1]))
+        ? statedRounding
+          ? round(outcome, Number(statedRounding[1]))
           : outcome
         : null;
-      const stated = Number(target.replaceAll(",", ""));
+      const stated = Number(value.replace(/^−/, "-").replaceAll(",", ""));
+      const printedPlaces = value.split(".")[1]?.length;
+      const comparable =
+        actual !== null && !statedRounding && printedPlaces
+          ? round(actual, printedPlaces)
+          : actual;
       return [
         {
-          equation,
+          equation: statedRounding
+            ? `${equation} ${statedRounding[0]}`
+            : equation,
           actual,
           correct:
-            actual !== null &&
-            Math.abs(actual - stated) <=
-              Number.EPSILON *
-                8 *
-                Math.max(1, Math.abs(actual), Math.abs(stated)),
+            comparable !== null &&
+            (comparable === stated ||
+              (!Number.isInteger(stated) &&
+                Math.abs(comparable - stated) <=
+                  Number.EPSILON *
+                    8 *
+                    Math.max(1, Math.abs(comparable), Math.abs(stated)))),
         },
       ];
     } catch {

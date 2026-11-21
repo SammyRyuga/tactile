@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uniqueSourcesByUrl } from "../shared/review.ts";
 
 const annotationSchema = z.object({
   type: z.literal("url_citation"),
@@ -23,6 +24,7 @@ export interface Citation {
   url: string;
   title: string;
   passage: string;
+  anchor?: string;
   startIndex: number;
   endIndex: number;
 }
@@ -209,6 +211,7 @@ export function createProvider(
               url,
               title,
               passage,
+              anchor: characters.slice(start_index, end_index).join("").trim(),
               startIndex: start_index,
               endIndex: end_index,
             });
@@ -216,7 +219,7 @@ export function createProvider(
       }
       return {
         text: result.map(({ text }) => text).join("\n"),
-        citations: citations.slice(0, 8),
+        citations: uniqueSourcesByUrl(citations).slice(0, 8),
       };
     },
   };

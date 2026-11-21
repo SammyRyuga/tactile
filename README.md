@@ -71,7 +71,7 @@ Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Sup
 
 - **Claim selection.** Extract up to six claims from a proposal and confirm up to three for review.
 - **Checks by risk.** Route claims to specialist checks for assumptions, engineering feasibility, or adoption and operations. Load-bearing claims get a larger search allowance. Explicit equations in claim text are checked with deterministic arithmetic.
-- **Evidence and verdict.** Verify excerpts fetched from cited pages. Proposal-derived findings reference an explicit premise, and deterministic arithmetic can establish a contradiction directly. Keep source links and check observations visible in the report. An unresolved verdict identifies gaps in evidence, conflicting sources, or a failed check.
+- **Evidence and verdict.** Verify excerpts fetched from cited pages. Proposal-derived findings reference an explicit premise, and deterministic arithmetic can establish a contradiction directly. Keep source links and check observations visible in the report. “No credible break found” records a completed adversarial check without a detected concern. An unresolved verdict identifies evidence gaps, conflicting sources, or a failed check.
 - **Decision memo.** See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.

@@ -3,6 +3,7 @@ import {
   limits,
   riskSchema,
   unresolvedReasonSchema,
+  uniqueSourcesByUrl,
   verdictSchema,
 } from "../shared/review.ts";
 import type {
@@ -15,6 +16,7 @@ import type {
   Source,
 } from "../shared/review.ts";
 import { checkArithmetic } from "./arithmetic.ts";
+import type { SourceRead } from "./source-reader.ts";
 import { readSource, sourceExcerpt } from "./source-reader.ts";
 import type { ReviewProvider } from "./provider.ts";
 
@@ -42,10 +44,20 @@ const relationSchema = z.enum([
   "unrelated",
 ]);
 const verificationSchema = z.object({
+  premises: z.array(
+    z.object({
+      id: z.string(),
+      quote: z.string(),
+      entailsConcern: z.boolean(),
+      explanation: z.string(),
+    }),
+  ),
   judgments: z.array(
     z.object({
       id: z.string(),
       relation: relationSchema,
+      applicability: z.enum(["direct", "background", "different mechanism"]),
+      quote: z.string().nullable(),
       explanation: z.string(),
     }),
   ),
@@ -79,7 +91,7 @@ export async function extractClaims(
   signal: AbortSignal,
 ): Promise<Claim[]> {
   const result = await provider.structured(
-    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Each claim is at most 240 characters. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing.`,
+    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Preserve any explicit numeric equation verbatim in the corresponding quantitative claim. Each claim is at most 240 characters. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing.`,
     { proposal },
     extractionSchema,
     signal,
@@ -159,7 +171,10 @@ export async function runReview(
   options: {
     verifierModel?: string;
     log?: Log;
-    sourceReader?: typeof readSource;
+    sourceReader?: (
+      url: string,
+      signal: AbortSignal,
+    ) => Promise<SourceRead | string | undefined>;
   } = {},
 ): Promise<Report> {
   input = { ...input, claims: capLoadBearing(input.claims) };
@@ -242,13 +257,14 @@ export async function runReview(
               return {
                 id: claim.id,
                 summary: result.text,
-                sources: result.citations.slice(0, 5).map(
-                  (source, index): Source => ({
+                sources: uniqueSourcesByUrl(result.citations)
+                  .slice(0, 5)
+                  .map((source, index) => ({
+                    anchor: source.anchor ?? source.passage,
                     url: source.url,
                     title: source.title,
                     id: `source-${claimIndex + 1}-${index + 1}`,
-                  }),
-                ),
+                  })),
                 failed: false,
               };
             } catch (error) {
@@ -280,23 +296,34 @@ export async function runReview(
     assessments,
     evidenceTask,
   ]);
-  const pages = new Map<string, Promise<string | undefined>>();
+  const pages = new Map<string, Promise<SourceRead | string | undefined>>();
   const read = options.sourceReader ?? readSource;
   const cited = await Promise.all(
     (evidence ?? []).flatMap(({ id, sources }) => {
       const claim = input.claims.find((item) => item.id === id)?.text ?? "";
-      return sources.map(async (source) => {
+      return sources.map(async ({ anchor, ...source }) => {
         const page =
           pages.get(source.url) ??
           read(source.url, signal).catch(() => undefined);
         pages.set(source.url, page);
-        const body = await page;
-        const passage = body
-          ? sourceExcerpt(body, claim) || undefined
+        const fetched = await page;
+        const details =
+          typeof fetched === "string" ? { text: fetched } : fetched;
+        const passage = details?.text
+          ? sourceExcerpt(details.text, claim, anchor) || undefined
           : undefined;
+        const diagnostic = [
+          details?.status ? `HTTP ${details.status}` : undefined,
+          details?.truncated ? "body truncated" : undefined,
+          details?.reason ??
+            (passage ? undefined : "source excerpt unavailable"),
+        ]
+          .filter(Boolean)
+          .join(" · ");
         return {
           source: {
             ...source,
+            diagnostic: diagnostic || undefined,
             passage,
             passageOrigin: passage ? ("source" as const) : undefined,
           },
@@ -309,18 +336,39 @@ export async function runReview(
   const reviewable = cited.flatMap(({ source, claim }) =>
     source.passage ? [{ id: source.id, claim, passage: source.passage }] : [],
   );
-  const verification = reviewable.length
+  const premises = specialistResults.flatMap(({ claims, result }) =>
+    claims.flatMap((claim) => {
+      const finding = result?.findings.find(({ id }) => id === claim.id);
+      const quote = finding?.proposalExcerpt?.trim();
+      return finding?.outcome === "concern" &&
+        quote &&
+        quote.length >= 24 &&
+        quote.split(/\s+/).length >= 4 &&
+        input.proposal.includes(quote)
+        ? [
+            {
+              id: claim.id,
+              claim: claim.text,
+              quote,
+              concern: finding.observation,
+            },
+          ]
+        : [];
+    }),
+  );
+  const shouldVerify = reviewable.length > 0 || premises.length > 0;
+  const verification = shouldVerify
     ? await check("Verification", () =>
         provider.structured(
-          `${boundary} Assess each research excerpt against its individual claim, using only the given passage. Judge the direction as supports, contradicts, qualifies, or unrelated. Mark bare links, generic background, and excerpts without direct bearing unrelated. Public guidance alone cannot establish a project-specific result.`,
-          { passages: reviewable },
+          `${boundary} Assess each research excerpt against its individual claim and the proposal’s context. Judge applicability first. Direct requires the same failure mechanism or intervention and all conditions needed to apply the passage to the claim. Background means the passage is only broadly related or depends on unstated facts about the project. Different mechanism means it covers a materially different scenario. Shared keywords and a reputable source are insufficient. For example, restoring corrupted database pages from backup tells you nothing about reconstructing order records overwritten by an application from other retained inputs. Use unrelated for background or different mechanism. For direct findings, return an exact contiguous quote from the supplied passage that independently supports, contradicts, or qualifies the claim. Otherwise return quote as null. Do not infer the project's configuration, measurements, or capabilities from public guidance. Separately check each supplied proposal premise. Set entailsConcern only if the exact quote and explicit proposal context logically establish the specialist concern without relying on missing local facts. Copy the supplied quote exactly. Return an empty array for a group with no inputs.`,
+          { proposal: input.proposal, passages: reviewable, premises },
           verificationSchema,
           signal,
           { model: options.verifierModel },
         ),
       )
     : undefined;
-  if (!reviewable.length)
+  if (!shouldVerify)
     emit({ type: "progress", stage: "Verification", status: "skipped" });
 
   const annotated = cited
@@ -329,12 +377,21 @@ export async function runReview(
       const judgments = verification?.judgments.filter(
         ({ id }) => id === source.id,
       );
+      const judgment = judgments?.length === 1 ? judgments[0] : undefined;
+      const quote = judgment?.quote?.trim();
+      const applies =
+        judgment?.applicability === "direct" &&
+        quote &&
+        quote.length >= 12 &&
+        source.passage?.includes(quote);
       return {
         ...source,
-        relation:
-          source.passage && judgments?.length === 1
-            ? judgments[0].relation
-            : undefined,
+        passage: applies ? quote : source.passage,
+        relation: judgment
+          ? applies
+            ? judgment.relation
+            : ("unrelated" as const)
+          : undefined,
       };
     });
   const trails = input.claims.map((claim) => {
@@ -342,27 +399,40 @@ export async function runReview(
     const sources = annotated.filter((source) =>
       research?.sources.some(({ id }) => id === source.id),
     );
-    const internal: string[] = [];
-    const checks: Audit = specialistResults
-      .filter(({ claims }) => claims.some(({ id }) => id === claim.id))
-      .map(({ stage, result }) => {
-        const finding = result?.findings.find(({ id }) => id === claim.id);
-        const quote = finding?.proposalExcerpt?.trim();
-        if (
-          finding?.outcome === "concern" &&
-          quote &&
-          quote.length >= 12 &&
-          input.proposal.includes(quote)
-        )
-          internal.push(quote);
-        return {
-          stage,
-          status: finding ? "complete" : "failed",
-          observation: finding
-            ? `${finding.outcome} · ${finding.observation}`.slice(0, 1400)
-            : "This evaluator did not return a finding.",
-        };
+    const premise = premises.find(({ id }) => id === claim.id);
+    const premiseJudgments = verification?.premises.filter(
+      ({ id }) => id === claim.id,
+    );
+    const premiseJudgment =
+      premiseJudgments?.length === 1 ? premiseJudgments[0] : undefined;
+    const internal =
+      premise &&
+      premiseJudgment?.entailsConcern &&
+      premiseJudgment.quote === premise.quote
+        ? [premise.quote]
+        : [];
+    const assigned = specialistResults.filter(({ claims }) =>
+      claims.some(({ id }) => id === claim.id),
+    );
+    const noConcerns =
+      assigned.length > 0 &&
+      assigned.every(({ result }) => {
+        const findings = result?.findings.filter(({ id }) => id === claim.id);
+        return (
+          findings?.length === 1 &&
+          findings[0].outcome === "no credible concern"
+        );
       });
+    const checks: Audit = assigned.map(({ stage, result }) => {
+      const finding = result?.findings.find(({ id }) => id === claim.id);
+      return {
+        stage,
+        status: finding ? "complete" : "failed",
+        observation: finding
+          ? `${finding.outcome} · ${finding.observation}`.slice(0, 1400)
+          : "This evaluator did not return a finding.",
+      };
+    });
     const arithmetic = mathByClaim.get(claim.id) ?? [];
     if (arithmetic.length)
       checks.push({
@@ -394,31 +464,48 @@ export async function runReview(
       },
       {
         stage: "Verification",
-        status: sources.some(({ passage }) => passage)
-          ? verification
-            ? "complete"
-            : "failed"
-          : "skipped",
-        observation: sources.length
-          ? sources
-              .map((source) => {
-                const explanation = verification?.judgments.find(
-                  ({ id }) => id === source.id,
-                )?.explanation;
-                return `${source.title} · ${source.relation ?? (source.passage ? "unverified" : "source excerpt unavailable")}${explanation ? ` · ${explanation}` : ""}`;
-              })
-              .join("\n")
-              .slice(0, 3600)
-          : "No cited passages were available.",
+        status:
+          premise || sources.some(({ passage }) => passage)
+            ? verification
+              ? "complete"
+              : "failed"
+            : "skipped",
+        observation:
+          [
+            premise
+              ? `Proposal premise · ${premiseJudgment?.explanation ?? "Entailment was not verified."}`
+              : undefined,
+            ...sources.map((source) => {
+              const judgment = verification?.judgments.find(
+                ({ id }) => id === source.id,
+              );
+              const explanation =
+                source.relation === "unrelated" &&
+                judgment?.relation !== "unrelated"
+                  ? "No applicable, exact quote established the claimed relation."
+                  : judgment?.explanation;
+              return [
+                source.title,
+                source.relation ?? "unverified",
+                source.diagnostic,
+                explanation,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            }),
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, 3600) || "No cited passages were available.",
         sourceIds: sources.map(({ id }) => id),
       },
     );
-    return { claim, checks, sources, internal };
+    return { claim, checks, sources, internal, noConcerns };
   });
 
   const result = await check("Synthesis", () =>
     provider.structured(
-      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. Supported requires supporting source passages. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
+      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Keep the rationale, next step, and each repair field to one or two sentences. Supported requires supporting source passages. Use No credible break found only when every assigned adversarial specialist found no credible concern, no verified evidence qualifies or contradicts the claim, and no material local facts are missing. Return no source IDs for that verdict. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. Prefer an explicit proposal premise when it already decides the claim. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
       {
         proposal: input.proposal,
         claims: trails.map(({ claim, checks, sources, internal }) => ({
@@ -429,11 +516,21 @@ export async function runReview(
               (stage !== "Evidence" && stage !== "Verification") ||
               status === "failed",
           ),
-          sources: sources.flatMap(({ id, title, passage, relation }) =>
-            relation && relation !== "unrelated"
-              ? [{ id, title, relation, passage }]
-              : [],
-          ),
+          sources: sources.flatMap(({ id, title, relation }) => {
+            const judgment = verification?.judgments.find(
+              (item) => item.id === id,
+            );
+            return relation && relation !== "unrelated" && judgment
+              ? [
+                  {
+                    id,
+                    title,
+                    relation,
+                    explanation: judgment.explanation.slice(0, 600),
+                  },
+                ]
+              : [];
+          }),
         })),
       },
       synthesisSchema,
@@ -442,7 +539,7 @@ export async function runReview(
   );
 
   const findings: Finding[] = trails.map(
-    ({ claim, checks, sources, internal }) => {
+    ({ claim, checks, sources, internal, noConcerns }) => {
       const entries =
         result?.findings.filter(({ id }) => id === claim.id) ?? [];
       const entry = entries.length === 1 ? entries[0] : undefined;
@@ -514,6 +611,25 @@ export async function runReview(
           "The checks found conflicting evidence that needs reconciliation.",
         );
       }
+      if (
+        entry.verdict === "No credible break found" &&
+        noConcerns &&
+        entry.missingInformation === null &&
+        selected.length === 0 &&
+        checks.every(({ status }) => status !== "failed") &&
+        !sources.some(
+          ({ relation }) =>
+            relation === "qualifies" || relation === "contradicts",
+        )
+      )
+        return {
+          claim,
+          verdict: "No credible break found",
+          rationale: entry.rationale.slice(0, 700),
+          nextStep: entry.nextStep.slice(0, 700),
+          sourceIds: [],
+          audit: checks,
+        };
       const proposalDerived =
         Boolean(
           entry.proposalExcerpt &&
@@ -529,6 +645,7 @@ export async function runReview(
             : has("qualifies") || has("contradicts");
       if (
         entry.verdict === "Unresolved" ||
+        entry.verdict === "No credible break found" ||
         !allowed ||
         (!matches && !proposalDerived)
       ) {

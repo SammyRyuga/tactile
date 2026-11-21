@@ -62,6 +62,22 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .fill("A separate draft decision to preserve.");
   const history = page.getByRole("region", { name: "Recent reports" });
   await expect(history).toBeVisible();
+  const editor = page
+    .getByLabel("Engineering proposal")
+    .locator("xpath=ancestor::section[1]");
+  const bounds = await editor.boundingBox();
+  const action = await editor
+    .getByRole("button", { name: "Extract claims" })
+    .boundingBox();
+  expect(bounds!.y + bounds!.height - action!.y - action!.height).toBeLessThan(
+    70,
+  );
+  const title = history.locator(".workspace-report-title").first();
+  await expect(title).toHaveCSS("-webkit-line-clamp", "2");
+  await expect(title).toHaveText(
+    "Replace full test runs on pull requests with changed-package tests.",
+  );
+
   await history.getByRole("button", { name: /Replace full test runs/ }).click();
   await expect(
     page.getByRole("heading", { name: "Decision report" }),

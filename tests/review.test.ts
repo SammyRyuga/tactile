@@ -1,3 +1,5 @@
+import { corpus } from "../scripts/evaluation-cases.ts";
+import { sourceExcerpt } from "../server/source-reader.ts";
 import { checkArithmetic } from "../server/arithmetic.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -113,8 +115,47 @@ test("arithmetic respects precedence, grouping, strict boundaries and stated rou
   );
   assert.deepEqual(
     checkArithmetic(
-      "v1 + 2 = 3; 10 + 2 = 12 ms; 100,00 + 2 = 10002; 2 + 2 = 4...",
+      "v1 + 2 = 3; 10 + 2 = 12%; 100,00 + 2 = 10002; 2 + 2 = 4...",
     ),
     [],
+  );
+});
+
+test("arithmetic checks all six quantitative corpus sentences and rounded results with units", () => {
+  const examples = [...corpus.development, ...corpus.holdout].filter(
+    ([category]) => category === "quantitative",
+  );
+  assert.deepEqual(
+    examples.map(([, , proposal]) =>
+      checkArithmetic(proposal).map(({ actual, correct }) => [actual, correct]),
+    ),
+    [
+      [[120, false]],
+      [[600, true]],
+      [[100, false]],
+      [[210, false]],
+      [[120, true]],
+      [[100, false]],
+    ],
+  );
+  assert.equal(
+    checkArithmetic("The average is 100 / 3 = 33.33 requests per worker.")[0]
+      ?.correct,
+    true,
+  );
+  assert.equal(
+    checkArithmetic("The average is 100 / 3 = 33.30 requests per worker.")[0]
+      ?.correct,
+    false,
+  );
+});
+
+test("source excerpt prefers the cited sentence when the fetched page contains it", () => {
+  const cited = "The write path commits before a standby catches up.";
+  const body =
+    "Words that describe replicas standby commit isolation. ".repeat(50) +
+    cited;
+  assert.ok(
+    sourceExcerpt(body, "Replica commit isolation", cited).includes(cited),
   );
 });

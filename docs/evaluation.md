@@ -20,3 +20,25 @@ Blind system identities and ask an independent reviewer to check the expected fi
 Pass the scorer one JSON object per evaluated case, repetition, and system. Each object includes `caseId`, `category`, `repetition`, `system` (`tactile`, `single`, `best-of-n`, `research-agent`, or `raw-proposal`), `caught`, `falseAlarm`, `unsupportedConclusions`, `relevantCitations`, and `totalCitations`. Score the two splits separately. Per-category and aggregate results include 95% percentile bootstrap intervals that resample whole cases, keeping repeated trials together. With only three cases per category, treat these estimates as descriptive.
 
 A credentialed Meta smoke run returned eight citations in the search probe and completed the replica review in 53 seconds. All three extracted claims remained unresolved. The case lacked local consistency and freshness requirements, and the review established no verdict from a fetched source. In a separate focused check, Meta correctly marked the claim that disabling a feature flag restores already-overwritten records as contradicted by the proposal and provided a repair. These smoke results cover connectivity and workflow. Comparative results are pending.
+
+## Meta development pass
+
+Run one Tactile review per case before spending provider quota on baseline comparisons.
+
+```sh
+npm run --silent eval -- --live development --meta --review-only > development-review.jsonl
+```
+
+The run used Muse Spark 1.3 with one repetition per case. All 15 cases completed. Three were rejected at the scope gate, and the other 12 produced 36 claim verdicts. Five reports had only unresolved claims.
+
+| Verdict                 |     Claims |
+| ----------------------- | ---------: |
+| Unresolved              | 25 (69.4%) |
+| No credible break found |          5 |
+| Contradicted            |          5 |
+| Weakened                |          1 |
+| Supported               |          0 |
+
+Twenty unresolved findings lacked sufficient evidence and five were affected by failed checks. Of 34 cited sources, 23 returned HTTP 200, including five truncated bodies and one truncated body with no static text. Seven returned 403, two returned 402, and two were blocked by URL policy. Twelve citations ultimately had no verification judgment. This identifies fetch failures as one factor in the unresolved rate. It does not establish that fetching alone caused the earlier replica result.
+
+The run identified the feature-flag rollback contradiction and both incorrect equations in the quantitative development cases. The replica report raised immediate-read staleness in its rationale but did not establish the target verdict. The read-only canary report incorrectly treated the absence of write coverage as a defect. These are observations from one run. Baseline comparisons, independent scoring, and fresh holdout cases remain pending.

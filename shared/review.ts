@@ -8,6 +8,7 @@ export const limits = {
 } as const;
 export const verdictSchema = z.enum([
   "Supported",
+  "No credible break found",
   "Weakened",
   "Contradicted",
   "Unresolved",
@@ -63,6 +64,7 @@ export const sourceSchema = z.object({
   id: idSchema,
   title: z.string(),
   passage: z.string().optional(),
+  diagnostic: z.string().optional(),
   passageOrigin: z.literal("source").optional(),
   startIndex: z.number().int().optional(),
   endIndex: z.number().int().optional(),
@@ -74,6 +76,27 @@ export const sourceSchema = z.object({
     z.string().regex(/^\/(?:demo|example)-evidence\.html#[a-z-]+$/),
   ]),
 });
+
+export function uniqueSourcesByUrl<T extends { url: string }>(sources: T[]) {
+  const seen = new Set<string>();
+  return sources.filter(({ url }) => {
+    let key = url;
+    if (!url.startsWith("/")) {
+      const address = new URL(url);
+      address.hash = "";
+      for (const param of [...address.searchParams.keys()]) {
+        if (/^(?:utm_.+|gclid|fbclid|msclkid)$/i.test(param)) {
+          address.searchParams.delete(param);
+        }
+      }
+      address.searchParams.sort();
+      key = address.href;
+    }
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export const findingSchema = z.object({
   claim: claimSchema,
@@ -184,14 +207,14 @@ export function toMarkdown(
     if (finding.audit?.length) {
       lines.push("", "#### Review trail", "");
       for (const check of finding.audit) {
-        const titles = (check.sourceIds ?? []).flatMap((id) => {
-          const source = sources.get(id);
-          if (!source) return [];
+        const titles = uniqueSourcesByUrl(
+          (check.sourceIds ?? []).flatMap((id) => sources.get(id) ?? []),
+        ).map((source) => {
           const href =
             source.url.startsWith("/") && origin
               ? new URL(source.url, origin).href
               : source.url;
-          return [`[${markdownText(source.title)}](<${href}>)`];
+          return `[${markdownText(source.title)}](<${href}>)`;
         });
         lines.push(
           `- **${check.stage} · ${check.status}** ${markdownText(check.observation)}${titles.length ? ` (${titles.join(", ")})` : ""}`,
@@ -202,9 +225,9 @@ export function toMarkdown(
       ...finding.sourceIds,
       ...(finding.audit ?? []).flatMap(({ sourceIds }) => sourceIds ?? []),
     ]);
-    for (const id of referenced) {
-      const source = sources.get(id);
-      if (!source) continue;
+    for (const source of uniqueSourcesByUrl(
+      [...referenced].flatMap((id) => sources.get(id) ?? []),
+    )) {
       const title = markdownText(source.title);
       const url =
         source.url.startsWith("/") && origin
