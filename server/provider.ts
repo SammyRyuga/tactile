@@ -103,7 +103,7 @@ export function createProvider(
     instructions: string,
     data: unknown,
     signal: AbortSignal,
-    options: object,
+    options: Record<string, unknown>,
   ) {
     const requestModel =
       "model" in options && typeof options.model === "string"
@@ -178,7 +178,8 @@ export function createProvider(
         }),
       })
       .safeParse(first).success;
-    const payload = exhausted ? await send(8500) : first;
+    const payload =
+      exhausted && options.max_tool_calls !== 1 ? await send(8500) : first;
     const { output } = responseSchema.parse(payload);
     const outputText = output
       .flatMap(({ content }) => content ?? [])
@@ -221,21 +222,26 @@ export function createProvider(
     },
 
     async research(instruction, data, signal, options) {
+      const maxToolCalls = options?.maxToolCalls ?? 2;
       const result = await respond(instruction, data, signal, {
+        max_tool_calls: maxToolCalls,
         ...(vendor === "meta"
           ? {
               tools: [
                 {
                   type: "web_search",
                   search_context_size:
-                    options?.maxToolCalls === 3 ? "high" : "medium",
+                    maxToolCalls === 1
+                      ? "low"
+                      : maxToolCalls === 3
+                        ? "high"
+                        : "medium",
                 },
               ],
             }
           : {
               tools: [{ type: "web_search" }],
               tool_choice: { type: "web_search" },
-              max_tool_calls: options?.maxToolCalls ?? 2,
             }),
       });
       const citations: Citation[] = [];
