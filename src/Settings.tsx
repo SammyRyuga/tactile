@@ -71,7 +71,11 @@ export function Settings({
     if (busy) return;
     const form = event.currentTarget;
     const key = new FormData(form).get("meta-key")?.toString().trim();
-    if (!key) return;
+    if (!key) {
+      setMessage("");
+      setError("Enter your Meta Model API key.");
+      return;
+    }
     form.reset();
     setBusy(true);
     setError("");

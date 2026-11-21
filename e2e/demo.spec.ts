@@ -177,6 +177,11 @@ test("settings require sign-in and store the appearance preference across reload
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await page.locator("main").getByRole("button", { name: "Dark mode" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByLabel("API key", { exact: true }).fill(" ".repeat(16));
+  await page.getByRole("button", { name: "Save key" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Enter your Meta Model API key.",
+  );
   await page
     .getByLabel("API key", { exact: true })
     .fill("rejected-fixture-key");
