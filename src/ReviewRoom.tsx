@@ -5,8 +5,13 @@ import type { Reviewer } from "../shared/reviewers.ts";
 import "./review-room.css";
 
 type Stage = ProgressEvent["stage"];
-type Status = ProgressEvent["status"] | "waiting" | "unrecorded";
-type Check = { stage: Stage; status: Status; detail?: string; claim?: string };
+type Status = ProgressEvent["status"] | "waiting" | "unrecorded" | "memo-ready";
+type Check = {
+  stage: Stage;
+  status: ProgressEvent["status"];
+  detail?: string;
+  claim?: string;
+};
 
 const stations = [
   {
@@ -53,7 +58,8 @@ const statusText: Record<Status, string> = {
   done: "Complete",
   unavailable: "Incomplete",
   skipped: "Skipped",
-  unrecorded: "No record",
+  unrecorded: "Not recorded",
+  "memo-ready": "Memo ready",
 };
 
 function stationStatus(checks: Check[]): Status {
@@ -68,10 +74,12 @@ function ReviewRoom({
   checks,
   recommendation,
   panel,
+  demo = false,
 }: {
   checks: Check[];
   recommendation?: string;
   panel?: readonly Reviewer[];
+  demo?: boolean;
 }) {
   const [picked, setPicked] = useState<string>();
   const detailId = useId();
@@ -100,7 +108,7 @@ function ReviewRoom({
           ? ("skipped" as const)
           : recorded && status === "waiting"
             ? station.id === "memo"
-              ? ("done" as const)
+              ? ("memo-ready" as const)
               : ("unrecorded" as const)
             : status,
     };
@@ -131,6 +139,11 @@ function ReviewRoom({
             data-status={status}
             aria-pressed={selected.id === id}
             aria-controls={detailId}
+            aria-label={
+              demo && status === "unrecorded"
+                ? `${label} Not included in this example`
+                : undefined
+            }
             onClick={() => setPicked(id)}
           >
             <span className="room-instrument" aria-hidden="true">
@@ -144,7 +157,11 @@ function ReviewRoom({
             <span className="room-station-label">
               <span aria-hidden="true" />
               {label}
-              <small>{statusText[status]}</small>
+              <small>
+                {demo && status === "unrecorded"
+                  ? "Not included"
+                  : statusText[status]}
+              </small>
             </span>
           </button>
         ))}
@@ -158,7 +175,9 @@ function ReviewRoom({
           className="room-detail-status"
           aria-live={recorded ? "off" : "polite"}
         >
-          {statusText[selected.status]}
+          {demo && selected.status === "unrecorded"
+            ? "Not included in this example"
+            : statusText[selected.status]}
         </p>
         {selected.assigned.length ? (
           <ul>
@@ -181,13 +200,11 @@ function ReviewRoom({
               </li>
             ))}
           </ul>
-        ) : selected.id !== "memo" || !recorded ? (
+        ) : !recorded ? (
           <p className="room-note">
-            {recorded
-              ? "This station has no recorded checks."
-              : selected.onPanel
-                ? "Check updates will appear here."
-                : "This reviewer was skipped."}
+            {selected.onPanel
+              ? "Check updates will appear here."
+              : "This reviewer was skipped."}
           </p>
         ) : null}
         {selected.id === "memo" && recorded && !excerpt?.detail && (
@@ -251,6 +268,7 @@ export function RecordedReviewRoom({ report }: { report: Report }) {
       <ReviewRoom
         checks={checks}
         recommendation={report.recommendation}
+        demo={report.mode === "demo"}
         panel={
           report.crossfireDecision
             ? (report.crossfireReviewers ?? reviewerIds)

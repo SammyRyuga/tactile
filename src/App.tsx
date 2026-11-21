@@ -29,6 +29,7 @@ import {
   demoClaims,
   demoExamples,
   demoProposal,
+  recordedConclusion,
   restoreDemoReport,
   runDemo,
 } from "../shared/demo.ts";
@@ -1323,9 +1324,34 @@ export function App({
                     ` · Verified by ${report.verifier.model}`}
                 </p>
               </div>
+              <div className="report-actions">
+                <div className="actions report-tools">
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => void copyReport(report)}
+                  >
+                    Copy Markdown
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => exportReport(reportProposal, report)}
+                  >
+                    {mark("download")} Export Markdown
+                  </button>
+                </div>
+                <span className="field-note report-copy-status" role="status">
+                  {copyStatus}
+                </span>
+              </div>
             </div>
             <div className="recommendation">
-              <h3>{report.crossfireDecision ?? "Recommended next step"}</h3>
+              <h3>
+                {report.crossfireDecision ??
+                  recordedConclusion(report) ??
+                  "Recommended next step"}
+              </h3>
               <p>{report.recommendation}</p>
             </div>
             {uncheckedCriticalClaims.length > 0 && (
@@ -1422,27 +1448,6 @@ export function App({
                   )}
                 </article>
               ))}
-            </div>
-            <div className="report-actions">
-              <div className="actions report-tools">
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => void copyReport(report)}
-                >
-                  Copy Markdown
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => exportReport(reportProposal, report)}
-                >
-                  {mark("download")} Export Markdown
-                </button>
-              </div>
-              <span className="field-note report-copy-status" role="status">
-                {copyStatus}
-              </span>
             </div>
             {reportDetails}
             {report.mode === "live" && accountId && (

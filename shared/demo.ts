@@ -345,6 +345,25 @@ function uncheckedCritical(
     .map(({ text }) => text);
 }
 
+export function recordedConclusion(report: Report): string | undefined {
+  if (
+    report.mode === "demo" &&
+    report.findings.some(
+      ({ claim, verdict, sourceIds }) =>
+        claim.id === "previous-writes" &&
+        verdict === "Contradicted" &&
+        sourceIds.includes("flag-timeline"),
+    ) &&
+    report.sources.some(
+      ({ id, url }) =>
+        id === "flag-timeline" &&
+        url === "/example-evidence.html#flag-timeline",
+    )
+  ) {
+    return "Do not rely on the feature flag alone for rollback.";
+  }
+}
+
 export function restoreDemoReport(proposal: string, report: Report): Report {
   if (report.mode !== "demo" || report.uncheckedCriticalClaims) return report;
   const example = exampleFor(proposal);

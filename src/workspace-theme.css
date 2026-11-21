@@ -216,7 +216,7 @@
 .review-workspace #proposal {
   min-height: clamp(10rem, 19vw, 15rem);
 }
-.review-workspace #proposal:read-only {
+.review-workspace #proposal[readonly] {
   field-sizing: content;
   min-height: 6.5rem;
   resize: none;
@@ -529,7 +529,12 @@
 }
 
 .review-workspace .report-header {
-  margin-bottom: 1.25rem;
+  align-items: flex-start;
+  gap: 0.55rem 1rem;
+  margin-bottom: 0.9rem;
+}
+.review-workspace .report-header .section-note {
+  margin-block-end: 0;
 }
 .review-workspace .recommendation {
   background: var(--review-lime);
@@ -695,6 +700,25 @@
   --sidebar-surface: var(--review-apricot);
 }
 
+@media (min-width: 761px) {
+  .review-workspace .decision-layout:has(#proposal[readonly]) {
+    align-items: stretch;
+  }
+
+  .decision-layout:has(#proposal[readonly]) .workspace-sidebar {
+    align-self: stretch;
+  }
+
+  .decision-layout:has(#proposal[readonly]) .workspace-library {
+    display: grid;
+    grid-template-rows: auto 1fr;
+  }
+
+  .decision-layout:has(#proposal[readonly]) .workspace-library .workspace-list {
+    align-content: space-between;
+  }
+}
+
 .workspace-history {
   --sidebar-surface: var(--review-blue);
 }
@@ -805,28 +829,40 @@
   color: var(--review-muted);
 }
 
-.report-actions {
-  margin-block: 0.9rem 0.8rem;
-}
-
 .report-tools {
   justify-content: flex-end;
   gap: 0.45rem;
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .report-header .report-actions {
+    width: 100%;
+  }
+
+  .report-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 22rem;
+  }
+
+  .review-workspace .report-tools .button {
+    justify-content: center;
+    padding-inline: 0.35rem;
+    font-size: 0.9rem;
+    text-align: center;
+  }
 }
 
 @media (max-width: 420px) {
-  .report-tools {
-    justify-content: flex-start;
-  }
-
-  .review-workspace .report-tools :is(.button, .text-button) {
-    padding-inline: 0.6rem;
+  .report-tools svg {
+    display: none;
   }
 }
 
 .report-copy-status:not(:empty) {
   display: block;
-  margin-block-end: 0.75rem;
+  margin-block-start: 0.45rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

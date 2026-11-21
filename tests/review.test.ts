@@ -13,6 +13,7 @@ import {
   demoExamples,
   demoProposal,
   demoReport,
+  recordedConclusion,
   restoreDemoReport,
   runDemo,
 } from "../shared/demo.ts";
@@ -46,6 +47,29 @@ test("edited claims lose fixture citations and stay unresolved", () => {
     toMarkdown(demoProposal, report),
     /(?<!\\)<img|(?<!\\)\[bad\]/,
   );
+});
+
+test("the rollback conclusion requires the recorded contradiction and its source", () => {
+  const flag = demoExamples.find(({ id }) => id === "flag")!;
+  const report = demoReport(flag);
+  assert.equal(
+    recordedConclusion(report),
+    "Do not rely on the feature flag alone for rollback.",
+  );
+  assert.equal(recordedConclusion({ ...report, sources: [] }), undefined);
+  assert.equal(recordedConclusion({ ...report, mode: "live" }), undefined);
+  const edited = {
+    ...flag.claims[0],
+    text: "This rollout lowers hosting costs.",
+  };
+  assert.equal(
+    recordedConclusion(
+      demoReport({ ...flag, claims: [edited, flag.claims[1]] }),
+    ),
+    undefined,
+  );
+  for (const other of demoExamples.filter(({ id }) => id !== "flag"))
+    assert.equal(recordedConclusion(demoReport(other)), undefined);
 });
 
 test("an unrelated replacement and an omitted critical claim get no original verdict", () => {
