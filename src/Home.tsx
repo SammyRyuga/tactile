@@ -191,9 +191,9 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               <p>{example.proposal}</p>
               <a
                 className="home-button filled"
-                href={`/demo?example=${example.id}`}
+                href={`/review?example=${example.id}`}
               >
-                Run bundled example <span aria-hidden="true">↗</span>
+                Try this example <span aria-hidden="true">↗</span>
               </a>
             </div>
             <div className="case-finding" data-ui>

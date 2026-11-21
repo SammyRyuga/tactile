@@ -56,7 +56,7 @@ export function MeasurementArtifact({ finding }: { finding: Finding }) {
         Download check plan
       </button>
       <p>
-        For a numeric acceptance criterion, export a CSV with one numeric{" "}
+        If you can measure the claim, export a CSV with one numeric{" "}
         <code>value</code> per sample. Keep workload and units consistent. Set
         the threshold and sample minimum before collecting results.
       </p>

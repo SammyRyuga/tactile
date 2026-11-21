@@ -89,6 +89,14 @@ All 45 trials completed across 15 development cases, three repetitions each, wit
 
 Tactile returned 72 unresolved findings out of 108 (66.7%). The 95% case-cluster bootstrap interval was 53.7% to 79.6%. The remaining findings were 17 **Contradicted**, 13 **No credible break found**, five **Weakened**, and one **Supported**. These are automatically counted verdict labels. Comparative accuracy, false alarms, citation relevance, and reassurance require the human marks. This run predates the project-evidence workflow.
 
+## Prompt-cache measurements
+
+New Meta runs group requests by a stable key derived from the model, task instructions, and request format. The data follows the shared instructions. Request logs and evaluation output record cached input tokens when Meta reports them. Cache hits depend on the overlap between requests and the provider’s cache lifetime.
+
+The app also reuses identical claim extraction for up to five minutes within the same authenticated key session and model. Model changes, key replacement, and sign-out clear that cache. Full reviews still run their checks and look up evidence again.
+
+A two-request live probe with the same synthetic prefix and a different final observation reported 0 cached tokens out of 2,418 input tokens on both calls. A separate HTTP test verified that a repeated extraction reuses the app cache and that changing models causes a fresh provider request.
+
 ## Round 1 evidence hardening
 
 `npm run eval -- --fixtures` reproduced the development arithmetic checks. The `workers` claim evaluates to 120 and the `headroom` claim to 100, contradicting their stated totals. The `requests` equation evaluates to 600 and matches. The bundled CI, replica, and rollout examples returned their recorded verdicts and evidence links. Browser tests opened the rollout timeline and checked the downloaded memo. These are deterministic and fixture checks.

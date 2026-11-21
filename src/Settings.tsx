@@ -1,18 +1,25 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { z } from "zod";
+import {
+  defaultReviewModel,
+  reviewModels,
+  reviewModelSchema,
+} from "../shared/models.ts";
+import type { ReviewModel } from "../shared/models.ts";
 import { ThemeToggle } from "./Theme.tsx";
 
 const stateSchema = z.object({
   saved: z.boolean(),
   expiresAt: z.number().optional(),
+  model: reviewModelSchema.default(defaultReviewModel),
 });
 type KeyState = z.infer<typeof stateSchema>;
 
 async function updateKey(
   token: string,
   method = "GET",
-  key?: string,
+  input?: { key?: string; model: ReviewModel },
   signal?: AbortSignal,
 ) {
   const response = await fetch("/api/settings/provider", {
@@ -20,9 +27,9 @@ async function updateKey(
     signal,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(key ? { "Content-Type": "application/json" } : {}),
+      ...(input ? { "Content-Type": "application/json" } : {}),
     },
-    body: key ? JSON.stringify({ key }) : undefined,
+    body: input ? JSON.stringify(input) : undefined,
   });
   const result: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -46,6 +53,8 @@ export function Settings({
   notice: string;
 }) {
   const [keyState, setKeyState] = useState<KeyState>();
+  const [model, setModel] = useState<ReviewModel>(defaultReviewModel);
+  const [keyEntered, setKeyEntered] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -53,13 +62,17 @@ export function Settings({
   useEffect(() => {
     const controller = new AbortController();
     updateKey(token, "GET", undefined, controller.signal).then(
-      setKeyState,
+      (loaded) => {
+        if (controller.signal.aborted) return;
+        setKeyState(loaded);
+        setModel(loaded.model);
+      },
       (cause) => {
         if (!controller.signal.aborted)
           setError(
             cause instanceof Error
               ? cause.message
-              : "Could not load the provider settings.",
+              : "Could not load your review settings. Refresh this page and try again.",
           );
       },
     );
@@ -71,18 +84,28 @@ export function Settings({
     if (busy) return;
     const form = event.currentTarget;
     const key = new FormData(form).get("meta-key")?.toString().trim();
-    if (!key) {
+    if (!key && (!keyState?.saved || keyEntered)) {
       setMessage("");
       setError("Enter your Meta Model API key.");
       return;
     }
     form.reset();
+    setKeyEntered(false);
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      setKeyState(await updateKey(token, "POST", key));
-      setMessage("Key validated and saved for this session.");
+      const saved = await updateKey(token, "POST", {
+        key: key || undefined,
+        model,
+      });
+      setKeyState(saved);
+      setModel(saved.model);
+      setMessage(
+        key
+          ? "Key validated and saved for this session."
+          : `Review model saved. New reviews will use ${reviewModels[saved.model].name}.`,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not save the key.",
@@ -98,7 +121,9 @@ export function Settings({
     setError("");
     setMessage("");
     try {
-      setKeyState(await updateKey(token, "DELETE"));
+      const removed = await updateKey(token, "DELETE");
+      setKeyState(removed);
+      setModel(removed.model);
       setMessage("Key removed.");
     } catch (cause) {
       setError(
@@ -135,8 +160,8 @@ export function Settings({
       >
         <div className="settings-row">
           <div>
-            <h2 id="provider-title">Meta Model API</h2>
-            <p>Use your own key to review new proposals with Muse Spark.</p>
+            <h2 id="provider-title">Live reviews</h2>
+            <p>Pick a Meta model and use your own API key to run it.</p>
           </div>
           {keyState && (
             <span className="settings-key-status">
@@ -145,6 +170,36 @@ export function Settings({
           )}
         </div>
         <form onSubmit={save}>
+          <fieldset className="model-picker" disabled={busy || !keyState}>
+            <legend>Review model</legend>
+            <div className="model-options">
+              {reviewModelSchema.options.map((id) => (
+                <label
+                  className="model-option"
+                  data-tone={reviewModels[id].tone}
+                  key={id}
+                >
+                  <input
+                    type="radio"
+                    name="review-model"
+                    value={id}
+                    checked={model === id}
+                    onChange={() => setModel(id)}
+                  />
+                  <span>
+                    <strong>{reviewModels[id].name}</strong>
+                    <small>{reviewModels[id].use}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {keyState?.saved && (
+            <p className="settings-hint">
+              Using {reviewModels[keyState.model].name}. Save a new choice to
+              use it for your next review.
+            </p>
+          )}
           <label htmlFor="meta-key">API key</label>
           <div className="settings-key-field">
             <input
@@ -155,25 +210,43 @@ export function Settings({
               spellCheck={false}
               minLength={12}
               maxLength={512}
-              required
+              required={!keyState?.saved}
+              disabled={busy}
+              onChange={(event) => setKeyEntered(event.target.value.length > 0)}
               placeholder={
                 keyState?.saved
                   ? "Enter a replacement key"
                   : "Enter your Meta Model API key"
               }
             />
-            <button className="button primary" disabled={busy}>
+            <button
+              className="button primary"
+              disabled={
+                busy ||
+                !keyState ||
+                (keyState.saved && !keyEntered && keyState.model === model)
+              }
+            >
               {busy
-                ? "Please wait…"
-                : keyState?.saved
-                  ? "Replace key"
-                  : "Save key"}
+                ? "Checking with Meta…"
+                : !keyState?.saved
+                  ? "Save key"
+                  : keyEntered
+                    ? "Replace key"
+                    : "Save model"}
             </button>
           </div>
           <p className="settings-hint">
-            Tactile checks the key with Meta before saving it for up to eight
-            hours. Signing out or restarting the server clears it. Meta bills
-            usage to the key’s account.
+            Your key lets Tactile run reviews on your Meta account.{" "}
+            <a
+              href="https://dev.meta.ai/docs/authentication#get-an-api-key"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Get a Meta API key
+            </a>
+            . Tactile keeps your key for up to eight hours or until you sign
+            out.
           </p>
         </form>
         {keyState?.saved && (

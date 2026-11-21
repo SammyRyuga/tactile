@@ -75,11 +75,11 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await page.goto("/review");
   await signIn(page);
   await page
-    .getByLabel("Engineering proposal")
+    .getByLabel("Your plan")
     .fill(
       "Roll out a change to checkout staging and measure latency and job throughput under load.",
     );
-  await page.getByRole("button", { name: "Extract claims" }).click();
+  await page.getByRole("button", { name: "Find claims" }).click();
   await page.getByText("Project evidence", { exact: true }).click();
   expect(
     await page.evaluate(
@@ -126,7 +126,7 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .getByRole("button", { name: "Re-review this claim" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Confirm the claims" }),
+    page.getByRole("heading", { name: "Choose what to check" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Run review" }).click();
   await expect(

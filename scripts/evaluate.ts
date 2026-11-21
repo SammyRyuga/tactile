@@ -216,6 +216,8 @@ if (command === "--list") {
     let responses = 0;
     let reported = 0;
     let inputTokens = 0;
+    let cacheReportingRequests = 0;
+    let cachedInputTokens = 0;
     let outputTokens = 0;
     const provider = createProvider(key as string, model, fetch, vendor, {
       verifierModel,
@@ -225,6 +227,10 @@ if (command === "--list") {
       },
       onUsage(usage) {
         responses++;
+        if (usage.cachedInputTokens !== null) {
+          cacheReportingRequests++;
+          cachedInputTokens += usage.cachedInputTokens;
+        }
         if (usage.inputTokens !== null && usage.outputTokens !== null) {
           reported++;
           inputTokens += usage.inputTokens;
@@ -238,6 +244,8 @@ if (command === "--list") {
         requests,
         responses,
         usageReportedRequests: reported,
+        cacheReportingRequests,
+        cachedInputTokens: cacheReportingRequests ? cachedInputTokens : null,
         inputTokens: reported ? inputTokens : null,
         outputTokens: reported ? outputTokens : null,
         elapsedMs: Math.round(performance.now() - started),
