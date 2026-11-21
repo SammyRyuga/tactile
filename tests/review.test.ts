@@ -7,10 +7,13 @@ import { sourceExcerpt } from "../server/source-reader.ts";
 import { checkArithmetic } from "../server/arithmetic.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   demoClaims,
+  demoExamples,
   demoProposal,
   demoReport,
+  restoreDemoReport,
   runDemo,
 } from "../shared/demo.ts";
 import {
@@ -45,12 +48,139 @@ test("edited claims lose fixture citations and stay unresolved", () => {
   );
 });
 
+test("an unrelated replacement and an omitted critical claim get no original verdict", () => {
+  const { proposal, claims } = demoExamples.find(({ id }) => id === "flag")!;
+  const edited = {
+    ...claims[0],
+    risk: "evidence" as const,
+    text: "The service reduces first-month hosting costs by 30 percent.",
+  };
+  for (const selected of [[edited, claims[1]], [claims[1]]]) {
+    const report = reportSchema.parse(
+      demoReport({ proposal, claims: selected }),
+    );
+    assert.deepEqual(report.uncheckedCriticalClaims, [claims[0].text]);
+    assert.equal(
+      report.findings.some(({ claim }) => claim.text === claims[0].text),
+      false,
+    );
+    assert.deepEqual(
+      report.findings.map(({ verdict }) => verdict),
+      selected.length === 2 ? ["Unresolved", "Supported"] : ["Supported"],
+    );
+    if (selected.length === 2) {
+      assert.match(
+        report.findings[0].missingInformation!,
+        /time window.*baseline/,
+      );
+      assert.deepEqual(report.findings[0].sourceIds, []);
+    }
+    assert.match(
+      report.recommendation,
+      /verify the unchecked claims separately/,
+    );
+    const memo = toMarkdown(proposal, report, "http://localhost:5173");
+    assert.ok(memo.includes(proposal));
+    assert.ok(memo.includes("- " + claims[0].text));
+    assert.doesNotMatch(memo, /^### Contradicted/m);
+    assert.doesNotMatch(memo, /localhost|127\.0\.0\.1/);
+    assert.match(memo, /the update from request A is still present/);
+    if (selected.length === 2) {
+      const editedSection = memo.slice(
+        memo.indexOf("### Unresolved"),
+        memo.indexOf("### Supported"),
+      );
+      assert.match(editedSection, /time window.*baseline/);
+      assert.doesNotMatch(
+        editedSection,
+        /Bundled flag timeline|Recorded fixture excerpt/,
+      );
+    }
+  }
+});
+
+test("each portable recorded excerpt is copied from its named evidence section", () => {
+  const evidence = readFileSync(
+    new URL("../public/example-evidence.html", import.meta.url),
+    "utf8",
+  );
+  for (const example of demoExamples) {
+    const report = demoReport(example);
+    for (const source of report.sources) {
+      assert.equal(source.passageOrigin, "fixture");
+      const anchor = new URL(source.url, "https://tactile.example").hash.slice(
+        1,
+      );
+      const section = evidence
+        .split('id="' + anchor + '"')[1]
+        ?.split("</code></pre>")[0]
+        ?.split("<pre><code>")[1];
+      assert.ok(section?.includes(source.passage!), source.title);
+      const portable = toMarkdown(
+        example.proposal,
+        report,
+        "http://[::1]:5173",
+      );
+      assert.ok(portable.includes(source.passage!));
+      assert.match(
+        portable,
+        /Recorded fixture excerpt from Tactile's bundled evidence/,
+      );
+      assert.doesNotMatch(portable, /\[::1\]/);
+      const hosted = toMarkdown(
+        example.proposal,
+        report,
+        "https://tactile.example",
+      );
+      assert.ok(hosted.includes("https://tactile.example" + source.url));
+    }
+  }
+});
+
+test("older saved demo reports retain verdicts and recover their coverage and recorded excerpts", () => {
+  const { proposal, claims } = demoExamples.find(({ id }) => id === "flag")!;
+  const legacyClaim = {
+    ...claims[0],
+    text: "Disabling the feature flag reverses records already changed by the migration.",
+  };
+  const current = demoReport({ proposal, claims: [legacyClaim] });
+  const { id, title, url } = current.sources[0];
+  const old = reportSchema.parse({
+    ...current,
+    uncheckedCriticalClaims: undefined,
+    sources: [{ id, title, url: url.replace("/example-", "/demo-") }],
+  });
+  const restored = restoreDemoReport(proposal, old);
+  assert.deepEqual(restored.findings, old.findings);
+  assert.equal(restored.findings[0].verdict, "Contradicted");
+  assert.deepEqual(restored.uncheckedCriticalClaims, []);
+  assert.match(
+    toMarkdown(proposal, restored),
+    /the update from request A is still present/,
+  );
+});
+
+test("ordinary punctuation stays readable and leading Markdown list markers stay escaped", () => {
+  const report = demoReport({
+    proposal: demoProposal,
+    claims: [demoClaims[0]],
+  });
+  report.recommendation = "1. Recheck first-month timing.";
+  report.findings[0].rationale = "- Do not treat <test> as markup.";
+  const markdown = toMarkdown(demoProposal, report);
+  assert.ok(markdown.includes("1\\. Recheck first-month timing."));
+  assert.ok(markdown.includes("\\- Do not treat \\<test\\> as markup."));
+});
+
 test("citation destinations are serialized as safe Markdown URLs", () => {
   const report = demoReport({
     proposal: demoProposal,
     claims: [demoClaims[0]],
   });
-  report.sources[0].url = "https://example.com/a>\n?q=<tag>";
+  report.sources[0] = {
+    ...report.sources[0],
+    url: "https://example.com/a>\n?q=<tag>",
+  };
   const markdown = toMarkdown(demoProposal, report);
   assert.match(markdown, /<https:\/\/example\.com\/a%3E\?q=%3Ctag%3E>/);
   assert.doesNotMatch(markdown, /<tag>/);

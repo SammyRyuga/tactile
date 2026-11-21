@@ -164,12 +164,12 @@ test("a workspace example requires sign-in and retains its evidence", async ({
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await page.getByRole("button", { name: "Cancel review" }).press("Enter");
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
-    /reverses records/,
+    /reverses changes the new writer/,
   );
   await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const finding = page
     .getByRole("article")
-    .filter({ hasText: "reverses records" });
+    .filter({ hasText: "reverses changes the new writer" });
   await expect(
     finding.getByText("Contradicted", { exact: true }),
   ).toBeVisible();

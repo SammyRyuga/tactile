@@ -162,13 +162,14 @@ export const stages = [
 ] as const;
 export const stageSchema = z.enum(stages);
 const modeSchema = z.enum(["demo", "live"]);
+const bundledEvidencePath = /^\/(?:demo|example)-evidence\.html#[a-z-]+$/;
 
 export const sourceSchema = z.object({
   id: idSchema,
   title: z.string(),
   passage: z.string().optional(),
   diagnostic: z.string().optional(),
-  passageOrigin: z.literal("source").optional(),
+  passageOrigin: z.enum(["source", "fixture"]).optional(),
   startIndex: z.number().int().optional(),
   endIndex: z.number().int().optional(),
   relation: z
@@ -176,7 +177,7 @@ export const sourceSchema = z.object({
     .optional(),
   url: z.union([
     z.url({ protocol: /^https?$/ }),
-    z.string().regex(/^\/(?:demo|example)-evidence\.html#[a-z-]+$/),
+    z.string().regex(bundledEvidencePath),
   ]),
 });
 
@@ -242,6 +243,7 @@ export const reportSchema = z.object({
   model: z.string().optional(),
   verifier: z.object({ model: z.string(), distinct: z.boolean() }).optional(),
   recommendation: z.string(),
+  uncheckedCriticalClaims: z.array(z.string()).optional(),
   crossfireDecision: z
     .enum(["Proceed", "Proceed with Changes", "Hold", "Drop"])
     .optional(),
@@ -291,7 +293,9 @@ function markdownText(text: string): string {
   return text
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/[\\`*_{}\[\]()#+.!|<>~&-]/g, "\\$&");
+    .replace(/[\\`*_{}\[\]()#+!|<>~&]/g, "\\$&")
+    .replace(/^-/, "\\-")
+    .replace(/^(\d{1,9})\.(?= |$)/, "$1\\.");
 }
 
 function markdownBlock(text: string): string {
@@ -305,11 +309,31 @@ function markdownBlock(text: string): string {
 
 function markdownSource(source: Source, origin?: string): string {
   const address = URL.parse(source.url, origin);
-  const destination = (address?.href ?? source.url).replace(
-    /[<>\s\\]/g,
-    encodeURIComponent,
-  );
-  return `[${markdownText(source.title)}](<${destination}>)`;
+  const title = markdownText(source.title);
+  const host = address?.hostname.replace(/\.$/, "");
+  if (
+    !address ||
+    !/^https?:$/.test(address.protocol) ||
+    address.username ||
+    address.password ||
+    (host &&
+      /^(?:.*\.)?localhost$|^127\.|^(?:0\.0\.0\.0|\[::1\]|\[::ffff:7f[\da-f]{2}:[\da-f]+\])$/i.test(
+        host,
+      ))
+  )
+    return title;
+  const destination = address.href.replace(/[<>\s\\]/g, encodeURIComponent);
+  return `[${title}](<${destination}>)`;
+}
+
+export const uncheckedCriticalClaimsLabel =
+  "Original critical claims left unchecked";
+
+export function sourcePassageLabel(source: Source) {
+  if (source.passageOrigin === "fixture") return "Recorded fixture excerpt";
+  return source.passageOrigin === "source"
+    ? "Fetched source excerpt"
+    : "Cited research excerpt";
 }
 
 export function decisionMemoSections(memo: Report["crossfireMemo"]) {
@@ -340,13 +364,28 @@ export function toMarkdown(
     "## Proposal",
     "",
     markdownBlock(proposal),
+  ];
+  if (report.uncheckedCriticalClaims?.length)
+    lines.push(
+      "",
+      "## Claim coverage",
+      "",
+      "The verdicts below cover only the claims submitted for this run.",
+      "",
+      uncheckedCriticalClaimsLabel,
+      "",
+      ...report.uncheckedCriticalClaims.map(
+        (claim) => `- ${markdownText(claim)}`,
+      ),
+    );
+  lines.push(
     "",
     report.crossfireDecision
       ? `## ${report.crossfireDecision}`
       : "## Recommended next step",
     "",
     markdownText(report.recommendation),
-  ];
+  );
 
   for (const section of decisionMemoSections(report.crossfireMemo)) {
     lines.push(
@@ -363,7 +402,7 @@ export function toMarkdown(
       "",
       markdownText(finding.rationale),
       "",
-      `**Next step** \n${markdownText(finding.nextStep)}`,
+      `**Next step** ${markdownText(finding.nextStep)}`,
     );
     if (finding.reason)
       lines.push("", `**Resolution status** ${finding.reason}`);
@@ -419,6 +458,20 @@ export function toMarkdown(
     for (const source of uniqueSourcesByUrl(
       [...referenced].flatMap((id) => sources.get(id) ?? []),
     )) {
+      if (source.passageOrigin === "fixture" && source.passage) {
+        const provenance = bundledEvidencePath.test(source.url)
+          ? ` (\`public${source.url}\`)`
+          : "";
+        lines.push(
+          "",
+          `**Evidence** ${markdownSource(source, origin)}`,
+          "",
+          `${sourcePassageLabel(source)} from Tactile's bundled evidence${provenance}.`,
+          "",
+          markdownBlock(source.passage),
+        );
+        continue;
+      }
       lines.push(`- ${markdownSource(source, origin)}`);
       if (!source.passage && source.diagnostic)
         lines.push(
@@ -426,7 +479,7 @@ export function toMarkdown(
         );
       if (source.passage)
         lines.push(
-          `  - ${source.passageOrigin === "source" ? "Fetched source excerpt" : "Cited research excerpt"} · ${markdownText(source.passage)}`,
+          `  - ${sourcePassageLabel(source)} · ${markdownText(source.passage)}`,
         );
     }
   }
