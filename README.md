@@ -25,15 +25,15 @@ Open `/demo` on a current build to try CI coverage, replica consistency, or feat
 ## Use the signed-in workspace
 
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
-2. Open **Workspace**, enter a proposal, and select **Run stress test** for a live review. To explore first, choose a case from the **Example library**.
-3. Edit the claims, select the ones you want to test, and mark claims that could change your decision as **Critical to the plan**.
+2. Open **Workspace**, write a proposal or use **Add documents or links**, then select **Run stress test**. If the plan is too vague to test, Crossfire asks a clarifying question. To explore first, choose a case from the **Example library**.
+3. Edit the claims and choose which to test. Open **Read your proposal** to confirm whether the decision can be reversed and add an optional deadline.
 4. Check the **Adversarial panel** and choose which reviewers to include. Select **Run Tests** for a live review. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
-Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Attachments become context for Crossfire’s analysis. The app sends that context to your configured model provider.
+**Add documents or links** accepts public HTTPS pages, PDFs (including scanned PDFs), PNG/JPEG/WebP screenshots, and text or Markdown files. You can start with an attachment alone. Each upload can be up to 4 MB and each PDF up to 15 pages. Tactile keeps up to three excerpts of up to 2,400 characters each and sends the extracted text to your configured model during claim extraction and review. Edit those excerpts under **Project evidence**.
 
 Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Tactile calculates the result and passes it to Crossfire as review context.
 
-In a live report, use **Settle this claim** for a downloadable measurement check, **Re-review this claim** to run one claim with additional evidence, or **Track after rollout** to save a claim in the workspace’s outcome log. The outcome log stays on this device for your account and can be exported as JSON.
+When a live memo has Steelman fixes, **Revise your plan** lets you choose which fixes to apply and edit the revised draft before using it. In a live report, use **Settle this claim** for a downloadable measurement check, **Re-review this claim** to run one claim with additional evidence, or **Track after rollout** to save a claim in the workspace’s outcome log. The outcome log stays on this device for your account and can be exported as JSON.
 
 The example library covers changed-package tests, replica consistency, and feature-flag rollback. Live reviews send your proposal to the configured provider and use web search where applicable. Use proposals you can share with the provider.
 
@@ -60,7 +60,7 @@ npm run dev
 
 Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
-To use the authenticated workspace, install Python 3.11 or newer and run `npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
+To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
 
 | Variable                   | Purpose                                                                     |
 | -------------------------- | --------------------------------------------------------------------------- |
@@ -101,6 +101,6 @@ The evaluation dataset has separate 15-case development and holdout sets, baseli
 
 Tactile was built by [ryanfer123](https://github.com/ryanfer123) and [SammyRyuga](https://github.com/SammyRyuga). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
 
-Crossfire inspired the claim-review approach, including checks selected by risk and a report that traces verdicts back to evidence. [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
+Tactile includes Crossfire’s original review, file ingestion, and plan revision code under the [upstream MIT license](server/crossfire/upstream/LICENSE). [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
 
 The homepage illustration is original artwork generated for Tactile. The site uses Bricolage Grotesque and Geist with GSAP and Lenis for motion.

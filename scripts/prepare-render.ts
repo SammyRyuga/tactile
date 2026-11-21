@@ -26,7 +26,7 @@ if (
       "-I",
       "-B",
       "-c",
-      "import sys; sys.path.insert(0, sys.argv[1]); import pydantic, pydantic_settings, tenacity",
+      "import sys; sys.path.insert(0, sys.argv[1]); import pydantic, pydantic_settings, tenacity, pypdf, pymupdf, PIL, rapidocr_onnxruntime",
       dependencies,
     ],
     { stdio: "inherit" },
