@@ -145,7 +145,17 @@ export function createProvider(
         body: JSON.stringify({
           model: requestModel,
           instructions,
-          input: messages ?? JSON.stringify(data),
+          input: messages
+            ? messages.map(({ role, content }) => ({
+                role,
+                content: [
+                  {
+                    type: role === "assistant" ? "output_text" : "input_text",
+                    text: content,
+                  },
+                ],
+              }))
+            : JSON.stringify(data),
           store: false,
           prompt_cache_key: promptCacheKey,
           max_output_tokens: maxOutputTokens,
