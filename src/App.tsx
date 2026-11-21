@@ -13,6 +13,7 @@ import {
 import { reviewModelSchema, reviewModels } from "../shared/models.ts";
 import { engineeringCheckSchema } from "../shared/engineering.ts";
 import { ReviewTrail } from "./ReviewTrail.tsx";
+import { LiveReviewRoom, RecordedReviewRoom } from "./ReviewRoom.tsx";
 import type { FormEvent } from "react";
 import {
   demoClaims,
@@ -1021,6 +1022,11 @@ export function App({
                 ? "Bundled example · Replaying recorded checks"
                 : "Live review · Checking the confirmed claims"}
             </p>
+            <LiveReviewRoom
+              claims={state.claims}
+              progress={state.progress}
+              updates={state.updates}
+            />
             <ul className="activity" aria-live="polite">
               {stages
                 .filter((stage) => mode === "live" || progress?.[stage])
@@ -1121,6 +1127,7 @@ export function App({
               <summary>Read your proposal</summary>
               <p>{reportProposal}</p>
             </details>
+            <RecordedReviewRoom report={report} />
             {unreadableCount > 0 && (
               <p className="field-note">
                 {unreadableCount} unreadable{" "}

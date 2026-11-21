@@ -121,3 +121,8 @@
 - A critical claim can use one follow-up tool call on a public blocker. The follow-up uses a generic search topic; its citations go through the same independent source fetch, claim-specific applicability check, and exact-quote gate.
 - Each specialist concern has its own verification entry in the review trail. The case recommendation starts from the critical claims. The workspace components, styles, and report format use their existing interfaces.
 - Regression tests cover evaluator dispatch, the probe budget, private and unrelated blockers, evidence attribution, and recommendation priority. The historical 45-trial evaluation predates this routing.
+
+## Isometric review room
+
+- Added an interactive five-station view of the existing review events. The room highlights running checks and shows the status and a relevant excerpt for the selected station.
+- Completed reports offer an optional view populated from their saved audit trail. Keyboard controls, reduced-motion styling, and responsive layouts are covered by browser tests.
