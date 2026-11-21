@@ -18,6 +18,7 @@ body {
   background: var(--paper-ground);
 }
 .site-nav .topbar-body {
+  flex-wrap: wrap;
   max-width: 90rem;
   width: min(calc(100% - 3rem), 90rem);
   min-height: 5.2rem;
@@ -34,6 +35,7 @@ body {
   height: 2.45rem;
 }
 .site-nav nav {
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 .site-nav nav a,
@@ -257,8 +259,26 @@ body {
 .case-board {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto;
   gap: 0.55rem;
   color: var(--ink);
+}
+.case-pair {
+  /* All previews size the same tracks with their real content, including at zoom. */
+  display: grid;
+  grid-area: 1 / 1 / -1 / -1;
+  grid-template: subgrid / subgrid;
+}
+.case-pair[inert],
+.trace-preview[inert] {
+  visibility: hidden;
+}
+.trace-previews {
+  display: grid;
+  min-inline-size: 0;
+}
+.trace-previews > .trace-preview {
+  grid-area: 1 / 1;
 }
 .case-proposal,
 .case-finding {
@@ -524,7 +544,8 @@ body {
     width: min(83%, 16rem);
   }
   .case-board {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
   }
   .case-controls button {
     padding-inline: 0.75rem;

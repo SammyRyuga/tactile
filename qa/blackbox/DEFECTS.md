@@ -47,3 +47,15 @@ No false reassurance or fabricated citation reproduced in the tested recorded pa
 - The bare demo URL opens the default example. Invalid, empty and differently cased IDs display “Demo case unavailable” with functional recovery links.
 - Normal claim text in a Markdown heading preserves tested Unicode, emoji, quotes and notation. The two-line claim’s wording survived, with its line boundary flattened in the Markdown heading. Inert markup remained escaped. The sampled wording stayed intact.
 - A 240-character claim remained complete in the report and memo. On Windows the clipboard’s line endings differed from those of the file. Comparing both with the same newline convention yielded identical content.
+
+## Verification on the repair branch
+
+| Case           | Verified change                                                                                                                                                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BB-052 · QA-01 | The atomic status includes the recovery instruction when the selection reaches zero. The disabled Run checks button is described by the visible guidance. Reselecting a claim removes the guidance and enables the button.         |
+| BB-005 · QA-02 | Public demo history moves through Plan, Assumptions and Results. Running uses the Assumptions entry, so cancellation and restore do not create extra entries. Editing state and recorded results survive Back, Forward and reload. |
+| BB-036 · QA-03 | A native double-click downloads once. Keyboard activation and deliberate later clicks still export the current memo, including after editing. Copy Markdown remains independent.                                                   |
+
+Each case passed in two fresh Chromium contexts and one Edge mobile-emulated context. Both Chromium projects also passed the regression test that runs an earlier example in the same tab before exercising all three repairs. Browser accessibility semantics were verified. Screen-reader speech was outside this run.
+
+The full rerun recorded 52 passing cases and one blocked case, or 156 passes and three blocked executions out of 159. BB-043 remains blocked because anonymous users have no evidence URL editor.

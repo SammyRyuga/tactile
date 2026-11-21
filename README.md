@@ -60,7 +60,7 @@ npm run dev
 
 Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
-To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
+To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [Supabase quota migrations](supabase/migrations) in order before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
 
 | Variable                   | Purpose                                                                     |
 | -------------------------- | --------------------------------------------------------------------------- |
@@ -97,9 +97,23 @@ npm run test:e2e
 
 The evaluation dataset has separate 15-case development and holdout sets, baselines, and a scoring rubric. A one-pass Meta baseline comparison is available, with human grading pending. [Evaluation protocol](docs/evaluation.md) · [Project progress](progress.md) · [Contributing guide](CONTRIBUTING.md)
 
-## Credits and license
+### Review limits
 
-Tactile was built by [ryanfer123](https://github.com/ryanfer123) and [SammyRyuga](https://github.com/SammyRyuga). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
+Tactile shares an hourly quota across live review, assumption extraction, revision and document import for each authenticated account. The original default remains 12. In a separately authorized test database, a database owner can use the SQL editor to set a higher quota (for example, 40), after applying the additive quota settings migration. Update the same row back to 12 to restore the default.
+
+```sql
+update tactile_private.review_quota_settings
+set hourly_limit = 40
+where singleton;
+```
+
+The database accepts 1–120 attempts per account per rolling hour. The browser cannot set the quota, and the application delegates to the database when Supabase Auth is configured. The public recorded demo runs locally without this quota. Attachment requests are limited to 8/minute per IP, session verification to 30/minute per IP and status/provider settings to 60/minute per IP. The production HTML route fallback permits 300/minute per IP. The server allows two concurrent live operations, one document read and up to 32 key validations (one per session).
+
+For a self-managed reverse proxy, set **TRUSTED_PROXY_RANGES** to the verified socket peer CIDRs and configure that proxy to supply the actual client IP as the rightmost forwarded address. Restrict direct access to the app server as appropriate. The existing Render configuration assumes a single trusted immediate hop. Meta account usage and billing are separate, and Tactile forwards a valid provider Retry-After value when available.
+
+## Credits
+
+Built by [Ryan Fernandes](https://github.com/ryanfer123), [Samanyu Pattanayak](https://github.com/SammyRyuga) and [Aritra Ghosh](https://github.com/aritraghosh2005). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
 
 Tactile includes Crossfire’s original review, file ingestion, and plan revision code under the [upstream MIT license](server/crossfire/upstream/LICENSE). [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
 

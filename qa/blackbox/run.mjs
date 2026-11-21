@@ -20,7 +20,7 @@ if (
 await mkdir(out, { recursive: true });
 const health = await fetch(origin + "/health").then((r) => r.json());
 if (health.ok !== true)
-  throw new Error("The existing local server on port 5173 must be healthy.");
+  throw new Error("The local server at " + origin + " must be healthy.");
 const filters = requested.filter((arg) => arg.startsWith("BB-"));
 const selected = cases.filter(
   ({ id }) => !filters.length || filters.includes(id),

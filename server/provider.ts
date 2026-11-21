@@ -72,14 +72,35 @@ const usageSchema = z.object({
 
 export const metaStructuredEffort = "low";
 
+export function providerRetryAfter(response: Response): string | undefined {
+  const value = response.headers.get("Retry-After");
+  if (
+    value &&
+    (/^\d{1,15}$/.test(value) ||
+      (value.length === 29 && new Date(value).toUTCString() === value))
+  )
+    return value;
+  return undefined;
+}
+
 export class ProviderResponseError extends Error {
   readonly status: number;
+  readonly retryAfter?: string;
 
-  constructor(status: number) {
+  constructor(status: number, retryAfter?: string) {
     super(`Provider request failed with status ${status}.`);
     this.name = "ProviderResponseError";
     this.status = status;
+    this.retryAfter = retryAfter;
   }
+}
+
+export function isProviderLimit(
+  error: unknown,
+): error is ProviderResponseError {
+  return (
+    error instanceof ProviderResponseError && [402, 429].includes(error.status)
+  );
 }
 
 export function createProvider(
@@ -182,7 +203,10 @@ export function createProvider(
       });
       if (!response.ok) {
         await response.body?.cancel();
-        throw new ProviderResponseError(response.status);
+        throw new ProviderResponseError(
+          response.status,
+          providerRetryAfter(response),
+        );
       }
       return payload;
     }

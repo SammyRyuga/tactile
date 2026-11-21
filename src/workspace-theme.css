@@ -1074,6 +1074,10 @@
   margin-block-end: 1rem;
 }
 
+.review-workspace .report-details {
+  margin-block-start: 0.65rem;
+}
+
 .review-workspace .review-disclosures > details {
   min-width: 0;
   margin: 0;

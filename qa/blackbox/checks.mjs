@@ -3,7 +3,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "@playwright/test";
 
-export const origin = "http://127.0.0.1:5173";
+export const origin =
+  process.env.TACTILE_BLACKBOX_URL ?? "http://127.0.0.1:5173";
+if (!/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(origin))
+  throw new Error("Use an explicit local IPv4 loopback URL.");
 const check = expect.configure({ timeout: 2200 });
 export const scenarios = {
   flag: {
@@ -280,9 +283,14 @@ test(
     await field(p, 1).fill(cpu);
     await run(p);
     const stops = [];
-    for (const action of ["goBack", "goForward", "goBack"]) {
+    for (const [action, expected] of [
+      ["goBack", "Assumptions"],
+      ["goForward", "Results"],
+      ["goBack", "Assumptions"],
+    ]) {
       await p[action]({ waitUntil: "commit" });
-      await check(heading(p, "Public demo")).toBeVisible();
+      await check(stage(p)).toContainText(expected);
+      if (expected === "Assumptions") await check(field(p, 1)).toHaveValue(cpu);
       stops.push(
         (await stage(p).innerText()).replace(/\s+/g, " ") +
           " " +
@@ -1460,6 +1468,7 @@ test(
       "/SammyRyuga/tactile",
       "/SammyRyuga",
       "/ryanfer123",
+      "/aritraghosh2005",
     ]);
     const descriptions = [];
     const destinations = await p
@@ -1830,37 +1839,23 @@ test(
     await include(p, 2).uncheck();
     const explanation = p.getByText(/Include at least one assumption/);
     await check(explanation).toBeVisible();
-    const errorSemantics = await explanation.evaluate((el) => ({
-      live: Boolean(
-        el.closest(
-          '[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])',
-        ),
-      ),
-      id: el.id || "(none)",
-      liveText: [
-        ...document.querySelectorAll(
-          '[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])',
-        ),
-      ].map((region) => region.textContent.trim()),
-    }));
+    const runChecks = button(p, "Run checks");
+    await check(runChecks).toBeDisabled();
+    await check(runChecks).toHaveAccessibleDescription(
+      "Include at least one assumption to run checks.",
+    );
+    await check(p.getByRole("status")).toContainText(
+      /0 of 2 selected[.\s]+Select at least one assumption to run checks\./,
+    );
     await include(p, 1).check();
+    await check(runChecks).toBeEnabled();
+    await check(runChecks).not.toHaveAttribute("aria-describedby");
+    await check(p.getByRole("status")).not.toContainText("Select at least one");
     await run(p);
     const afterResults = await focus();
     await verdict(p, scenarios.flag.claims[0], "Contradicted");
-    const summary =
-      "Assumptions focus: " +
-      JSON.stringify(afterEdit) +
-      "; Results focus: " +
-      JSON.stringify(afterResults) +
-      "; visible zero-selection explanation in live region: " +
-      JSON.stringify(errorSemantics);
-    assert.ok(
-      afterEdit.heading && afterResults.heading && errorSemantics.live,
-      summary,
-    );
-    return (
-      summary + ". Explicit verdict labels and named controls were present."
-    );
+    assert.ok(afterEdit.heading && afterResults.heading);
+    return "Stage headings received focus, the zero-selection status and disabled button provided actionable guidance, and guidance cleared when reselected.";
   },
 );
 

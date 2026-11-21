@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
+import ipaddr from "ipaddr.js";
 import { createApp } from "./app.ts";
 import { createSessionVerifier, reserveReview } from "./auth.ts";
 import { createProvider } from "./provider.ts";
@@ -27,6 +29,11 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
+const proxyRanges = (process.env.TRUSTED_PROXY_RANGES ?? "")
+  .split(",")
+  .map((range) => range.trim())
+  .filter(Boolean)
+  .map((range) => ipaddr.parseCIDR(range));
 const app = createApp(provider, {
   auth,
   crossfire: auth
@@ -40,7 +47,12 @@ const app = createApp(provider, {
     ...allowedHosts,
   ],
   allowDevAssets: dev,
-  trustProxy: hosted,
+  trustProxy: proxyRanges.length
+    ? (address, hop) =>
+        hop === 0 &&
+        ipaddr.subnetMatch(ipaddr.process(address), { proxy: proxyRanges }) ===
+          "proxy"
+    : hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
   metaVerifierModel: process.env.META_VERIFIER_MODEL?.trim() || undefined,
 });
@@ -66,8 +78,16 @@ if (dev) {
   if (!existsSync(resolve(dist, "index.html")))
     throw new Error("Run npm run build before npm start.");
   app.use(express.static(dist));
-  app.get(["/demo", "/login", "/review", "/settings"], (_request, response) =>
-    response.sendFile("index.html", { root: dist }),
+  const limitPageFallback = rateLimit({
+    windowMs: 60_000,
+    limit: 300,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  });
+  app.get(
+    ["/demo", "/login", "/review", "/settings"],
+    limitPageFallback,
+    (_request, response) => response.sendFile("index.html", { root: dist }),
   );
 }
 

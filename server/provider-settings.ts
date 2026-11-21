@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { Claim } from "../shared/review.ts";
 import { z } from "zod";
-import { createProvider, metaStructuredEffort } from "./provider.ts";
+import {
+  createProvider,
+  metaStructuredEffort,
+  providerRetryAfter,
+} from "./provider.ts";
 
 import { defaultReviewModel, reviewModelSchema } from "../shared/models.ts";
 import type { ReviewModel } from "../shared/models.ts";
@@ -43,12 +47,15 @@ export async function validateMetaKey(
   });
   if (!response.ok) {
     await response.body?.cancel();
-    return response.status;
+    return {
+      status: response.status,
+      retryAfter: providerRetryAfter(response),
+    };
   }
   const result = z
     .object({ status: z.enum(["completed", "incomplete"]) })
     .safeParse(await response.json());
-  return result.success ? 200 : 502;
+  return { status: result.success ? 200 : 502 };
 }
 
 export function providerSessionId(

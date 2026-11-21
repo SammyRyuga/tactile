@@ -190,3 +190,10 @@
 - Exercised 53 public-demo cases across 159 Chromium and Edge sessions. The matrix recorded 49 passing cases, three reproducible defects, and one blocked anonymous evidence-URL case.
 - The recorded demo preserved unchecked-claim warnings, kept unrelated claims unresolved without sources, and included portable fixture evidence in downloaded memos. Authenticated live review remains pending authorized configuration.
 - Documented zero-selection accessibility feedback, browser history skipping intermediate steps, and duplicate downloads on rapid activation in [the QA defect report](qa/blackbox/DEFECTS.md). The harness and evidence index are in [the QA run report](qa/blackbox/RUN_REPORT.md).
+
+## Final UI and black-box repairs · November 22, 2026
+
+- Separated Results disclosures from claim cards, corrected homepage dark-mode number contrast, and made the example showcase and trace preview size from their longest content. Verified both themes at six widths and 200% Chromium zoom, including increased homepage text size.
+- Added Ryan Fernandes, Samanyu Pattanayak and Aritra Ghosh to the site footers and README. Fixed accessible zero-selection guidance, public demo browser history and duplicate Markdown downloads.
+- Added rate limits to the routes flagged by CodeQL, kept the existing 12/hour default in an owner-configurable Supabase quota migration, and preserved provider Retry-After metadata. The local PostgreSQL test verified quota adjustment and permissions. Hosted databases and provider accounts were outside the run.
+- The [black-box rerun](qa/blackbox/RUN_REPORT.md#follow-up-repair-verification) recorded 156 passed and three blocked executions out of 159. The authenticated evidence URL editor is still unavailable to anonymous testers.

@@ -24,6 +24,8 @@ import type {
 } from "../shared/review.ts";
 import { ProposalScopeError } from "./pipeline.ts";
 import type { ReviewProvider } from "./provider.ts";
+import { isProviderLimit } from "./provider.ts";
+import type { ProviderResponseError } from "./provider.ts";
 import { readSource } from "./source-reader.ts";
 import { reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
@@ -195,13 +197,16 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
     const lines = createInterface({ input: child.stdout });
     let result: unknown;
     let transportError: unknown;
+    let providerLimit: ProviderResponseError | undefined;
     const completion = new Promise<void>((resolve, reject) => {
       child.once("error", reject);
       child.once("close", (code) => {
         if (code === 0) resolve();
         else
           reject(
-            transportError ?? new Error("Crossfire worker did not complete."),
+            providerLimit ??
+              transportError ??
+              new Error("Crossfire worker did not complete."),
           );
       });
     });
@@ -214,6 +219,7 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
         child.stdin.write(JSON.stringify(value) + "\n");
     }
     async function reply(message: z.infer<typeof envelope>) {
+      if (providerLimit) return;
       const { id, instructions, messages, schema, url, query } = message;
       try {
         let value;
@@ -232,7 +238,12 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
           ).citations;
         else throw new Error("Unknown Crossfire gateway operation.");
         write({ id, value });
-      } catch {
+      } catch (error) {
+        if (isProviderLimit(error)) {
+          providerLimit ??= error;
+          abort();
+          return;
+        }
         write({ id, error: true });
       }
     }
@@ -247,6 +258,7 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
           onEvent?.(message.event, message.data);
       }
       await completion;
+      if (providerLimit) throw providerLimit;
       signal.throwIfAborted();
       if (result === undefined)
         throw new Error("Crossfire returned no result.");
