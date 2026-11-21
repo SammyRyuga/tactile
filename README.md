@@ -76,9 +76,11 @@ To use the workspace, copy `.env.example` to `.env`, configure a Supabase projec
 ## How review works
 
 - **Claim selection.** Extract up to six claims from a proposal and confirm up to three for review.
-- **Checks by risk.** Route claims to specialist checks for assumptions, engineering feasibility, or adoption and operations. Load-bearing claims get a larger search allowance. Explicit equations in claim text are checked with deterministic arithmetic.
+- **Checks by risk.** Every claim gets independent checks for assumptions, feasibility, and adoption. Technical and evidence claims also get evidence critique and public research. An unverified public blocker on a critical claim can trigger one targeted follow-up search. Explicit equations and engineering checks are evaluated directly.
 - **Evidence and verdict.** Match quotes against fetched source text and ask a verifier to check applicability to each claim. For proposal-derived findings the verifier checks the exact excerpt against the complete proposal. Deterministic arithmetic can establish an explicit calculation error directly. “No credible break found” records a completed adversarial check without a detected concern. An unresolved verdict identifies evidence gaps, conflicting sources, or a failed check.
-- **Decision memo.** See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
+- **Decision memo.** The recommendation starts from the findings on critical claims. See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
+
+The review flow draws on [Crossfire’s adaptive routing and cross-examination](https://github.com/hriday-singh/crossfire/tree/50209fc#how-it-works). Tactile implements those ideas with its own TypeScript pipeline and exact-quote evidence checks.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.
 

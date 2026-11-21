@@ -114,3 +114,10 @@
 
 - Rehearsed all three bundled cases on the zero-key Windows development server in desktop Chromium and at a 320 CSS-pixel mobile viewport. Verified claim edits, recorded verdicts, source destinations, Markdown exports, refresh, browser Back, and case resets. The public flow made no provider requests.
 - Corrected the review trail's singular check count and labeled its links as cited evidence. The browser regression test verifies the accessible list label and follows its bundled timeline link.
+
+## Crossfire review routing
+
+- Adapted Crossfire’s isolated multi-evaluator panel and targeted cross-examination to the Tactile backend. Assumptions, feasibility, and adoption reviewers check every confirmed claim. Technical and evidence claims also get evidence critique and routine public research.
+- A critical claim can use one follow-up tool call on a public blocker. The follow-up uses a generic search topic; its citations go through the same independent source fetch, claim-specific applicability check, and exact-quote gate.
+- Each specialist concern has its own verification entry in the review trail. The case recommendation starts from the critical claims. The workspace components, styles, and report format use their existing interfaces.
+- Regression tests cover evaluator dispatch, the probe budget, private and unrelated blockers, evidence attribution, and recommendation priority. The historical 45-trial evaluation predates this routing.
