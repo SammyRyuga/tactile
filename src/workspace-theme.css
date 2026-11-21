@@ -1045,18 +1045,19 @@
   margin: 0;
 }
 
-.review-disclosures > details > summary {
+:is(.review-disclosures > details, .proposal-attachments) > summary {
   position: relative;
   display: block;
   padding-inline-end: 1.75rem;
   list-style: none;
 }
 
-.review-disclosures > details > summary::-webkit-details-marker {
+:is(.review-disclosures > details, .proposal-attachments)
+  > summary::-webkit-details-marker {
   display: none;
 }
 
-.review-disclosures > details > summary::after {
+:is(.review-disclosures > details, .proposal-attachments) > summary::after {
   position: absolute;
   inset-block-start: 1rem;
   inset-inline-end: 0.45rem;
@@ -1069,7 +1070,8 @@
   rotate: 45deg;
 }
 
-.review-disclosures > details[open] > summary::after {
+:is(.review-disclosures > details, .proposal-attachments)[open]
+  > summary::after {
   rotate: 225deg;
 }
 
@@ -1194,6 +1196,16 @@
   inline-size: 100%;
 }
 
+.proposal-attachments input::file-selector-button {
+  margin-inline-end: 0.45rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--review-muted);
+  border-radius: 0.65rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+}
+
 .proposal-attachment-list {
   display: grid;
   gap: 0.35rem;
@@ -1210,7 +1222,16 @@
   padding: 0.25rem 0.5rem;
   border-radius: 0.7rem;
   background: var(--review-paper);
+}
+
+.proposal-attachment-list li > span {
+  min-inline-size: 0;
   overflow-wrap: anywhere;
+}
+
+.proposal-attachment-list button {
+  flex: none;
+  white-space: nowrap;
 }
 
 .proposal-attachment-list small {
