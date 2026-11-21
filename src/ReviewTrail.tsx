@@ -57,7 +57,10 @@ export function ReviewTrail({
       {trail.length > 0 && (
         <details className="review-trail">
           <summary>
-            Review trail <span>({trail.length} checks)</span>
+            Review trail{" "}
+            <span>
+              ({trail.length} {trail.length === 1 ? "check" : "checks"})
+            </span>
           </summary>
           <ol>
             {trail.map(({ stage, status, observation }) => (
@@ -71,7 +74,7 @@ export function ReviewTrail({
             ))}
           </ol>
           {cited.length > 0 && (
-            <ul className="passages" aria-label="Cited research excerpts">
+            <ul className="passages" aria-label="Cited evidence">
               {cited.map((source) => (
                 <li key={source.id}>
                   <a href={source.url} target="_blank" rel="noreferrer">
