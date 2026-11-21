@@ -30,6 +30,7 @@ const app = createApp(provider, {
   auth,
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,
+  revision: hosted ? process.env.RENDER_GIT_COMMIT : undefined,
   allowedHosts: [
     ...(hostname ? [hostname] : ["localhost", "127.0.0.1"]),
     ...allowedHosts,
@@ -38,11 +39,6 @@ const app = createApp(provider, {
   trustProxy: hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
   metaVerifierModel: process.env.META_VERIFIER_MODEL?.trim() || undefined,
-});
-app.get("/demo", (request, response) => {
-  const example = request.query.example;
-  const id = example === "ci" || example === "replica" ? example : "flag";
-  response.redirect(302, `/review?example=${id}`);
 });
 app.get("/demo-evidence.html", (_request, response) =>
   response.redirect(301, "/example-evidence.html"),
@@ -66,7 +62,7 @@ if (dev) {
   if (!existsSync(resolve(dist, "index.html")))
     throw new Error("Run npm run build before npm start.");
   app.use(express.static(dist));
-  app.get(["/login", "/review", "/settings"], (_request, response) =>
+  app.get(["/demo", "/login", "/review", "/settings"], (_request, response) =>
     response.sendFile("index.html", { root: dist }),
   );
 }

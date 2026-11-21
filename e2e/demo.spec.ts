@@ -96,7 +96,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   );
 });
 
-test("the case selector opens the corresponding bundled review", async ({
+test("signed-in replica links preserve the requested bundled review", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -104,15 +104,10 @@ test("the case selector opens the corresponding bundled review", async ({
   const apiRequests: string[] = [];
   page.on("request", (request) => {
     const { pathname } = new URL(request.url());
-    if (pathname === "/api/claims" || pathname === "/api/review")
+    if (pathname === "/api/claims" || pathname === "/api/reviews")
       apiRequests.push(pathname);
   });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Data consistency" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Move checkout reads to a replica" }),
-  ).toBeVisible();
-  await page.getByRole("link", { name: "Try this example" }).click();
+  await page.goto("/review?example=replica");
   await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dreplica/);
   await signIn(page);
   await expect(page).toHaveURL(/\/review\?example=replica/);
@@ -131,12 +126,12 @@ test("the case selector opens the corresponding bundled review", async ({
   expect(apiRequests).toEqual([]);
 });
 
-test("the old example link requires sign-in and the rollout report exports its evidence", async ({
+test("a workspace example requires sign-in and retains its evidence", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
   await mockAuthentication(page);
-  await page.goto("/demo");
+  await page.goto("/review?example=flag");
   await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dflag/);
   await signIn(page);
   await expect(

@@ -642,6 +642,23 @@ function post(url: string, body: object, signal?: AbortSignal) {
   });
 }
 
+test("health reports a valid deployment revision without caching it", async () => {
+  const revision = "0123456789abcdef".repeat(2) + "01234567";
+  await withServer(createApp(undefined, { revision }), async (url) => {
+    const health = await fetch(url + "/health");
+    assert.equal(health.status, 200);
+    assert.equal(health.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await health.json(), { ok: true, revision });
+  });
+  await withServer(
+    createApp(undefined, { revision: "invalid" }),
+    async (url) => {
+      const health = await fetch(url + "/health");
+      assert.deepEqual(await health.json(), { ok: true });
+    },
+  );
+});
+
 test("live HTTP endpoints return extracted claims and a validated NDJSON report", async () => {
   await withServer(createApp(mockProvider(), { sourceReader }), async (url) => {
     const status = await fetch(url + "/api/status");
@@ -814,6 +831,13 @@ test("hosted live endpoints require a verified session and limit each account", 
           },
         });
       assert.equal((await submit()).status, 401);
+      const review = await post(url + "/api/reviews", input);
+      assert.equal(review.status, 401);
+      assert.equal(review.headers.get("cache-control"), "no-store");
+      const settings = url + "/api/settings/provider";
+      assert.equal((await fetch(settings)).status, 401);
+      assert.equal((await post(settings, {})).status, 401);
+      assert.equal((await fetch(settings, { method: "DELETE" })).status, 401);
       assert.equal(verified, 0);
       assert.equal((await submit("invalid")).status, 401);
       for (let i = 0; i < 12; i++) {

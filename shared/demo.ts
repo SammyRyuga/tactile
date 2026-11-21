@@ -327,7 +327,9 @@ export function demoReport(input: ReviewInput): Report {
   )
     ? (example?.recommendation ??
       "Pilot affected-package testing with dependent packages before removing the full pull request suite.")
-    : "Collect evidence for unresolved claims before changing the current workflow.";
+    : reviewed.some(({ verdict }) => verdict === "Unresolved")
+      ? "Collect evidence for unresolved claims before changing the current workflow."
+      : "Use the findings and their next steps to test the plan before rollout.";
   const cited = new Set(reviewed.flatMap(({ sourceIds }) => sourceIds));
   return {
     mode: "demo",

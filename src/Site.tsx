@@ -121,7 +121,8 @@ function Login({
         </h1>
         <p className="field-note">
           To review your own plan, add your Meta Model API key in Settings after
-          you sign in. You can try an example without a key.
+          you sign in. <a href="/demo">Try the public demo</a> with bundled
+          evidence.
         </p>
         {session ? (
           <a className="button primary" href={next}>
@@ -202,6 +203,37 @@ function allowedDestination(value: string | null) {
 }
 
 export function Site() {
+  if (/^\/demo\/?$/i.test(window.location.pathname)) {
+    const id =
+      new URLSearchParams(window.location.search).get("example") ?? "flag";
+    const example = demoExamples.find((item) => item.id === id);
+    if (!example)
+      return (
+        <main className="workspace">
+          <h1>Demo case unavailable</h1>
+          <p>Choose a bundled case to start a review.</p>
+          <ul>
+            {demoExamples.map((item) => (
+              <li key={item.id}>
+                <a href={`/demo?example=${item.id}`}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
+        </main>
+      );
+    return (
+      <App
+        key={example.id}
+        initialExample={example}
+        startExample={false}
+        publicDemo
+      />
+    );
+  }
+  return <AccountSite />;
+}
+
+function AccountSite() {
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);

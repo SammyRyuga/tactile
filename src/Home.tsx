@@ -130,8 +130,8 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               {signedIn ? "Open workspace" : "Sign in to workspace"}{" "}
               <span aria-hidden="true">↗</span>
             </a>
-            <a className="home-button plain" href="#examples">
-              Explore cases <span aria-hidden="true">↓</span>
+            <a className="home-button plain" href="/demo">
+              Try the public demo <span aria-hidden="true">↗</span>
             </a>
           </div>
         </div>
@@ -191,7 +191,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               <p>{example.proposal}</p>
               <a
                 className="home-button filled"
-                href={`/review?example=${example.id}`}
+                href={`/demo?example=${example.id}`}
               >
                 Try this example <span aria-hidden="true">↗</span>
               </a>
