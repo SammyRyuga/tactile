@@ -82,6 +82,10 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await page
     .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
     .click();
+  const setup = page.locator(".reviewer-disclosure");
+  await expect(setup.locator("summary")).toContainText("Devil's Advocate");
+  await expect(setup).not.toHaveAttribute("open", "");
+  await setup.locator("summary").click();
   const panel = page.getByRole("group", { name: "Adversarial panel" });
   await expect(panel.getByText("Devil's Advocate")).toBeVisible();
   await panel.getByRole("checkbox", { name: /Operator/ }).uncheck();
@@ -98,6 +102,7 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   });
   await expect(page.getByLabel("Evidence excerpt 1")).toHaveValue(quote);
   const claim = page.locator(".claim-row").nth(1);
+  await claim.getByText("Claim options").click();
   await claim.getByText("Add an engineering check").click();
   await claim.getByLabel("Check", { exact: true }).selectOption("throughput");
   await claim.getByLabel("Jobs per minute per worker").fill("120");

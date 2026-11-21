@@ -314,6 +314,7 @@ export function App({
   );
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
+  const memoSections = decisionMemoSections(report?.crossfireMemo);
   const progress = page === "running" ? state.progress : undefined;
   const parsedModel = reviewModelSchema.safeParse(report?.model);
   const modelName = parsedModel.success
@@ -647,7 +648,12 @@ export function App({
       >
         {account && (
           <div className="account-strip">
-            <span>Signed in as {account}</span>
+            <span className="account-name">
+              <span className={page === "decision" ? undefined : "sr-only"}>
+                Signed in as{" "}
+              </span>
+              {account}
+            </span>
             <button
               type="button"
               className="text-button"
@@ -657,16 +663,21 @@ export function App({
             </button>
           </div>
         )}
-        <div className="review-masthead">
-          <div className="intro">
+        <div
+          className="review-masthead"
+          data-compact={page !== "decision" || undefined}
+        >
+          <div className={page === "decision" ? "intro" : "sr-only"}>
             <h1>
               {publicDemo ? "Public demo" : "Review an engineering decision"}
             </h1>
-            <p>
-              {publicDemo
-                ? "Replay recorded checks in your browser. No account or API key is required."
-                : "Find out what needs to be true for your plan to work."}
-            </p>
+            {page === "decision" && (
+              <p>
+                {publicDemo
+                  ? "Replay recorded checks in your browser. No account or API key is required."
+                  : "Find out what needs to be true for your plan to work."}
+              </p>
+            )}
           </div>
           <ol className="steps" aria-label="Review steps">
             {stepLabels.map((step, index) => (
@@ -840,8 +851,8 @@ export function App({
                 </h2>
                 <p>
                   {mode === "live"
-                    ? "Review the extracted assumptions below. You can edit, remove, or add claims before running tests."
-                    : "A claim is something that must be true for your plan to work. Edit the claims and choose which ones to check."}
+                    ? "Edit the claims and choose which ones to test."
+                    : "Choose which assumptions to check."}
                 </p>
               </div>
               <div className="claim-count" role="status">
@@ -858,51 +869,70 @@ export function App({
                 </span>
               </div>
             </div>
-            <details className="proposal claim-proposal">
-              <summary>Read your proposal {mark("chevron")}</summary>
-              <p>{proposal}</p>
-            </details>
             <form onSubmit={onReview}>
-              {mode === "live" && (
-                <fieldset className="reviewer-picker">
-                  <legend>Adversarial panel</legend>
-                  <div className="reviewer-options">
-                    {reviewerIds.map((id) => (
-                      <label className="check-label reviewer-option" key={id}>
-                        <input
-                          type="checkbox"
-                          checked={reviewPanel.includes(id)}
-                          disabled={
-                            reviewPanel.length === 1 && reviewPanel.includes(id)
-                          }
-                          onChange={(event) =>
-                            setReviewerSelection(
-                              event.target.checked
-                                ? [...reviewPanel, id]
-                                : reviewPanel.filter(
-                                    (reviewer) => reviewer !== id,
-                                  ),
-                            )
-                          }
-                        />
-                        <span>
-                          <strong>{reviewers[id].name}</strong>
-                          <small>{reviewers[id].role}</small>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                  <p className="section-note">
-                    Steelman weighs their findings and prepares the verdict.
-                  </p>
-                </fieldset>
-              )}
-              {mode === "live" && (
-                <EvidenceEditor
-                  items={projectEvidence}
-                  onChange={setProjectEvidence}
-                />
-              )}
+              <div className="review-setup">
+                <details className="proposal claim-proposal">
+                  <summary>Read your proposal {mark("chevron")}</summary>
+                  <p>{proposal}</p>
+                </details>
+                {mode === "live" && (
+                  <>
+                    <details className="proposal reviewer-disclosure">
+                      <summary>
+                        <span>Adversarial panel</span>
+                        <small>
+                          {reviewPanel
+                            .map((id) => reviewers[id].name)
+                            .join(", ")}
+                        </small>
+                      </summary>
+                      <fieldset
+                        className="reviewer-picker"
+                        aria-label="Adversarial panel"
+                      >
+                        <div className="reviewer-options">
+                          {reviewerIds.map((id) => (
+                            <label
+                              className="check-label reviewer-option"
+                              key={id}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={reviewPanel.includes(id)}
+                                disabled={
+                                  reviewPanel.length === 1 &&
+                                  reviewPanel.includes(id)
+                                }
+                                onChange={(event) =>
+                                  setReviewerSelection(
+                                    event.target.checked
+                                      ? [...reviewPanel, id]
+                                      : reviewPanel.filter(
+                                          (reviewer) => reviewer !== id,
+                                        ),
+                                  )
+                                }
+                              />
+                              <span>
+                                <strong>{reviewers[id].name}</strong>
+                                <small>{reviewers[id].role}</small>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="section-note">
+                          Steelman weighs their findings and prepares the
+                          verdict.
+                        </p>
+                      </fieldset>
+                    </details>
+                    <EvidenceEditor
+                      items={projectEvidence}
+                      onChange={setProjectEvidence}
+                    />
+                  </>
+                )}
+              </div>
               <div className="claim-list">
                 {claims.map((claim, index) => (
                   <div
@@ -965,58 +995,66 @@ export function App({
                         updateClaim(claim.id, { text: event.target.value })
                       }
                     />
-                    <div className="claim-meta">
-                      <label>
-                        Main risk
-                        <select
-                          aria-label={`Main risk for claim ${index + 1}`}
-                          value={claim.risk ?? "logic"}
-                          onChange={(event) => {
-                            const result = claimSchema.shape.risk.safeParse(
-                              event.target.value,
-                            );
-                            if (result.success)
-                              updateClaim(claim.id, { risk: result.data });
-                          }}
+                    <details className="claim-options">
+                      <summary>
+                        Claim options
+                        {claim.checkDraft && (
+                          <small>Engineering check added</small>
+                        )}
+                      </summary>
+                      <div className="claim-meta">
+                        <label>
+                          Main risk
+                          <select
+                            aria-label={`Main risk for claim ${index + 1}`}
+                            value={claim.risk ?? "logic"}
+                            onChange={(event) => {
+                              const result = claimSchema.shape.risk.safeParse(
+                                event.target.value,
+                              );
+                              if (result.success)
+                                updateClaim(claim.id, { risk: result.data });
+                            }}
+                          >
+                            <option value="logic">
+                              Does the plan make sense?
+                            </option>
+                            <option value="technical">
+                              Will the change work?
+                            </option>
+                            <option value="adoption">
+                              Can the team roll it out and run it?
+                            </option>
+                            <option value="evidence">
+                              Is there enough evidence?
+                            </option>
+                          </select>
+                        </label>
+                        <label
+                          className="check-label claim-priority"
+                          data-checked={Boolean(claim.loadBearing)}
                         >
-                          <option value="logic">
-                            Does the plan make sense?
-                          </option>
-                          <option value="technical">
-                            Will the change work?
-                          </option>
-                          <option value="adoption">
-                            Can the team roll it out and run it?
-                          </option>
-                          <option value="evidence">
-                            Is there enough evidence?
-                          </option>
-                        </select>
-                      </label>
-                      <label
-                        className="check-label claim-priority"
-                        data-checked={Boolean(claim.loadBearing)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={Boolean(claim.loadBearing)}
-                          onChange={(event) =>
-                            updateClaim(claim.id, {
-                              loadBearing: event.target.checked,
-                            })
+                          <input
+                            type="checkbox"
+                            checked={Boolean(claim.loadBearing)}
+                            onChange={(event) =>
+                              updateClaim(claim.id, {
+                                loadBearing: event.target.checked,
+                              })
+                            }
+                          />
+                          <span>Critical to the plan</span>
+                        </label>
+                      </div>
+                      {mode === "live" && (
+                        <EngineeringEditor
+                          draft={claim.checkDraft}
+                          onChange={(checkDraft) =>
+                            updateClaim(claim.id, { checkDraft })
                           }
                         />
-                        <span>Critical to the plan</span>
-                      </label>
-                    </div>
-                    {mode === "live" && (
-                      <EngineeringEditor
-                        draft={claim.checkDraft}
-                        onChange={(checkDraft) =>
-                          updateClaim(claim.id, { checkDraft })
-                        }
-                      />
-                    )}
+                      )}
+                    </details>
                   </div>
                 ))}
               </div>
@@ -1046,9 +1084,6 @@ export function App({
                   >
                     {mark("plus")} Add claim
                   </button>
-                  <span className="claim-mode">
-                    {mode === "demo" ? "Bundled example" : "Live review"}
-                  </span>
                 </div>
                 <div className="actions">
                   <button
@@ -1091,62 +1126,68 @@ export function App({
               updates={state.updates}
               panel={mode === "live" ? reviewPanel : undefined}
             />
-            <ul className="activity" aria-live="polite">
-              {stages
-                .filter((stage) => {
-                  if (mode === "demo") return Boolean(progress?.[stage]);
-                  const reviewer = reviewerByStage[stage];
-                  return !reviewer || reviewPanel.includes(reviewer);
-                })
-                .map((stage) => (
-                  <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
-                    <strong>
-                      {mode === "demo" && stage === "Synthesis"
-                        ? "Prepare memo"
-                        : mode === "live"
-                          ? reviewerStageLabel(stage)
-                          : stage}
-                    </strong>
-                    <span>
-                      {progress?.[stage] === "done"
-                        ? "Complete"
-                        : progress?.[stage] === "running"
-                          ? "In progress"
-                          : progress?.[stage] === "unavailable"
-                            ? "Incomplete"
-                            : progress?.[stage] === "skipped"
-                              ? "Skipped"
-                              : "Waiting"}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-            {mode === "live" && Object.keys(state.updates).length > 0 && (
-              <div className="claim-activity" aria-live="polite">
-                {state.claims
-                  .filter(({ id }) => state.updates[id])
-                  .map((claim) => (
-                    <details className="proposal" key={claim.id}>
-                      <summary>{claim.text}</summary>
-                      <ul>
-                        {Object.values(state.updates[claim.id]).map(
-                          ({ stage, status, detail }) => (
-                            <li key={stage}>
-                              <strong>{reviewerStageLabel(stage)}</strong> ·{" "}
-                              {status === "done"
-                                ? "Complete"
-                                : status === "unavailable"
-                                  ? "Incomplete"
-                                  : "In progress"}
-                              {detail && <blockquote>{detail}</blockquote>}
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    </details>
+            <details className="proposal review-activity">
+              <summary>Review activity</summary>
+              <ul className="activity">
+                {stages
+                  .filter((stage) => {
+                    if (mode === "demo") return Boolean(progress?.[stage]);
+                    const reviewer = reviewerByStage[stage];
+                    return !reviewer || reviewPanel.includes(reviewer);
+                  })
+                  .map((stage) => (
+                    <li
+                      key={stage}
+                      data-status={progress?.[stage] ?? "waiting"}
+                    >
+                      <strong>
+                        {mode === "demo" && stage === "Synthesis"
+                          ? "Prepare memo"
+                          : mode === "live"
+                            ? reviewerStageLabel(stage)
+                            : stage}
+                      </strong>
+                      <span>
+                        {progress?.[stage] === "done"
+                          ? "Complete"
+                          : progress?.[stage] === "running"
+                            ? "In progress"
+                            : progress?.[stage] === "unavailable"
+                              ? "Incomplete"
+                              : progress?.[stage] === "skipped"
+                                ? "Skipped"
+                                : "Waiting"}
+                      </span>
+                    </li>
                   ))}
-              </div>
-            )}
+              </ul>
+              {mode === "live" && Object.keys(state.updates).length > 0 && (
+                <div className="claim-activity">
+                  {state.claims
+                    .filter(({ id }) => state.updates[id])
+                    .map((claim) => (
+                      <details className="proposal" key={claim.id}>
+                        <summary>{claim.text}</summary>
+                        <ul>
+                          {Object.values(state.updates[claim.id]).map(
+                            ({ stage, status, detail }) => (
+                              <li key={stage}>
+                                <strong>{reviewerStageLabel(stage)}</strong> ·{" "}
+                                {status === "done"
+                                  ? "Complete"
+                                  : status === "unavailable"
+                                    ? "Incomplete"
+                                    : "In progress"}
+                                {detail && <blockquote>{detail}</blockquote>}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </details>
+                    ))}
+                </div>
+              )}
+            </details>
             <button type="button" className="button" onClick={cancelReview}>
               Cancel review
             </button>
@@ -1179,47 +1220,57 @@ export function App({
                   </p>
                 )}
               </div>
-              <button
-                type="button"
-                className="button"
-                onClick={() => exportReport(reportProposal, report)}
-              >
-                {mark("download")} Export Markdown
-              </button>
-            </div>
-            <div className="actions report-tools">
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => void copyReport(report)}
-              >
-                Copy Markdown
-              </button>
-              <span className="field-note" role="status">
-                {copyStatus}
-              </span>
             </div>
             <div className="recommendation">
               <h3>{report.crossfireDecision ?? "Recommended next step"}</h3>
               <p>{report.recommendation}</p>
             </div>
-            {decisionMemoSections(report.crossfireMemo).map(
-              ({ title, items }) => (
-                <details className="proposal" key={title}>
-                  <summary>{title}</summary>
-                  <ul>
-                    {items.filter(Boolean).map((item, index) => (
-                      <li key={index}>{item}</li>
+            <div className="report-actions">
+              <div className="actions report-tools">
+                <button
+                  type="button"
+                  className="text-button"
+                  aria-label="Copy Markdown"
+                  onClick={() => void copyReport(report)}
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => exportReport(reportProposal, report)}
+                >
+                  {mark("download")} Export Markdown
+                </button>
+              </div>
+              <span className="field-note report-copy-status" role="status">
+                {copyStatus}
+              </span>
+            </div>
+            <div className="report-details">
+              {memoSections.length > 0 && (
+                <details className="proposal memo-details">
+                  <summary>Decision details</summary>
+                  <div className="memo-sections">
+                    {memoSections.map(({ title, items }) => (
+                      <section key={title}>
+                        <h4>{title}</h4>
+                        <ul>
+                          {items.filter(Boolean).map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                        </ul>
+                      </section>
                     ))}
-                  </ul>
+                  </div>
                 </details>
-              ),
-            )}
-            <details className="proposal">
-              <summary>Read your proposal</summary>
-              <p>{reportProposal}</p>
-            </details>
-            <RecordedReviewRoom report={report} />
+              )}
+              <details className="proposal">
+                <summary>Read your proposal</summary>
+                <p>{reportProposal}</p>
+              </details>
+              <RecordedReviewRoom report={report} />
+            </div>
             {unreadableCount > 0 && (
               <p className="field-note">
                 {unreadableCount} unreadable{" "}

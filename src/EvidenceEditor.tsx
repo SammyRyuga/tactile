@@ -28,13 +28,9 @@ export function EvidenceEditor({
         Project evidence {items.length > 0 && `(${items.length})`}
       </summary>
       <p>
-        Paste or attach something that helps check a claim, such as test results
-        or a settings file. Add up to {limits.evidenceItems} text items,{" "}
+        Attach test results, a settings excerpt, or another source you can share
+        with the model. Add up to {limits.evidenceItems} text items,{" "}
         {limits.evidenceText.toLocaleString()} characters each.
-      </p>
-      <p>
-        Tactile sends these files to the model to check your claims. Share only
-        information you’re allowed to send.
       </p>
       {items.map((item, index) => (
         <div className="evidence-entry" key={item.id}>
