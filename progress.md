@@ -148,3 +148,8 @@
 
 - Aligned the proposal, reviewer, and evidence disclosures on desktop and stacked them on narrow screens with matching indicators.
 - Rebuilt the live and recorded scene as a dimensional workbench with five distinct reviewer instruments and a separate update panel.
+
+## Stable disclosures and report history
+
+- Stacked the claim setup and decision report disclosures in full-width rows. Opening one keeps the other controls aligned.
+- Added a per-report delete button to the tab's Recent reports. Deleting a report leaves the workspace draft in place.

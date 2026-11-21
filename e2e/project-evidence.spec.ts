@@ -84,26 +84,25 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     .click();
   const disclosures = page.locator(".review-setup > details");
   await expect(disclosures).toHaveCount(3);
-  expect(
-    await disclosures.evaluateAll((cards) => {
-      const bounds = cards.map((card) => card.getBoundingClientRect());
-      return innerWidth > 700
-        ? bounds.every(
-            ({ top, height }) =>
-              top === bounds[0].top && height === bounds[0].height,
-          )
-        : bounds.every(
-            ({ left, width }) =>
-              left === bounds[0].left && width === bounds[0].width,
-          ) &&
-            bounds[1].top > bounds[0].top &&
-            bounds[2].top > bounds[1].top;
-    }),
-  ).toBe(true);
   const setup = page.locator(".reviewer-disclosure");
   await expect(setup.locator("summary")).toContainText("Devil's Advocate");
   await expect(setup).not.toHaveAttribute("open", "");
   await setup.locator("summary").click();
+  expect(
+    await disclosures.evaluateAll((cards) => {
+      const [proposal, panel, evidence] = cards.map((card) =>
+        card.getBoundingClientRect(),
+      );
+      return (
+        panel.left === proposal.left &&
+        evidence.left === proposal.left &&
+        panel.width === proposal.width &&
+        evidence.width === proposal.width &&
+        proposal.bottom <= panel.top &&
+        panel.bottom <= evidence.top
+      );
+    }),
+  ).toBe(true);
   const panel = page.getByRole("group", { name: "Adversarial panel" });
   await expect(panel.getByText("Devil's Advocate")).toBeVisible();
   await panel.getByRole("checkbox", { name: /Operator/ }).uncheck();

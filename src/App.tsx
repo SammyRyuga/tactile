@@ -272,6 +272,8 @@ export function App({
   const [recent, setRecent] = useState(() =>
     publicDemo ? [] : readRecent(recentKey),
   );
+  const [historyMessage, setHistoryMessage] = useState("");
+  const historyHeading = useRef<HTMLHeadingElement>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const reduceMotion = useReducedMotion();
   const enter: MotionProps = {
@@ -575,6 +577,12 @@ export function App({
     });
   }
 
+  function deleteRecent(id: string) {
+    setRecent((entries) => entries.filter((entry) => entry.id !== id));
+    setHistoryMessage("Report deleted from this tab.");
+    historyHeading.current?.focus();
+  }
+
   async function copyReport(currentReport: Report) {
     try {
       await navigator.clipboard.writeText(
@@ -781,47 +789,65 @@ export function App({
                   ))}
                 </ul>
               </section>
-              {recent.length > 0 && (
+              {(recent.length > 0 || historyMessage) && (
                 <section
                   className="panel workspace-history"
                   aria-labelledby="recent-reports-title"
                 >
-                  <h2 id="recent-reports-title">Recent reports</h2>
-                  <p>Saved in this tab.</p>
-                  <ul className="workspace-list">
-                    {recent.map((entry) => (
-                      <li key={entry.id}>
-                        <button type="button" onClick={() => reopen(entry)}>
-                          <span>
-                            <strong className="workspace-report-title">
-                              {
-                                entry.proposal
-                                  .trim()
-                                  .split(/(?<=[.!?])\s+|\n/, 1)[0]
-                              }
-                            </strong>
-                            <small>
-                              <time dateTime={entry.savedAt}>
-                                {new Date(entry.savedAt).toLocaleDateString(
-                                  undefined,
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  },
-                                )}
-                              </time>
-                              {" · "}
-                              {entry.report.mode === "live"
-                                ? "Live review"
-                                : "Bundled example"}
-                            </small>
-                          </span>
-                          {mark("arrow")}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <h2
+                    id="recent-reports-title"
+                    ref={historyHeading}
+                    tabIndex={-1}
+                  >
+                    Recent reports
+                  </h2>
+                  <p role="status">{historyMessage || "Saved in this tab."}</p>
+                  {recent.length > 0 && (
+                    <ul className="workspace-list">
+                      {recent.map((entry) => {
+                        const title = entry.proposal
+                          .trim()
+                          .split(/(?<=[.!?])\s+|\n/, 1)[0];
+                        return (
+                          <li key={entry.id}>
+                            <button type="button" onClick={() => reopen(entry)}>
+                              <span>
+                                <strong className="workspace-report-title">
+                                  {title}
+                                </strong>
+                                <small>
+                                  <time dateTime={entry.savedAt}>
+                                    {new Date(entry.savedAt).toLocaleDateString(
+                                      undefined,
+                                      {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      },
+                                    )}
+                                  </time>
+                                  {" · "}
+                                  {entry.report.mode === "live"
+                                    ? "Live review"
+                                    : "Bundled example"}
+                                </small>
+                              </span>
+                              {mark("arrow")}
+                            </button>
+                            <button
+                              className="history-delete"
+                              type="button"
+                              aria-label={`Delete report ${title}`}
+                              title="Delete report"
+                              onClick={() => deleteRecent(entry.id)}
+                            >
+                              {mark("remove")}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </section>
               )}
             </aside>
@@ -862,7 +888,7 @@ export function App({
               </div>
             </div>
             <form onSubmit={onReview}>
-              <div className="review-setup">
+              <div className="review-setup review-disclosures">
                 <details className="proposal claim-proposal">
                   <summary>Read your proposal</summary>
                   <p>{proposal}</p>
@@ -1239,7 +1265,7 @@ export function App({
                 {copyStatus}
               </span>
             </div>
-            <div className="report-details">
+            <div className="report-details review-disclosures">
               {memoSections.length > 0 && (
                 <details className="proposal memo-details">
                   <summary>Decision details</summary>

@@ -61,6 +61,11 @@ test("the review room shows streamed activity and opens recorded checks from the
                           "Repeat the staging test before rollout.",
                         mode: "live",
                         crossfireDecision: "Hold",
+                        crossfireMemo: {
+                          survivingCore: "Run the pilot in staging.",
+                          dissents: [],
+                          nextActions: [],
+                        },
                         findings: [
                           {
                             claim,
@@ -168,6 +173,26 @@ test("the review room shows streamed activity and opens recorded checks from the
   await expect(
     page.getByRole("heading", { name: "Decision Memo" }),
   ).toBeVisible();
+  const reportDisclosures = page.locator(".report-details > details");
+  await expect(reportDisclosures).toHaveCount(3);
+  await page.getByText("Read your proposal", { exact: true }).press("Enter");
+  expect(
+    await reportDisclosures.evaluateAll((cards) => {
+      const [decision, proposal, room] = cards.map((card) =>
+        card.getBoundingClientRect(),
+      );
+      return (
+        decision.left === proposal.left &&
+        room.left === proposal.left &&
+        decision.width === proposal.width &&
+        room.width === proposal.width &&
+        decision.bottom <= proposal.top &&
+        proposal.bottom <= room.top
+      );
+    }),
+  ).toBe(true);
+  await page.getByText("Decision details", { exact: true }).press("Enter");
+  await expect(page.getByText("Run the pilot in staging.")).toBeVisible();
   await page.getByText("See the review room").press("Enter");
   await expect(
     room.getByRole("button", { name: "Builder Complete" }),
