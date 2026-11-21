@@ -23,15 +23,19 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     page.getByRole("heading", { name: "Describe your decision" }),
   ).toBeVisible();
   await expect(page.getByLabel("Your plan")).toHaveValue("");
-  await page.getByRole("button", { name: "Find claims" }).click();
+  await page
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .click();
   await expect(page.getByRole("alert")).toContainText(
     "Meta Model API key in Settings",
   );
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Choose what to check" }),
+    page.getByRole("heading", {
+      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+    }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeVisible();
@@ -75,7 +79,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .locator("xpath=ancestor::section[1]");
   const bounds = await editor.boundingBox();
   const action = await editor
-    .getByRole("button", { name: "Find claims" })
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
     .boundingBox();
   expect(bounds!.y + bounds!.height - action!.y - action!.height).toBeLessThan(
     70,
@@ -114,7 +118,7 @@ test("signed-in replica links preserve the requested bundled review", async ({
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     /A replica always returns an order/,
   );
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeVisible();
@@ -135,14 +139,16 @@ test("a workspace example requires sign-in and retains its evidence", async ({
   await expect(page).toHaveURL(/\/login\?next=%2Freview%3Fexample%3Dflag/);
   await signIn(page);
   await expect(
-    page.getByRole("heading", { name: "Choose what to check" }),
+    page.getByRole("heading", {
+      name: /^(Choose what to check|We identified \d+ claims to test)$/,
+    }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   await page.getByRole("button", { name: "Cancel review" }).press("Enter");
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     /reverses records/,
   );
-  await page.getByRole("button", { name: "Run review" }).click();
+  await page.getByRole("button", { name: /^(Run review|Run Tests)$/ }).click();
   const finding = page
     .getByRole("article")
     .filter({ hasText: "reverses records" });
@@ -178,7 +184,9 @@ test("a workspace example requires sign-in and retains its evidence", async ({
   const editedClaim =
     "Disabling the flag restores every record within a second.";
   await page.getByRole("textbox", { name: "Claim 1" }).fill(editedClaim);
-  await page.getByRole("button", { name: "Run review" }).press("Enter");
+  await page
+    .getByRole("button", { name: /^(Run review|Run Tests)$/ })
+    .press("Enter");
   const editedFinding = page
     .getByRole("article")
     .filter({ hasText: editedClaim });
@@ -215,13 +223,17 @@ test("provider downtime keeps the draft available for retry", async ({
   const draft =
     "Route jobs through the new queue and verify ordering stays stable.";
   await page.getByLabel("Your plan").fill(draft);
-  await page.getByRole("button", { name: "Find claims" }).click();
+  await page
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .click();
   await expect(page.getByRole("alert")).toContainText(
     "temporarily unavailable",
   );
   await page.reload();
   await expect(page.getByLabel("Your plan")).toHaveValue(draft);
-  await page.getByRole("button", { name: "Find claims" }).click();
+  await page
+    .getByRole("button", { name: /^(Find claims|Run stress test)$/ })
+    .click();
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     "The change preserves ordering.",
   );

@@ -1,0 +1,781 @@
+"""
+Owner: Dev A. Extraction, planning, evaluation, reconciliation and synthesis.
+
+Domain-neutral by construction. There are no keyword lists in this file: what a
+claim needs tested is decided by the load-bearing ranking and the active agent
+panel, never by string-matching words that only appear in the demo prompts. A
+claim about a lease, a hiring decision, a clinical protocol or a database
+migration all route the same way.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from contextlib import contextmanager
+from math import ceil
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+import events
+import store
+from config import get_settings
+from core.models import (
+    normalize_reversibility,
+    Case,
+    CaseVerdict,
+    Claim,
+    ClaimStatus,
+    DecisionConsequence,
+    Finding,
+    NextAction,
+    ResolvedTerm,
+    TestPlanItem,
+    WeakenedKind,
+)
+from core.textutil import clamp_sentences, one_line
+from core.activity import emit_activity
+from providers import get_provider
+from providers.base import LLMProvider
+from providers.openai_compat import THINKING_TIMEOUT_SECONDS, reasoning_sink
+
+logger = logging.getLogger(__name__)
+
+try:
+    from core.evaluators import dispatch  # Dev C
+except ImportError:  # not landed yet — the pipeline runs without findings until it is
+    dispatch = None
+
+from core.cross_examination import run_cross_examination_probes
+from core.grounding import mark_unsourced
+from evidence.verify import verification_counts, verify_evidence
+
+
+# Re-exported: agent_panel and baseline were split out of this module, and
+# `from core.loop import ...` stays the import path for everything downstream.
+from core.agent_panel import (  # noqa: F401
+    KNOWN_AGENTS,
+    AGENT_FAILURE_MODE,
+    FAILURE_MODE_TO_AGENT,
+    AGENT_OBJECTIVE,
+    DEFAULT_RATIONALES,
+    SINGLE_PASS_PRIORITY,
+    AgentPick,
+    ExtractedClaims,
+    normalize_agents,
+    EXTRACTION_SYSTEM_PROMPT,
+    build_test_plan,
+)
+from core.recovery import run_recovery
+
+
+def _as_deadline(value: object) -> str | None:
+    return (one_line(value, 120) or None) if isinstance(value, str) else None
+
+
+async def extract_claims(
+    raw_input: str,
+    provider: LLMProvider,
+    context: str | None = None,
+    agent_mode: str = "auto",
+    selected_agents: list[str] | None = None,
+    case_id: str | None = None,
+    clarify_round: int = 0,
+    previous_question: str | None = None,
+) -> Case:
+    user_content = raw_input
+    if context:
+        prompt_ctx = context
+        if len(context) > 8000:
+            prompt_ctx = (
+                context[:8000]
+                + "\n\n[Context excerpted for claim extraction. Full document retained in case.]"
+            )
+        user_content = f"Proposal under evaluation:\n{raw_input}\n\nSupporting / Context Document:\n{prompt_ctx}"
+
+    result = await provider.generate(
+        system_prompt=EXTRACTION_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_content}],
+        response_schema=ExtractedClaims,
+    )
+
+    statements = list(getattr(result, "statements", []) or [])[:5]
+    mechanisms = list(getattr(result, "mechanisms", []) or [])
+    resolved_terms = [
+        ResolvedTerm(
+            term=t.term.strip(),
+            resolved=t.resolved.strip(),
+            search_phrasing=t.search_phrasing.strip(),
+        )
+        for t in (getattr(result, "terms", []) or [])
+        if (t.term or "").strip() and (t.search_phrasing or "").strip()
+    ][:6]
+
+    def _terms_for(statement: str) -> list[ResolvedTerm]:
+        # A term the claim does not use cannot steer that claim's search, and
+        # showing it on the card would just be noise from a sibling claim.
+        lowered = (statement or "").lower()
+        return [t for t in resolved_terms if t.term.lower() in lowered]
+
+    claims_list = [
+        Claim(
+            id=str(uuid4()),
+            statement=s,
+            terms=_terms_for(s),
+            mechanism_of=(mechanisms[i].strip() or None) if i < len(mechanisms) else None,
+        )
+        for i, s in enumerate(statements)
+    ]
+    final_mode = (agent_mode or "auto").lower().strip()
+
+    if final_mode == "custom" and selected_agents:
+        valid = [a for a in selected_agents if a in KNOWN_AGENTS]
+        active_agents = valid or list(KNOWN_AGENTS)
+        rationales: dict[str, str] = {}
+    else:
+        # Auto mode is decided by the model that just read the decision, not by a
+        # keyword table: which tests a claim needs depends on what it asserts, and
+        # the same words mean different things in different domains.
+        final_mode = "auto"
+        active_agents, rationales = normalize_agents(getattr(result, "agents", []))
+
+    # Input gate (Stage 5 / direction doc §3): an untestable input is redirected,
+    # not silently turned into invented claims.
+    if not getattr(result, "testable", True) or not statements:
+        recovery = await run_recovery(raw_input, context, provider, clarify_round, previous_question)
+        provisional = [
+            Claim(id=str(uuid4()), statement=s, provisional=True)
+            for s in (recovery.provisional_claims if recovery else [])[:3]
+        ]
+        return Case(
+            id=case_id or str(uuid4()),
+            raw_input=raw_input,
+            context=context,
+            claims=provisional,
+            status="needs_input",
+            gate_message=one_line(
+                (recovery.clarifying_question if recovery else None)
+                or getattr(result, "redirect", None)
+                or "Name the specific decision you are weighing, and what you would do if it went wrong.",
+                240,
+            ),
+            clarify_missing=(recovery.missing[:3] if recovery else []),
+            clarify_interpretation=(recovery.interpretation if recovery else None),
+            clarify_round=clarify_round,
+            agent_mode=final_mode,
+            selected_agents=active_agents,
+            agent_rationales=rationales,
+        )
+
+    return Case(
+        id=case_id or str(uuid4()),
+        raw_input=raw_input,
+        context=context,
+        claims=claims_list,
+        status="awaiting_confirmation",
+        agent_mode=final_mode,
+        selected_agents=active_agents,
+        agent_rationales=rationales,
+        reversibility=normalize_reversibility(getattr(result, "reversibility", None)),
+        deadline=_as_deadline(getattr(result, "deadline", None)),
+    )
+
+
+LOAD_BEARING_QUESTION = (
+    "If this claim turns out false, would the recommended decision materially change?"
+)
+
+
+class LoadBearingRanking(BaseModel):
+    """Ranking, not N independent booleans — asked one claim at a time the model
+    says yes to everything, and adaptive scrutiny stops existing."""
+
+    ranked_indices: list[int] = Field(
+        default_factory=list,
+        description="Claim numbers (1-indexed), most load-bearing first. Every claim appears exactly once.",
+    )
+    load_bearing_count: int | None = Field(
+        default=None,
+        description="How many claims materially change the decision if false. Clamped to [0, ceil(n/2)]. If omitted, defaults to ceil(n/2).",
+    )
+    reasons: list[str] = Field(
+        default_factory=list,
+        description="One explanation per claim in the same order as ranked_indices, explaining why it is or is not load-bearing.",
+    )
+
+
+def load_bearing_cap(n_claims: int) -> int:
+    return max(1, ceil(n_claims / 2)) if n_claims else 0
+
+
+async def rank_load_bearing(case: Case, provider: LLMProvider) -> list[bool]:
+    """Returns one flag per claim, in `case.claims` order.
+
+    At most ceil(n/2) claims come back load-bearing. Dynamic classification allows
+    between 0 and ceil(n/2) claims to be load-bearing. On any failure the top half
+    by original order is used, so the run still differentiates.
+    """
+    claims = case.claims
+    if not claims:
+        return []
+
+    cap = load_bearing_cap(len(claims))
+    fallback = [i < cap for i in range(len(claims))]
+
+    case_content = case.raw_input
+    if case.context:
+        case_content = f"Proposal: {case.raw_input}\nContext Document: {case.context}"
+
+    numbered = "\n".join(f"{i + 1}. {c.statement}" for i, c in enumerate(claims))
+    system_prompt = (
+        "You rank the claims a decision rests on by how much weight they carry. "
+        "The decision may be of any kind — never assume a domain.\n"
+        f"Order them by this question, most load-bearing first: {LOAD_BEARING_QUESTION}\n"
+        "Return every claim number exactly once. Do not add or drop claims.\n"
+        f"State how many claims genuinely meet this standard in load_bearing_count (between 0 and at most {cap}).\n"
+        "Provide a concise rationale in reasons for each ranked claim explaining its weight."
+    )
+    try:
+        result = await provider.generate(
+            system_prompt=system_prompt,
+            messages=[{"role": "user", "content": f"Decision: {case_content}\nClaims:\n{numbered}"}],
+            response_schema=LoadBearingRanking,
+        )
+        order = [i - 1 for i in (result.ranked_indices or []) if 1 <= i <= len(claims)]
+        seen: list[int] = []
+        for i in order:
+            if i not in seen:
+                seen.append(i)
+        seen += [i for i in range(len(claims)) if i not in seen]
+
+        count = cap
+        if getattr(result, "load_bearing_count", None) is not None:
+            count = max(0, min(cap, result.load_bearing_count))
+
+        flags = [False] * len(claims)
+        for i in seen[:count]:
+            flags[i] = True
+
+        reasons = getattr(result, "reasons", None) or []
+        for rank_pos, claim_idx in enumerate(seen):
+            claim = claims[claim_idx]
+            claim.load_bearing = flags[claim_idx]
+            if rank_pos < len(reasons) and reasons[rank_pos]:
+                claim.load_bearing_reason = reasons[rank_pos]
+            else:
+                claim.load_bearing_reason = (
+                    "Core load-bearing assumption for this decision."
+                    if flags[claim_idx]
+                    else "Secondary assumption; failure does not fundamentally alter the decision."
+                )
+        return flags
+    except Exception as exc:
+        logger.warning("Load-bearing ranking failed (%s); falling back to claim order.", exc)
+        for i, claim in enumerate(claims):
+            claim.load_bearing = fallback[i]
+            claim.load_bearing_reason = (
+                "Core load-bearing assumption (default ranking)."
+                if fallback[i]
+                else "Secondary assumption (default ranking)."
+            )
+        return fallback
+
+
+from core.reconcile import (  # noqa: F401
+    STEEL_MAN_PERSONA,
+    STEEL_MAN_SYSTEM_PROMPT,
+    SteelManVerdict,
+    ReconcileVerdict,
+    RECONCILE_SYSTEM_PROMPT,
+    reconcile,
+    has_sourced_contradiction,
+    apply_evidence_gate,
+    apply_steelman_gate,
+    rank_findings,
+    classify_weakened,
+    dedupe_across_claims,
+)
+
+from core.synthesis import (  # noqa: F401
+    _IMPACT_BY_STATUS,
+    _RECOMMENDED_CHANGE_BY_STATUS,
+    build_consequences,
+    StrategicConsequenceOutput,
+    CONSEQUENCE_SYSTEM_PROMPT,
+    _synthesize_single_consequence,
+    synthesize_consequences,
+    NextActionOutput,
+    CaseVerdictOutput,
+    _DECISION_STATES,
+    _fallback_decision_state,
+    CASE_VERDICT_SYSTEM_PROMPT,
+    synthesize_case_verdict,
+)
+
+
+
+@contextmanager
+def _stage(case_id: str, name: str):
+    """Logs how long one pipeline stage took.
+
+    The run went from ~1.5 min to 3+ without anyone being able to say which stage
+    grew, because nothing here was timed. core/telemetry.py exists but is not
+    wired to the pipeline; one log line per stage is what makes the next
+    regression a measurement instead of an argument.
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        logger.info("stage %s case=%s took %.2fs", name, case_id, time.perf_counter() - start)
+
+
+def _thinking_active(provider: LLMProvider) -> bool:
+    """True when any model in the chain has thinking mode on."""
+    return any(
+        t.thinking is not None and t.thinking.enabled
+        for t in getattr(provider, "targets", [])
+        if hasattr(t, "thinking")
+    )
+
+
+def _describe_exc(exc: BaseException, timeout: float) -> str:
+    """asyncio's TimeoutError has an empty str(); say what actually happened."""
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) and not str(exc):
+        return f"evaluator exceeded its {timeout:.0f}s budget (TimeoutError)"
+    return str(exc) or type(exc).__name__
+
+
+def _degraded_finding(item: TestPlanItem, exc: BaseException, timeout: float = 0.0) -> Finding:
+    """A failed evaluator becomes a visible degraded finding with None confidence, never silence.
+
+    Not an `error` SSE event: routes.py terminates the stream on `error`, which
+    would kill the whole run because one test failed.
+    """
+    evaluator_name = FAILURE_MODE_TO_AGENT.get(item.failure_mode, item.failure_mode)
+    return Finding(
+        claim_id=item.target_claim,
+        test_id=item.id,
+        evaluator=evaluator_name,
+        result="System Error / Timeout",
+        evidence=[],
+        reasoning=f"System error or timeout occurred during evaluator execution ({type(exc).__name__}): {_describe_exc(exc, timeout)}",
+        confidence=None,
+        contradiction=None,
+    )
+
+
+async def run_evaluators(
+    case: Case, plan: list[TestPlanItem], provider: LLMProvider
+) -> list[Finding]:
+    """Every evaluator sees only its own TestPlanItem + the case — never another
+    evaluator's output (docs/00-CONTRACTS.md §4).
+
+    Fan-out is capped and each call is bounded by a timeout: a full panel over
+    five claims is ~20 concurrent LLM calls, and one hung provider connection
+    should not hold the run open for the httpx default.
+    """
+    if dispatch is None:
+        return []
+
+    settings = get_settings()
+    limit = asyncio.Semaphore(getattr(settings, "evaluator_concurrency", 8))
+    timeout = getattr(settings, "evaluator_timeout_seconds", 60.0)
+    if _thinking_active(provider):
+        # Budget two thinking-length LLM calls (a format retry) instead of two
+        # 15 s ones; otherwise every thinking evaluator dies as "System Error / Timeout".
+        llm_timeout = getattr(settings, "llm_timeout_seconds", 15.0)
+        timeout += 2 * max(0.0, THINKING_TIMEOUT_SECONDS - llm_timeout)
+
+    # Group the plan by claim, in case.claims order, so the stream describes the run
+    # as "claim 1 and its agents, claim 2 and its agents, ..." — the frontend paces the
+    # animation off claim_index/total_claims. Execution stays fully concurrent across
+    # groups; only the event metadata is ordered.
+    claim_order = [c.id for c in case.claims]
+    grouped: dict[str, list[TestPlanItem]] = {}
+    for item in plan:
+        grouped.setdefault(item.target_claim, []).append(item)
+    ordered_claim_ids = [cid for cid in claim_order if cid in grouped]
+    ordered_claim_ids += [cid for cid in grouped if cid not in claim_order]
+    total_claims = len(ordered_claim_ids)
+
+    def _evaluator_of(item: TestPlanItem) -> str:
+        return FAILURE_MODE_TO_AGENT.get(item.failure_mode, item.failure_mode)
+
+    for index, claim_id in enumerate(ordered_claim_ids):
+        group = grouped[claim_id]
+        target_clm = next((c for c in case.claims if c.id == claim_id), None)
+        await events.publish(
+            case.id,
+            "claim_started",
+            {
+                "claim_id": claim_id,
+                "claim_index": index,
+                "total_claims": total_claims,
+                "claim_statement": target_clm.statement if target_clm else "",
+                "agents": [_evaluator_of(i) for i in group],
+                "test_ids": [i.id for i in group],
+            },
+        )
+
+    isolated_case = case.model_copy(
+        update={"findings": [], "consequences": [], "case_verdict": None}
+    )
+
+    async def _run_one(item: TestPlanItem) -> Finding:
+        target_clm = next((c for c in case.claims if c.id == item.target_claim), None)
+        async with limit:
+            # Emitted here, not up front: the agent is walking to the desk *now*.
+            await events.publish(
+                case.id,
+                "test_started",
+                {
+                    "test_id": item.id,
+                    "target_claim_id": item.target_claim,
+                    "failure_mode": item.failure_mode,
+                    "evaluator": _evaluator_of(item),
+                    "claim_statement": target_clm.statement if target_clm else "",
+                },
+            )
+            thoughts: list[str] = []
+            sink_token = reasoning_sink.set(thoughts)
+            try:
+                finding = await asyncio.wait_for(dispatch(item, isolated_case, provider), timeout=timeout)
+                if thoughts:
+                    finding.thinking = "\n\n".join(thoughts)
+            except Exception as exc:
+                logger.warning(
+                    "Evaluator %s failed for claim %s: %s",
+                    item.failure_mode,
+                    item.target_claim,
+                    _describe_exc(exc, timeout),
+                )
+                finding = _degraded_finding(item, exc, timeout)
+            finally:
+                reasoning_sink.reset(sink_token)
+
+        # Fabricated citations must not reach the panel, the memo, or this SSE
+        # frame. Done outside the evaluator semaphore: this is HTTP, not an LLM
+        # call, and it must not hold an evaluator slot.
+        if finding.evidence:
+            before = len(finding.evidence)
+            finding.evidence = await verify_evidence(finding.evidence)
+            counts = verification_counts(finding.evidence)
+            counts["dropped"] = before - len(finding.evidence)
+            if counts["dropped"] or counts["matched"] or counts["unreachable"]:
+                await emit_activity(
+                    case.id,
+                    "Verification",
+                    f"Checked {before} citation(s): {counts['matched']} verified, "
+                    f"{counts['unreachable']} unreachable, {counts['dropped']} dropped.",
+                    claim_id=finding.claim_id,
+                    action="verification",
+                    evaluator=finding.evaluator,
+                    extra={"verification": counts},
+                )
+
+        # A specific nobody sourced is marked here, not argued about downstream:
+        # every consumer (the judge prompt, the deciding factor, the memo) reads
+        # the same annotated text.
+        mark_unsourced(finding)
+
+        # Published as each agent returns, so the bullpen animates one report at a time
+        # instead of every finding landing in a single burst at the end.
+        await events.publish(
+            case.id,
+            "finding_ready",
+            {"finding": finding.model_dump(), "target_claim_id": finding.claim_id},
+        )
+        return finding
+
+    async def _run_group(claim_id: str) -> list[Finding]:
+        group_findings = list(await asyncio.gather(*(_run_one(i) for i in grouped[claim_id])))
+        await events.publish(
+            case.id,
+            "claim_complete",
+            {"claim_id": claim_id, "finding_count": len(group_findings)},
+        )
+        return group_findings
+
+    grouped_results = await asyncio.gather(*(_run_group(cid) for cid in ordered_claim_ids))
+    return [f for group_findings in grouped_results for f in group_findings]
+
+
+def calculate_claim_confidence(status: ClaimStatus, max_objection: float, weakened_kind: WeakenedKind | None = None) -> float:
+    """Calculates overall claim confidence (0.0 to 1.0) for UI display.
+
+    This inverts and calibrates the adversarial panel's objection scores:
+    - SURVIVED: 90% - 98% (sound, with minor objections causing slight drops)
+    - WEAKENED (qualified): 60% - 75%
+    - WEAKENED (contested): 35% - 55%
+    - WEAKENED (unset): 40% - 60% (substantive friction identified)
+    - BROKEN: 5% - 15% (fatal refutation)
+    - UNRESOLVED: 50% (neutral indeterminate). Note: intentionally overlaps contested numerically as it is an orthogonal state.
+    """
+    if status == ClaimStatus.SURVIVED:
+        return round(max(0.90, min(0.98, 0.98 - (max_objection * 0.40))), 2)
+    elif status == ClaimStatus.WEAKENED:
+        if weakened_kind == WeakenedKind.QUALIFIED:
+            scaled = ((max(0.20, min(0.80, max_objection)) - 0.20) / 0.60) * 0.15
+            return round(max(0.60, min(0.75, 0.75 - scaled)), 2)
+        elif weakened_kind == WeakenedKind.CONTESTED:
+            scaled = ((max(0.20, min(0.80, max_objection)) - 0.20) / 0.60) * 0.20
+            return round(max(0.35, min(0.55, 0.55 - scaled)), 2)
+        else:
+            scaled = ((max(0.20, min(0.80, max_objection)) - 0.20) / 0.60) * 0.20
+            return round(max(0.40, min(0.60, 0.60 - scaled)), 2)
+    elif status == ClaimStatus.BROKEN:
+        scaled = ((max(0.70, min(1.0, max_objection)) - 0.70) / 0.30) * 0.10
+        return round(max(0.05, min(0.15, 0.15 - scaled)), 2)
+    return 0.50
+
+
+async def run_pipeline(case_id: str, provider: LLMProvider | None = None) -> None:
+    """Background task started by `handle_confirm` — never awaited by a request
+    handler. Emits the stage events in docs/00-CONTRACTS.md §3 as they happen
+    and always closes the queue on the way out.
+    """
+    provider = provider or get_provider()
+    case = store.get(case_id)
+    if case is None:
+        await events.publish(case_id, "error", {"stage": "start", "message": "unknown case"})
+        await events.close(case_id)
+        return
+
+    try:
+        case.status = "testing"
+        await emit_activity(case.id, "Pipeline", "Classifying load-bearing assumptions...", action="load_bearing")
+
+        with _stage(case.id, "load_bearing"):
+            flags = await rank_load_bearing(case, provider)
+        for claim, load_bearing in zip(case.claims, flags):
+            claim.load_bearing = load_bearing
+            await events.publish(
+                case.id,
+                "load_bearing_ready",
+                {
+                    "claim_id": claim.id,
+                    "load_bearing": claim.load_bearing,
+                    "reason": claim.load_bearing_reason or "",
+                },
+            )
+
+        case.test_plan = build_test_plan(case, panel=True, active_agents=case.selected_agents)
+        lb_count = sum(1 for c in case.claims if c.load_bearing)
+        await emit_activity(
+            case.id,
+            "Pipeline",
+            f"Identified {lb_count} core assumption(s). Launching adversarial tests in parallel...",
+            action="test_plan",
+        )
+        with _stage(case.id, "evaluators"):
+            case.findings = await run_evaluators(case, case.test_plan, provider)
+        if case.test_plan and case.findings and all(f.result == "System Error / Timeout" for f in case.findings):
+            raise RuntimeError("All evaluators failed to return findings; provider is unavailable.")
+
+        # Phase 1.5: Targeted Cross-Examination Probes
+        try:
+            with _stage(case.id, "cross_examination"):
+                probe_findings = await run_cross_examination_probes(case, case.findings, provider)
+            if probe_findings:
+                for pf in probe_findings:
+                    if pf.evidence:
+                        pf.evidence = await verify_evidence(pf.evidence)
+                    mark_unsourced(pf)
+                case.findings.extend(probe_findings)
+                for pf in probe_findings:
+                    await events.publish(
+                        case.id,
+                        "finding_ready",
+                        {"finding": pf.model_dump(), "target_claim_id": pf.claim_id},
+                    )
+        except Exception as exc:
+            logger.warning("Cross-examination stage failed (%s); proceeding with original findings.", exc)
+
+        # Steelman: parallel reconcile across claims, seeing all findings for each claim.
+        # Bounded by configurable semaphore to prevent upstream proxy queuing.
+        settings = get_settings()
+        steelman_limit = asyncio.Semaphore(getattr(settings, "steelman_concurrency", 3))
+        steelman_errors: list[BaseException] = []
+        reasonings: dict[str, str] = {}
+
+        async def _reconcile_single(clm: Claim) -> tuple[Claim, ClaimStatus, str]:
+            claim_findings = [f for f in case.findings if f.claim_id == clm.id]
+            if not claim_findings:
+                clm.status = ClaimStatus.UNRESOLVED
+                clm.confidence = calculate_claim_confidence(ClaimStatus.UNRESOLVED, 0.0)
+                clm.fatal_flaw = None
+                clm.salvaged_claim = None
+                clm.tradeoff_acknowledged = None
+                clm.missing_input = None
+                clm.salvage_scope = None
+                reasoning = "No evaluator produced a finding for this claim."
+            else:
+                await emit_activity(
+                    case.id,
+                    "Steelman",
+                    f"Reconciling evidence for: {clm.statement[:55]}...",
+                    claim_id=clm.id,
+                    action="reconciling",
+                    evaluator="judge",
+                )
+                try:
+                    async with steelman_limit:
+                        verdict = await reconcile(clm, claim_findings, provider)
+                    if isinstance(verdict, SteelManVerdict):
+                        gated = apply_steelman_gate(verdict, claim_findings)
+                        clm.status = gated.status
+                        clm.weakened_kind = classify_weakened(claim_findings, verdict.salvage_scope) if clm.status == ClaimStatus.WEAKENED else None
+                        clm.fatal_flaw = gated.fatal_flaw
+                        clm.salvaged_claim = gated.salvaged_claim
+                        clm.tradeoff_acknowledged = gated.tradeoff_acknowledged
+                        clm.missing_input = gated.missing_input
+                        clm.salvage_scope = gated.salvage_scope
+                        max_obj = max((f.confidence for f in claim_findings if f.confidence is not None), default=0.0)
+                        clm.confidence = calculate_claim_confidence(clm.status, max_obj, clm.weakened_kind)
+                        reasoning = gated.reasoning
+                    else:
+                        st, rsn = verdict
+                        gated_st, gated_rsn = apply_evidence_gate(st, rsn, claim_findings)
+                        clm.status = gated_st
+                        clm.weakened_kind = classify_weakened(claim_findings, None) if clm.status == ClaimStatus.WEAKENED else None
+                        max_obj = max((f.confidence for f in claim_findings if f.confidence is not None), default=0.0)
+                        clm.confidence = calculate_claim_confidence(clm.status, max_obj, clm.weakened_kind)
+                        reasoning = gated_rsn
+                except Exception as exc:
+                    steelman_errors.append(exc)
+                    clm.status = ClaimStatus.UNRESOLVED
+                    clm.confidence = calculate_claim_confidence(ClaimStatus.UNRESOLVED, 0.0)
+                    clm.fatal_flaw = None
+                    clm.salvaged_claim = None
+                    clm.tradeoff_acknowledged = None
+                    clm.missing_input = None
+                    clm.salvage_scope = None
+                    reasoning = f"Reconciliation error ({exc}); marked unresolved."
+
+            reasonings[clm.id] = reasoning
+            await events.publish(
+                case.id,
+                "verdict_ready",
+                {
+                    "claim_id": clm.id,
+                    "status": clm.status.value,
+                    "weakened_kind": clm.weakened_kind.value if clm.weakened_kind else None,
+                    "confidence": clm.confidence,
+                    "verdict_reasoning": reasoning,
+                    "fatal_flaw": clm.fatal_flaw,
+                    "salvaged_claim": clm.salvaged_claim,
+                    "tradeoff_acknowledged": clm.tradeoff_acknowledged,
+                    "missing_input": clm.missing_input,
+                    "salvage_scope": clm.salvage_scope,
+                },
+            )
+            return clm, clm.status, reasoning
+
+        with _stage(case.id, "steelman"):
+            await asyncio.gather(*(_reconcile_single(clm) for clm in case.claims))
+        if case.claims and len(steelman_errors) == len(case.claims):
+            raise steelman_errors[0]
+
+        # Every claim has been ruled on by now, so collapsing the objection that was
+        # restated under all of them costs no verdict and removes the padding that
+        # made the memo read as repetition (the same objection appeared verbatim
+        # under all three claims in the 2026-09-08 review).
+        case.findings = dedupe_across_claims(case.findings)
+
+        # The drawer reads case.findings in order; lead with what moved the verdict.
+        case.findings = [
+            f
+            for clm in case.claims
+            for f in rank_findings([x for x in case.findings if x.claim_id == clm.id])
+        ] + [f for f in case.findings if f.claim_id not in {c.id for c in case.claims}]
+
+        case.consequences = build_consequences(case)
+        for consequence in case.consequences:
+            # build_consequences() can only synthesize this from status; the real
+            # Steelman reasoning only exists here, so it gets threaded in.
+            if consequence.claim_id in reasonings:
+                consequence.verdict_reasoning = reasonings[consequence.claim_id]
+            matching_claim = next((c for c in case.claims if c.id == consequence.claim_id), None)
+            if matching_claim:
+                consequence.fatal_flaw = matching_claim.fatal_flaw
+                consequence.salvaged_claim = matching_claim.salvaged_claim
+                consequence.tradeoff_acknowledged = matching_claim.tradeoff_acknowledged
+
+        # Overlap consequence LLM refinement and case verdict synthesis concurrently
+        async def _synthesize_consequences_task() -> list[DecisionConsequence]:
+            try:
+                await emit_activity(
+                    case.id,
+                    "Synthesis",
+                    "Formulating strategic adaptations and next validation steps...",
+                    action="consequences",
+                    evaluator="judge",
+                )
+                return await synthesize_consequences(case, provider, reasonings=reasonings)
+            except Exception as exc:
+                logger.debug("Synthesizing consequences fallback: %s", exc)
+                return case.consequences
+
+        async def _synthesize_case_verdict_task() -> CaseVerdict:
+            return await synthesize_case_verdict(case, provider)
+
+        with _stage(case.id, "synthesis"):
+            synthesized_consequences, synthesized_verdict = await asyncio.gather(
+                _synthesize_consequences_task(),
+                _synthesize_case_verdict_task(),
+            )
+        case.consequences = synthesized_consequences
+        case.case_verdict = synthesized_verdict
+
+        for consequence in case.consequences:
+            matching_claim = next((c for c in case.claims if c.id == consequence.claim_id), None)
+            if matching_claim:
+                if matching_claim.fatal_flaw and not consequence.fatal_flaw:
+                    consequence.fatal_flaw = matching_claim.fatal_flaw
+                if matching_claim.salvaged_claim and not consequence.salvaged_claim:
+                    consequence.salvaged_claim = matching_claim.salvaged_claim
+                if matching_claim.tradeoff_acknowledged and not consequence.tradeoff_acknowledged:
+                    consequence.tradeoff_acknowledged = matching_claim.tradeoff_acknowledged
+            await events.publish(
+                case.id, "consequence_ready", {"consequence": consequence.model_dump()}
+            )
+
+        await events.publish(
+            case.id, "case_verdict", {"case_verdict": case.case_verdict.model_dump()}
+        )
+
+        await emit_activity(
+            case.id,
+            "Pipeline",
+            "Verification complete: Decision memo assembled.",
+            action="complete",
+        )
+        case.status = "done"
+        await events.publish(case.id, "run_complete", {"case_id": case.id})
+
+    except Exception as exc:  # a dead provider shouldn't hang the stream open
+        case.status = "error"
+        await events.publish(case.id, "error", {"stage": "run_pipeline", "message": str(exc)})
+    finally:
+        store.set(case)
+        await events.close(case.id)
+
+
+from core.baseline import BASELINE_SYSTEM_PROMPT, run_baseline  # noqa: F401
+
+
+# create_task returns a task the event loop only weakly references; without a
+# strong ref it can be garbage-collected mid-run.
+_background_tasks: set[asyncio.Task] = set()
+
+
+async def handle_confirm(case_id: str, run_pipeline=run_pipeline) -> None:
+    """What Dev C's `POST /cases/{id}/confirm` calls before returning 202.
+    Schedules the run and returns immediately — awaiting it here would mean
+    every SSE event fires before the frontend's stream connection exists.
+    """
+    task = asyncio.create_task(run_pipeline(case_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)

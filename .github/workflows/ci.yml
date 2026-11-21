@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run setup:crossfire && npm run test:crossfire
+        if: matrix.node == 22
       - run: npm audit --omit=dev --audit-level=high
         if: matrix.node == 22
       - run: npx playwright install --with-deps chromium

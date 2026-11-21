@@ -1352,3 +1352,36 @@ test("Meta groups identical instruction prefixes and reports reused input tokens
   assert.ok(requests.every(({ store }) => !store));
   assert.deepEqual(cached, [0, 1024, 0]);
 });
+
+test("Crossfire provider messages preserve roles and use Meta Responses content blocks", async () => {
+  const provider = createProvider(
+    "synthetic-test-key",
+    "muse-spark-1.3",
+    async (url, init) => {
+      assert.equal(url, "https://api.meta.ai/v1/responses");
+      const request = JSON.parse(String(init?.body));
+      assert.deepEqual(request.input, [
+        {
+          role: "user",
+          content: [{ type: "input_text", text: "A proposed change." }],
+        },
+      ]);
+      assert.match(
+        request.instructions,
+        /^Preserve the upstream instructions\./,
+      );
+      assert.equal(request.store, false);
+      return success('{"testable":true}');
+    },
+    "meta",
+  );
+  assert.equal(
+    await provider.crossfireGenerate?.(
+      "Preserve the upstream instructions.",
+      [{ role: "user", content: "A proposed change." }],
+      { type: "object" },
+      signal,
+    ),
+    '{"testable":true}',
+  );
+});

@@ -1,0 +1,8 @@
+annotated-types==0.8.0
+pydantic==2.14.4
+pydantic-core==2.50.5
+pydantic-settings==2.16.3
+python-dotenv==1.2.4
+tenacity==9.2.1
+typing-extensions==4.16.0
+typing-inspection==0.4.5
