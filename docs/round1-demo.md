@@ -2,7 +2,7 @@
 
 ## Rehearse on the hosted app
 
-Open the [hosted rollout example](https://tactile-compute50.onrender.com/review?example=flag) with a verified test account. Sign in before judging and confirm the example opens at **Choose what to check**. The bundled run and Markdown export require no provider key. Visitors can read the case preview on the homepage before signing in.
+Open the [hosted demo](https://tactile-compute50.onrender.com/demo) before judging to give Render time to wake up. The link takes you to the rollout example and preserves it through sign-in. Use a verified test account and confirm the example opens at **Choose what to check**. The bundled run and Markdown export require no provider key. Visitors can read the case preview and evidence timeline from the homepage before signing in.
 
 ## Run it locally
 
