@@ -1,5 +1,9 @@
 # Compute 50 Round 1 walkthrough
 
+## Rehearse on the hosted app
+
+Open the [hosted rollout example](https://tactile-compute50.onrender.com/review?example=flag) with a verified test account. Sign in before judging and confirm the example opens at **Choose what to check**. The bundled run and Markdown export require no provider key. Visitors can read the case preview on the homepage before signing in.
+
 ## Run it locally
 
 Use Node 22.19+ within the 22.x line or Node 24+. Configure Supabase as described in the [README](../README.md), run `npm ci` and `npm run dev`, then open [the rollout example](http://127.0.0.1:5173/review?example=flag) and sign in. The example uses bundled evidence and requires no model key. For a production-like rehearsal, run `npm run build` and `npm start` instead.
