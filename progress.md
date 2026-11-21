@@ -177,3 +177,10 @@
 - Moved the running review room and activity behind optional controls. The primary progress message uses actual review events. Results show the recommendation and findings first, with the evidence, full memo, review room, revision, export, and outcome controls available in the same workflow.
 - Inspected the before-and-after Chromium walkthrough and checked light and dark at 320 and 390 CSS pixels with reduced motion. Primary controls measured 46 CSS pixels, and the three steps stayed within the viewport. Added browser coverage for empty selections, longer edits, Back, repeated reviews, and advanced settings surviving a reload.
 - Node 22.23.5 and 24.19.0 each passed 59 automated tests, 30 Chromium tests, fixture evaluation, and both dependency audits with zero vulnerabilities. All four Crossfire integration tests passed on Windows with local fixtures.
+
+## Final demo polish · November 22, 2026
+
+- Aligned the recorded Plan and Example Library cards in the two-column layout without stretching the example links. At the original 1366 CSS-pixel viewport, the gap beneath the library went from 58 pixels to zero.
+- Placed Copy Markdown and Export Markdown in the Results header. The flag warning appears only when the recorded persisted-write claim was contradicted and cites the bundled timeline. Edited and unchecked claims retain their uncertainty and coverage guidance.
+- Labeled missing fixture checks as not included, distinct from skipped, incomplete, and completed checks. The finished memo has its own ready state. Inspected all four screens and the room in light and dark from 320 to 1440 CSS pixels, with a Chromium 200% zoom pass for long text and an empty selection.
+- Node 22.23.5 and 24.19.0 each passed 60 automated tests, 32 Chromium tests, fixture evaluation, production builds, and both dependency audits with zero vulnerabilities. All four Crossfire integration tests passed on Windows.

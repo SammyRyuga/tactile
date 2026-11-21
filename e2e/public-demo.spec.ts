@@ -172,6 +172,11 @@ test("the public demo replays all three cases and exports the recorded memo", as
   ).toBeVisible();
   await expect(coverage.getByText(original, { exact: true })).toBeVisible();
   await expect(rollback).toHaveCount(0);
+  await expect(
+    report.getByRole("heading", {
+      name: "Do not rely on the feature flag alone for rollback.",
+    }),
+  ).toHaveCount(0);
   const editedDownload = page.waitForEvent("download");
   await report.getByRole("button", { name: "Export Markdown" }).click();
   const editedMemo = await readFile(
@@ -188,6 +193,79 @@ test("the public demo replays all three cases and exports the recorded memo", as
   expect(editedSection).not.toContain("Bundled flag timeline");
   expect(unexpectedRequests).toEqual([]);
   expect(browserErrors).toEqual([]);
+});
+
+test("the demo aligns the desktop plan and exposes the supported conclusion, export, and recorded statuses", async ({
+  page,
+}, testInfo) => {
+  if (testInfo.project.name === "mobile")
+    await page.setViewportSize({ width: 320, height: 820 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/demo?example=flag");
+  if (testInfo.project.name === "desktop") {
+    await page.evaluate(() => document.fonts.ready);
+    const aligned = await page
+      .locator(".decision-layout")
+      .evaluate((layout) => {
+        const plan = layout
+          .querySelector(":scope > .panel")!
+          .getBoundingClientRect();
+        const library = layout
+          .querySelector(".workspace-library")!
+          .getBoundingClientRect();
+        return (
+          library.left > plan.right &&
+          Math.abs(plan.bottom - library.bottom) <= 1
+        );
+      });
+    expect(aligned).toBe(true);
+  }
+  await page.getByRole("button", { name: "Review example" }).press("Enter");
+  await page.getByRole("button", { name: "Run checks" }).press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Review results" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("heading", {
+      name: "Do not rely on the feature flag alone for rollback.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".recommendation")
+      .getByText(/Pair the feature flag with a tested data repair/),
+  ).toBeVisible();
+  const copy = page.getByRole("button", { name: "Copy Markdown" });
+  const download = page.getByRole("button", { name: "Export Markdown" });
+  await expect(copy).toBeInViewport();
+  await expect(download).toBeInViewport();
+  if (testInfo.project.name === "mobile") {
+    const [copyBounds, exportBounds] = await Promise.all([
+      copy.boundingBox(),
+      download.boundingBox(),
+    ]);
+    expect(copyBounds!.y).toBeCloseTo(exportBounds!.y, 0);
+    expect(copyBounds!.height).toBeGreaterThanOrEqual(44);
+    expect(exportBounds!.height).toBeGreaterThanOrEqual(44);
+  }
+  await page.keyboard.press("Tab");
+  await expect(copy).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(download).toBeFocused();
+  await page.getByText("See the review room", { exact: true }).press("Enter");
+  const room = page.getByRole("group", { name: "Review stations" });
+  await expect(
+    room.getByRole("button", { name: "Feasibility Complete" }),
+  ).toBeVisible();
+  await expect(
+    room.getByRole("button", { name: "Decision memo Memo ready" }),
+  ).toBeVisible();
+  await room
+    .getByRole("button", { name: "Assumptions Not included in this example" })
+    .press("Enter");
+  await expect(page.locator(".room-detail-status")).toHaveText(
+    "Not included in this example",
+  );
 });
 
 test("invalid demo cases can recover and anonymous settings stay protected", async ({

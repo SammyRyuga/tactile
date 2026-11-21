@@ -80,6 +80,18 @@ test("the review room shows streamed activity and opens recorded checks from the
                                 status: "complete",
                                 observation,
                               },
+                              {
+                                stage: "Evidence",
+                                status: "failed",
+                                observation:
+                                  "The requested source was unavailable.",
+                              },
+                              {
+                                stage: "Adoption",
+                                status: "skipped",
+                                observation:
+                                  "This example skipped the rollout check.",
+                              },
                             ],
                           },
                         ],
@@ -203,10 +215,17 @@ test("the review room shows streamed activity and opens recorded checks from the
   await expect(page.getByText("Run the pilot in staging.")).toBeVisible();
   await page.getByText("See the review room").press("Enter");
   await expect(
-    room.getByRole("button", { name: "Builder Complete" }),
+    room.getByRole("button", { name: "Researcher Incomplete" }),
   ).toBeVisible();
+  await expect(
+    room.getByRole("button", { name: "Operator Skipped" }),
+  ).toBeVisible();
+  await expect(
+    room.getByRole("button", { name: "Devil's Advocate Not recorded" }),
+  ).toBeVisible();
+  await room.getByRole("button", { name: "Builder Complete" }).click();
   await expect(room.getByText(observation)).toBeVisible();
-  await room.getByRole("button", { name: "Steelman Complete" }).click();
+  await room.getByRole("button", { name: "Steelman Memo ready" }).click();
   await expect(
     room.getByText("Repeat the staging test before rollout."),
   ).toBeVisible();
