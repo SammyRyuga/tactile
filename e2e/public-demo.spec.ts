@@ -87,7 +87,21 @@ test("the public demo replays all three cases and exports the recorded memo", as
   await runRecordedCase();
   const rollback = report
     .getByRole("article")
-    .filter({ hasText: "reverses records" });
+    .filter({ hasText: "reverses changes the new writer" });
+  const original = await rollback.getByRole("heading").first().innerText();
+  await expect(
+    report.getByRole("button", { name: "Copy Markdown" }),
+  ).toHaveText("Copy Markdown");
+  expect(
+    await report.locator(".findings").evaluate((findings) => {
+      const disclosures =
+        findings.parentElement!.querySelector(".report-details")!;
+      return Boolean(
+        findings.compareDocumentPosition(disclosures) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }),
+  ).toBe(true);
   await expect(
     rollback.getByText("Contradicted", { exact: true }),
   ).toBeVisible();
@@ -113,7 +127,15 @@ test("the public demo replays all three cases and exports the recorded memo", as
   await report.getByRole("button", { name: "Export Markdown" }).click();
   const memo = await readFile(await (await download).path(), "utf8");
   expect(memo).toContain("Mode: Bundled example");
-  expect(memo).toContain(origin + "/example-evidence.html#flag-timeline");
+  expect(memo).toContain(
+    "Recorded fixture excerpt from Tactile's bundled evidence",
+  );
+  expect(memo).toContain(
+    "Read 7    the update from request A is still present",
+  );
+  if (["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname))
+    expect(memo).not.toContain(origin);
+  else expect(memo).toContain(origin + "/example-evidence.html#flag-timeline");
   expect(memo).toContain("Contradicted");
   expect(memo).toContain("Supported");
   await page.reload();
@@ -122,9 +144,12 @@ test("the public demo replays all three cases and exports the recorded memo", as
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Edit claims" }).click();
-  const edited =
-    "Every old record returns within one second of switching off the flag.";
+  const edited = "The service reduces first-month hosting costs by 30 percent.";
   await page.getByRole("textbox", { name: "Claim 1" }).fill(edited);
+  await page.getByText("Claim options", { exact: true }).first().press("Enter");
+  await page
+    .getByRole("combobox", { name: "Main risk for claim 1" })
+    .selectOption("evidence");
   await page.reload();
   await expect(page.getByRole("textbox", { name: "Claim 1" })).toHaveValue(
     edited,
@@ -137,7 +162,30 @@ test("the public demo replays all three cases and exports the recorded memo", as
   await expect(
     editedFinding.getByText(/bundled evidence does not cover/),
   ).toBeVisible();
+  await expect(
+    editedFinding.getByText(/time window named in this claim/),
+  ).toBeVisible();
   await expect(editedFinding.getByRole("link")).toHaveCount(0);
+  const coverage = report.getByRole("region", { name: "Claim coverage" });
+  await expect(
+    coverage.getByText("Original critical claims left unchecked"),
+  ).toBeVisible();
+  await expect(coverage.getByText(original, { exact: true })).toBeVisible();
+  await expect(rollback).toHaveCount(0);
+  const editedDownload = page.waitForEvent("download");
+  await report.getByRole("button", { name: "Export Markdown" }).click();
+  const editedMemo = await readFile(
+    await (await editedDownload).path(),
+    "utf8",
+  );
+  expect(editedMemo).toContain("- " + original);
+  expect(editedMemo).toContain("### Unresolved · " + edited);
+  expect(editedMemo).not.toContain("### Contradicted");
+  const editedSection = editedMemo.slice(
+    editedMemo.indexOf("### Unresolved"),
+    editedMemo.indexOf("### Supported"),
+  );
+  expect(editedSection).not.toContain("Bundled flag timeline");
   expect(unexpectedRequests).toEqual([]);
   expect(browserErrors).toEqual([]);
 });

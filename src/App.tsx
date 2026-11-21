@@ -29,6 +29,7 @@ import {
   demoClaims,
   demoExamples,
   demoProposal,
+  restoreDemoReport,
   runDemo,
 } from "../shared/demo.ts";
 import {
@@ -42,6 +43,7 @@ import {
   reviewInputSchema,
   stages,
   toMarkdown,
+  uncheckedCriticalClaimsLabel,
   uniqueSourcesByUrl,
 } from "../shared/review.ts";
 import type {
@@ -229,7 +231,12 @@ function readRecent(key: string): Recent[] {
     const result = recentSchema.safeParse(
       JSON.parse(sessionStorage.getItem(key) ?? "[]"),
     );
-    return result.success ? result.data : [];
+    return result.success
+      ? result.data.map((entry) => ({
+          ...entry,
+          report: restoreDemoReport(entry.proposal, entry.report),
+        }))
+      : [];
   } catch {
     return [];
   }
@@ -240,7 +247,14 @@ function readDraft(key: string) {
     const result = savedDraftSchema.safeParse(
       JSON.parse(sessionStorage.getItem(key) ?? "null"),
     );
-    return result.success ? result.data : undefined;
+    if (!result.success) return undefined;
+    const draft = result.data;
+    return {
+      ...draft,
+      report: draft.report
+        ? restoreDemoReport(draft.proposal, draft.report)
+        : undefined,
+    };
   } catch {
     return undefined;
   }
@@ -318,6 +332,7 @@ export function App({
   );
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
+  const uncheckedCriticalClaims = report?.uncheckedCriticalClaims ?? [];
   const memoSections = decisionMemoSections(report?.crossfireMemo);
   const progress = page === "running" ? state.progress : undefined;
   const parsedModel = reviewModelSchema.safeParse(report?.model);
@@ -680,6 +695,41 @@ export function App({
     setProjectEvidence([]);
     setError("");
   }
+
+  const reportDetails = report && (
+    <div className="report-details review-disclosures">
+      {memoSections.length > 0 && (
+        <details className="proposal memo-details">
+          <summary>Decision details</summary>
+          <div className="memo-sections">
+            {memoSections.map(({ title, items }) => (
+              <section key={title}>
+                <h4>{title}</h4>
+                <ul>
+                  {items.filter(Boolean).map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </details>
+      )}
+      <details className="proposal">
+        <summary>Read your proposal</summary>
+        <p>{reportProposal}</p>
+      </details>
+      <RecordedReviewRoom report={report} />
+      {report.crossfireDecision && previewProposal === undefined && (
+        <ProposalRevision
+          proposal={reportProposal}
+          report={report}
+          token={token}
+          onUse={useRevisedProposal}
+        />
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -1200,7 +1250,7 @@ export function App({
                               Will the change work?
                             </option>
                             <option value="adoption">
-                              Can the team roll it out and run it?
+                              Rollout and operations
                             </option>
                             <option value="evidence">
                               Is there enough evidence?
@@ -1406,11 +1456,10 @@ export function App({
               <div className="actions report-tools">
                 <button
                   type="button"
-                  className="text-button"
-                  aria-label="Copy Markdown"
+                  className="button"
                   onClick={() => void copyReport(report)}
                 >
-                  Copy
+                  Copy Markdown
                 </button>
                 <button
                   type="button"
@@ -1424,38 +1473,27 @@ export function App({
                 {copyStatus}
               </span>
             </div>
-            <div className="report-details review-disclosures">
-              {memoSections.length > 0 && (
-                <details className="proposal memo-details">
-                  <summary>Decision details</summary>
-                  <div className="memo-sections">
-                    {memoSections.map(({ title, items }) => (
-                      <section key={title}>
-                        <h4>{title}</h4>
-                        <ul>
-                          {items.filter(Boolean).map((item, index) => (
-                            <li key={index}>{item}</li>
-                          ))}
-                        </ul>
-                      </section>
-                    ))}
-                  </div>
-                </details>
-              )}
-              <details className="proposal">
-                <summary>Read your proposal</summary>
-                <p>{reportProposal}</p>
-              </details>
-              <RecordedReviewRoom report={report} />
-              {report.crossfireDecision && previewProposal === undefined && (
-                <ProposalRevision
-                  proposal={reportProposal}
-                  report={report}
-                  token={token}
-                  onUse={useRevisedProposal}
-                />
-              )}
-            </div>
+            {report.mode === "live" && reportDetails}
+            {uncheckedCriticalClaims.length > 0 && (
+              <section
+                className="claim-coverage"
+                aria-labelledby="claim-coverage-title"
+              >
+                <h3 id="claim-coverage-title">Claim coverage</h3>
+                <p>
+                  The verdicts below cover only the claims submitted for this
+                  run.
+                </p>
+                <p>
+                  <strong>{uncheckedCriticalClaimsLabel}</strong>
+                </p>
+                <ul>
+                  {uncheckedCriticalClaims.map((claim) => (
+                    <li key={claim}>{claim}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {unreadableCount > 0 && (
               <p className="field-note">
                 {unreadableCount} unreadable{" "}
@@ -1527,6 +1565,7 @@ export function App({
                 </article>
               ))}
             </div>
+            {report.mode === "demo" && reportDetails}
             {report.mode === "live" && accountId && (
               <OutcomeLog
                 accountId={accountId}

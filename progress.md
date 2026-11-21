@@ -163,3 +163,10 @@
 - Matched the pinned Crossfire input formats in the Tactile workspace. Start with a written plan alone or add a public HTTPS link, PDF, screenshot, text file, or Markdown file.
 - Pass extracted attachment text into claim extraction and review. Surface follow-up questions from Crossfire’s recovery stage and allow the user to correct the inferred decision deadline or reversibility.
 - Reuse Crossfire’s original Steelman rewrite on selected fixes and let the user edit the revised draft before applying it.
+
+## Manual COMPUTE 50 demo follow-up · November 22, 2026
+
+- The report and export list original critical fixture claims left unchecked after replacement, removal, or deselection. Only submitted claims get verdicts. Edited claims stay **Unresolved** without fixture citations. Guidance describes evidence to collect based on the selected risk.
+- The memo embeds verbatim recorded evidence with its fixture path and keeps usable web citations. Localhost links are omitted from portable exports. Saved demo reports recover coverage and excerpts while retaining their recorded verdicts.
+- Confirmed at 320 CSS pixels that the shorter rollout risk label fits and moving the demo disclosures puts the first verdict higher on the page. Labeled the copy button **Copy Markdown** and aligned the rollback claim with the in-place writer proposal.
+- Passed all 59 Node tests and 28 Chromium tests on Node 22.23.5 and 24.19.0. Fixture evaluation passed on both runtimes, and both dependency audits reported zero vulnerabilities.

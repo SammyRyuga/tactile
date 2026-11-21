@@ -1,4 +1,4 @@
-import { uniqueSourcesByUrl } from "../shared/review.ts";
+import { sourcePassageLabel, uniqueSourcesByUrl } from "../shared/review.ts";
 import { reviewerStageLabel } from "../shared/reviewers.ts";
 import type { Finding, Source } from "../shared/review.ts";
 
@@ -94,12 +94,16 @@ export function ReviewTrail({
                   )}
                   {source.passage && (
                     <blockquote>
-                      <small>
-                        {source.passageOrigin === "source"
-                          ? "Fetched source excerpt"
-                          : "Cited research excerpt"}
-                      </small>
-                      <p>{source.passage}</p>
+                      <small>{sourcePassageLabel(source)}</small>
+                      <p
+                        className={
+                          source.passageOrigin === "fixture"
+                            ? "recorded-passage"
+                            : undefined
+                        }
+                      >
+                        {source.passage}
+                      </p>
                     </blockquote>
                   )}
                 </li>

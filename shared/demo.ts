@@ -40,11 +40,18 @@ const sources: Source[] = [
     id: "dependency-replay",
     title: "Bundled dependency replay",
     url: "/example-evidence.html#dependency-replay",
+    passageOrigin: "fixture",
+    passage: [
+      "assert.equal(schema().amount, 12); // Changed package passes.",
+      "assert.equal(schema().total, 12);  // Existing checkout contract fails.",
+    ].join("\n"),
   },
   {
     id: "ci-config",
     title: "Bundled rollout configuration",
     url: "/example-evidence.html#rollout-configuration",
+    passageOrigin: "fixture",
+    passage: "pull_request → changed packages\npush to main → full suite",
   },
 ];
 
@@ -156,7 +163,7 @@ const replicaClaims: Claim[] = [
 const flagClaims: Claim[] = [
   {
     id: "previous-writes",
-    text: "Disabling the feature flag reverses records already changed by the migration.",
+    text: "Disabling the feature flag reverses changes the new writer already made to stored records.",
     risk: "technical",
     loadBearing: true,
   },
@@ -189,6 +196,13 @@ export const demoExamples: DemoExample[] = [
         id: "replica-timeline",
         title: "Bundled replica timeline",
         url: "/example-evidence.html#replica-timeline",
+        passageOrigin: "fixture",
+        passage: [
+          "0 ms   primary commits order 42",
+          "8 ms   checkout reads from replica, order 42 is absent",
+          "42 ms  replica replays the commit",
+          "50 ms  repeated lookup returns order 42",
+        ].join("\n"),
       },
     ],
     recommendation:
@@ -249,6 +263,12 @@ export const demoExamples: DemoExample[] = [
         id: "flag-timeline",
         title: "Bundled flag timeline",
         url: "/example-evidence.html#flag-timeline",
+        passageOrigin: "fixture",
+        passage: [
+          "Flag ON   request A uses the new writer, updating record 7",
+          "Flag OFF  request B uses the old writer",
+          "Read 7    the update from request A is still present",
+        ].join("\n"),
       },
     ],
     recommendation:
@@ -299,41 +319,115 @@ export const demoExamples: DemoExample[] = [
   },
 ];
 
-export function demoReport(input: ReviewInput): Report {
-  const example = demoExamples.find(
-    ({ proposal }) => proposal === input.proposal.trim(),
+function exampleFor(proposal: string) {
+  return demoExamples.find((example) => example.proposal === proposal.trim());
+}
+
+function recordedFinding(example: DemoExample | undefined, claim: Claim) {
+  return example?.findings.find(
+    (finding) =>
+      finding.claim.id === claim.id &&
+      (finding.claim.text === claim.text ||
+        // Drafts from before the wording change use the same recorded claim.
+        (example.id === "flag" &&
+          claim.id === "previous-writes" &&
+          claim.text ===
+            "Disabling the feature flag reverses records already changed by the migration.")),
   );
+}
+
+function uncheckedCritical(
+  example: DemoExample | undefined,
+  replayedIds: Set<string>,
+) {
+  return example?.claims
+    .filter((claim) => claim.loadBearing && !replayedIds.has(claim.id))
+    .map(({ text }) => text);
+}
+
+export function restoreDemoReport(proposal: string, report: Report): Report {
+  if (report.mode !== "demo" || report.uncheckedCriticalClaims) return report;
+  const example = exampleFor(proposal);
+  if (!example) return report;
+  const replayedIds = new Set(
+    report.findings.flatMap(
+      ({ claim }) => recordedFinding(example, claim)?.claim.id ?? [],
+    ),
+  );
+  return {
+    ...report,
+    uncheckedCriticalClaims: uncheckedCritical(example, replayedIds),
+    sources: report.sources.map((source) => {
+      const fixture = example.sources.find(
+        ({ id, url }) =>
+          id === source.id &&
+          url ===
+            source.url.replace(
+              /^\/demo-evidence\.html/,
+              "/example-evidence.html",
+            ),
+      );
+      return fixture ?? source;
+    }),
+  };
+}
+
+const evidenceForClaim: Record<NonNullable<Claim["risk"]>, string> = {
+  logic:
+    "The inputs and assumptions this claim depends on, plus a concrete example that tests whether its conclusion follows.",
+  technical:
+    "The result of exercising the behavior this claim promises. Record the inputs, expected outcome or baseline, and what was actually observed.",
+  adoption:
+    "A rehearsal of the claimed rollout or operating step, with the actor, prerequisites, and observed outcome recorded.",
+  evidence:
+    "Measurements for the group, conditions, and time window named in this claim, with a baseline if the claim predicts a change.",
+};
+
+export function demoReport(input: ReviewInput): Report {
+  const example = exampleFor(input.proposal);
+  const replayedIds = new Set<string>();
   const reviewed = input.claims.map((claim): Finding => {
-    const fixture = example?.findings.find(
-      (finding) =>
-        finding.claim.id === claim.id && finding.claim.text === claim.text,
-    );
-    return (
-      (fixture && { ...fixture, claim }) || {
-        claim,
-        verdict: "Unresolved",
-        reason: "Evidence insufficient",
-        missingInformation: "Evidence addressing this version of the claim.",
-        rationale:
-          "The bundled evidence does not cover this edited or added claim.",
-        nextStep:
-          "Run a live review of this claim or collect supporting evidence from your own project.",
-        sourceIds: [],
-      }
-    );
+    const fixture = recordedFinding(example, claim);
+    if (fixture) {
+      replayedIds.add(claim.id);
+      return { ...fixture, claim };
+    }
+    return {
+      claim,
+      verdict: "Unresolved",
+      reason: "Evidence insufficient",
+      missingInformation: evidenceForClaim[claim.risk ?? "technical"],
+      rationale:
+        "The bundled evidence does not cover this edited or added claim.",
+      nextStep:
+        "Define what would count as success for this claim, then gather the evidence below.",
+      sourceIds: [],
+    };
   });
+  const uncheckedCriticalClaims = uncheckedCritical(example, replayedIds);
+  const unresolved =
+    reviewed.find(
+      ({ verdict, claim }) => verdict === "Unresolved" && claim.loadBearing,
+    ) ?? reviewed.find(({ verdict }) => verdict === "Unresolved");
   const recommendation = reviewed.some(
     ({ verdict }) => verdict === "Contradicted",
   )
     ? (example?.recommendation ??
       "Pilot affected-package testing with dependent packages before removing the full pull request suite.")
-    : reviewed.some(({ verdict }) => verdict === "Unresolved")
-      ? "Collect evidence for unresolved claims before changing the current workflow."
-      : "Use the findings and their next steps to test the plan before rollout.";
-  const cited = new Set(reviewed.flatMap(({ sourceIds }) => sourceIds));
+    : uncheckedCriticalClaims?.length
+      ? "Restore the original critical wording to replay its recorded checks, or verify the unchecked claims separately before relying on this report."
+      : (unresolved?.nextStep ??
+        "Use the findings and their next steps to test the plan before rollout.");
+  const cited = new Set(
+    reviewed.flatMap(({ sourceIds, audit }) => [
+      ...sourceIds,
+      ...(audit ?? []).flatMap((check) => check.sourceIds ?? []),
+    ]),
+  );
   return {
     mode: "demo",
     recommendation,
+    uncheckedCriticalClaims,
     findings: reviewed,
     sources: (example?.sources ?? []).filter(({ id }) => cited.has(id)),
   };
