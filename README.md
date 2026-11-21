@@ -25,6 +25,8 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 3. Edit the claims, select up to three, and mark claims that could change your decision as **Critical to the plan**.
 4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
+For judging, follow the [90-second Round 1 walkthrough](docs/round1-demo.md). The bundled example requires a verified account and runs without a provider key.
+
 Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Tactile can cite an attachment when an exact passage applies to the claim. Attachments are sent to your configured review provider and stay out of the web-search request.
 
 Open **Add an engineering check** on a claim to enter retry, SLO, timeout, throughput, or weighted-average inputs. Failed numeric requirements can determine a deterministic verdict. Passing a check verifies the calculation under the stated inputs.

@@ -2,6 +2,8 @@
 
 The development and holdout splits contain 15 cases each across sound, mixed, uncertain, quantitative, and out-of-scope decisions. Expected findings are recorded before provider runs. The visible, team-authored holdout gives a preliminary comparison. A stronger evaluation needs new cases written and graded outside the project.
 
+The fixture command checks explicit arithmetic deterministically and replays the bundled demonstrations with recorded evidence. The historical model runs below used live provider requests. Independent human grading and citation review remain pending.
+
 ```sh
 npm run eval -- --list
 npm run eval -- --fixtures

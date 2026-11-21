@@ -154,6 +154,12 @@ test("the old example link requires sign-in and the rollout report exports its e
   await expect(
     finding.getByText("Contradicted", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page
+      .getByRole("article")
+      .filter({ hasText: "prevents future requests" })
+      .getByText("Supported", { exact: true }),
+  ).toBeVisible();
   await finding.getByText("Review trail").click();
   const timeline = page.waitForEvent("popup");
   await finding
@@ -171,6 +177,19 @@ test("the old example link requires sign-in and the rollout report exports its e
   expect(memo).toContain("Mode: Bundled example");
   expect(memo).toContain("#flag-timeline");
   expect(memo).toContain("Contradicted");
+  expect(memo).toContain("Supported");
+
+  await page.getByRole("button", { name: "Edit claims" }).click();
+  const editedClaim =
+    "Disabling the flag restores every record within a second.";
+  await page.getByRole("textbox", { name: "Claim 1" }).fill(editedClaim);
+  await page.getByRole("button", { name: "Run review" }).press("Enter");
+  const editedFinding = page
+    .getByRole("article")
+    .filter({ hasText: editedClaim });
+  await expect(
+    editedFinding.getByText("Unresolved", { exact: true }),
+  ).toBeVisible();
 });
 
 test("provider downtime keeps the draft available for retry", async ({
