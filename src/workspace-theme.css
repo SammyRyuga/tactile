@@ -216,8 +216,7 @@
 .review-workspace #proposal {
   min-height: clamp(10rem, 19vw, 15rem);
 }
-.review-workspace .check-label,
-.review-workspace .claim-meta select {
+.review-workspace .check-label {
   min-height: 2.75rem;
 }
 .review-workspace input[type="checkbox"] {
@@ -427,14 +426,16 @@
 .claim-editor .claim-meta label {
   font-size: 0.82rem;
 }
-.review-workspace .claim-editor .claim-meta select {
-  padding: 0.38rem 0.5rem;
-  max-width: min(44vw, 13.5rem);
-  border: 1px solid #d4d8cd;
-  border-radius: 0.55rem;
-  background: #f3f4ee;
-  font-weight: 560;
+.claim-editor .claim-meta label:has(> select) {
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
+
+.claim-meta select {
+  inline-size: min(19rem, 100%);
+}
+
 .claim-editor form .claim-editor-footer {
   padding: 0.7rem 0.8rem;
   border-radius: 0.9rem;
@@ -887,7 +888,7 @@
 
 .review-workspace
   :is(.evidence-editor, .engineering-editor, .outcome-log)
-  :is(input:not([type="file"]), select) {
+  input:not([type="file"]) {
   display: block;
   width: 100%;
   min-height: 2.7rem;
@@ -898,6 +899,103 @@
   background: var(--review-paper);
   color: var(--review-ink);
   font: inherit;
+}
+
+.review-workspace select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--review-muted);
+  border-radius: 0.75rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+  font-weight: 550;
+  text-align: start;
+}
+
+.review-workspace :is(.engineering-editor, .outcome-log) select {
+  display: block;
+  inline-size: 100%;
+  margin-block: 0.25rem 0.7rem;
+}
+
+@media (hover: hover) {
+  .review-workspace select:enabled:hover {
+    cursor: pointer;
+    background: var(--review-ground);
+    border-color: var(--review-ink);
+  }
+}
+
+/* Browsers with customizable native select can also theme the opened menu. */
+@supports (appearance: base-select) and selector(select::picker(select)) {
+  .review-workspace select,
+  .review-workspace select::picker(select) {
+    appearance: base-select;
+  }
+
+  .review-workspace select {
+    gap: 0.65rem;
+  }
+
+  .review-workspace select::picker-icon {
+    flex: none;
+    align-self: center;
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    margin-inline-start: auto;
+    margin-inline-end: 0.14rem;
+    border-inline-end: 2px solid currentColor;
+    border-block-end: 2px solid currentColor;
+    color: var(--review-muted);
+    content: "";
+    transform: translateY(-0.1rem) rotate(45deg);
+  }
+
+  .review-workspace select:open::picker-icon {
+    transform: translateY(0.1rem) rotate(225deg);
+  }
+
+  .review-workspace select::picker(select) {
+    padding: 0.3rem;
+    margin-block: 0.25rem;
+    inline-size: anchor-size(width);
+    max-inline-size: calc(100vw - 1rem);
+    border: 1px solid var(--review-muted);
+    border-radius: 1rem;
+    background: var(--review-paper);
+    color: var(--review-ink);
+    box-shadow: 0 0.5rem 1.4rem #131b1a26;
+  }
+
+  .review-workspace select option {
+    gap: 0.65rem;
+    min-block-size: 2.75rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 0.65rem;
+    white-space: normal;
+  }
+
+  .review-workspace select option:checked {
+    background: var(--review-blue);
+  }
+
+  .review-workspace select option:focus-visible {
+    outline-offset: -2px;
+  }
+
+  @media (hover: hover) {
+    .review-workspace select option:not(:checked):hover {
+      background: var(--review-ground);
+    }
+  }
+
+  .review-workspace select option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+  }
 }
 
 .evidence-entry {

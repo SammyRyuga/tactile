@@ -240,7 +240,6 @@
   border-color: #829868;
 }
 [data-theme="dark"] .claim-pick,
-[data-theme="dark"] .review-workspace .claim-editor .claim-meta select,
 [data-theme="dark"] .review-workspace .example-title,
 [data-theme="dark"] .review-workspace .claim-remove {
   background: var(--dark-control);

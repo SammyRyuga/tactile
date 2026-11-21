@@ -153,3 +153,7 @@
 
 - Stacked the claim setup and decision report disclosures in full-width rows. Opening one keeps the other controls aligned.
 - Added a per-report delete button to the tab's Recent reports. Deleting a report leaves the workspace draft in place.
+
+## Workspace dropdown styling
+
+- Matched the risk, engineering check, and outcome selects to the workspace palette and field sizing. Browsers that support customizable native selects also get themed open menus.
