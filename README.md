@@ -20,12 +20,14 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 
 ## Try a review
 
+Open `/demo` on a current build to try CI coverage, replica consistency, or feature-flag rollback. Inspect and edit claims, replay the recorded evidence, and export a Markdown memo. The public demo runs entirely in the browser and requires no account or model key. Claims outside the recorded evidence return **Unresolved**. [90-second Round 1 walkthrough](docs/round1-demo.md)
+
+## Use the signed-in workspace
+
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
 2. Open **Workspace**, enter a proposal, and select **Find claims**. To explore first, choose a case from the **Example library**.
 3. Edit the claims, select up to three, and mark claims that could change your decision as **Critical to the plan**.
 4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
-
-For judging, follow the [90-second Round 1 walkthrough](docs/round1-demo.md). The bundled example requires a verified account and runs without a provider key.
 
 Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Tactile can cite an attachment when an exact passage applies to the claim. Attachments are sent to your configured review provider and stay out of the web-search request.
 
@@ -56,9 +58,9 @@ npm ci
 npm run dev
 ```
 
-To use the workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect. Sign in to try the [rollout example](http://127.0.0.1:5173/review?example=flag) with bundled evidence.
+Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
-Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Supabase account. To run the production build locally, use `npm run build` followed by `npm start`.
+To use the workspace, copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
 
 | Variable                   | Purpose                                                                     |
 | -------------------------- | --------------------------------------------------------------------------- |
@@ -82,10 +84,7 @@ The browser keeps drafts and completed reports in the tab’s session storage. R
 
 ## Deploy to Render
 
-1. Create a Node web service from this repository. Use `npm ci --include=dev && npm run build` as the build command, `npm start` as the start command, and `/health` as the health check.
-2. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the service. Apply the [review quota migration](supabase/migrations/20261121000000_review_quota.sql) to the database.
-3. Set the Supabase Auth **Site URL** to the deployed HTTPS origin and allow its `/login` redirect. Configure SMTP if you offer email confirmation for public sign-ups.
-4. Open Tactile, verify sign-in with an authorized account, and complete a bundled example. Add a provider key in Settings to exercise a live review.
+Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. The existing hosted service may still serve an older build.
 
 ## Development and evaluation
 

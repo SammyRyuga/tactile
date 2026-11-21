@@ -51,6 +51,7 @@ export function createApp(
     verifySession?: (token: string) => Promise<string | null>;
     allowedHosts?: string[];
     reserveUsage?: (token: string) => Promise<boolean>;
+    revision?: string;
     allowDevAssets?: boolean;
     trustProxy?: boolean;
     verifierModel?: string;
@@ -92,7 +93,13 @@ export function createApp(
     next();
   });
 
-  app.get("/health", (_request, response) => response.json({ ok: true }));
+  const revision = /^[a-f0-9]{40}$/i.test(options.revision ?? "")
+    ? options.revision
+    : undefined;
+  app.get("/health", (_request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.json({ ok: true, revision });
+  });
 
   app.use("/api", (request, response, next) => {
     if (!allowedHosts.includes(request.hostname)) {

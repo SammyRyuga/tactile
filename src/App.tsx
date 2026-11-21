@@ -240,13 +240,16 @@ export function App({
   signOut,
   startExample,
   initialExample,
+  publicDemo = false,
 }: {
   token?: string;
   account?: string;
   accountId?: string;
   startExample: boolean;
+  publicDemo?: boolean;
   initialExample?: {
     id?: string;
+    title?: string;
     proposal: string;
     claims: Claim[];
   };
@@ -259,9 +262,13 @@ export function App({
       ? `example:${scenarioId}`
       : "example"
     : "workspace";
-  const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
+  const storageKey = publicDemo
+    ? `tactile-public-demo-v1:${scenarioId}:draft`
+    : `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
   const recentKey = `tactile-review-v1:${accountId ?? "guest"}:recent`;
-  const [recent, setRecent] = useState(() => readRecent(recentKey));
+  const [recent, setRecent] = useState(() =>
+    publicDemo ? [] : readRecent(recentKey),
+  );
   const [copyStatus, setCopyStatus] = useState("");
   const reduceMotion = useReducedMotion();
   const enter: MotionProps = {
@@ -269,7 +276,18 @@ export function App({
     animate: { opacity: 1, y: 0 },
     transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
   };
-  const [saved] = useState(() => readDraft(storageKey));
+  const [saved] = useState(() => {
+    const draft = readDraft(storageKey);
+    if (
+      publicDemo &&
+      (draft?.mode !== "demo" ||
+        draft.proposal !== example.proposal ||
+        draft.projectEvidence?.length ||
+        (draft.report && draft.report.mode !== "demo"))
+    )
+      return undefined;
+    return draft;
+  });
   const [state, dispatch] = useReducer(
     reviewWorkflow,
     undefined,
@@ -297,7 +315,7 @@ export function App({
       : 0;
   const previewProposal = page === "report" ? state.previewProposal : undefined;
   const [proposal, setProposal] = useState(
-    saved?.proposal ?? (startExample ? example.proposal : ""),
+    saved?.proposal ?? (startExample || publicDemo ? example.proposal : ""),
   );
   const reportProposal = previewProposal ?? proposal;
   const [claims, setClaims] = useState<ClaimDraft[]>(
@@ -306,10 +324,13 @@ export function App({
   const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
     () => saved?.projectEvidence ?? [],
   );
-  const [mode, setMode] = useState<"demo" | "live">(saved?.mode ?? "demo");
+  const [reviewMode, setMode] = useState<"demo" | "live">(
+    saved?.mode ?? "demo",
+  );
+  const mode = publicDemo ? "demo" : reviewMode;
   const [availability, setAvailability] = useState<
     "checking" | "live" | "demo" | "unavailable"
-  >("checking");
+  >(publicDemo ? "demo" : "checking");
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
@@ -348,14 +369,16 @@ export function App({
   ]);
 
   useEffect(() => {
+    if (publicDemo) return;
     try {
       sessionStorage.setItem(recentKey, JSON.stringify(recent));
     } catch {
       // Browser storage can be unavailable.
     }
-  }, [recentKey, recent]);
+  }, [publicDemo, recentKey, recent]);
 
   useEffect(() => {
+    if (publicDemo) return;
     const controller = new AbortController();
     liveAvailable(controller.signal, token).then(
       (live) => {
@@ -368,7 +391,7 @@ export function App({
     return () => {
       controller.abort();
     };
-  }, [token]);
+  }, [publicDemo, token]);
 
   useEffect(() => () => request.current?.abort(), []);
 
@@ -389,6 +412,11 @@ export function App({
 
   async function onExtract(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (publicDemo) {
+      if (claims.length) dispatch({ type: "claims" });
+      else openDemo();
+      return;
+    }
     if (availability === "demo" || availability === "unavailable") {
       if (proposal.trim() === example.proposal) openDemo();
       else
@@ -451,14 +479,15 @@ export function App({
     event.preventDefault();
     const reviewClaims = selected.map(({ checkDraft, ...claim }) => ({
       ...claim,
-      engineeringCheck: checkDraft
-        ? {
-            kind: checkDraft.kind,
-            values: checkDraft.values.map((value) =>
-              value.trim() ? Number(value) : NaN,
-            ),
-          }
-        : undefined,
+      engineeringCheck:
+        !publicDemo && checkDraft
+          ? {
+              kind: checkDraft.kind,
+              values: checkDraft.values.map((value) =>
+                value.trim() ? Number(value) : NaN,
+              ),
+            }
+          : undefined,
     }));
     const input = reviewInputSchema.safeParse({
       proposal,
@@ -467,7 +496,9 @@ export function App({
     });
     if (!input.success || selected.some((claim) => !claim.text.trim())) {
       setError(
-        "Select one to three claims, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
+        publicDemo
+          ? "Select one to three claims and give each one a short description."
+          : "Select one to three claims, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
       );
       return;
     }
@@ -479,7 +510,7 @@ export function App({
     dispatch({ type: "start", claims: input.data.claims });
     const emit = (event: ReviewEvent) => {
       if (controller.signal.aborted || event.type === "error") return;
-      if (event.type === "report") {
+      if (event.type === "report" && !publicDemo) {
         const record = {
           id: crypto.randomUUID(),
           savedAt: new Date().toISOString(),
@@ -553,7 +584,7 @@ export function App({
   function restart() {
     setCopyStatus("");
     dispatch({ type: "decision" });
-    setProposal("");
+    setProposal(publicDemo ? example.proposal : "");
     setClaims([]);
     setProjectEvidence([]);
     setError("");
@@ -571,7 +602,11 @@ export function App({
           </a>
           <nav aria-label="Project links">
             <a href="/">Home</a>
-            <a href="/settings">Settings</a>
+            {publicDemo ? (
+              <a href="/review">Workspace</a>
+            ) : (
+              <a href="/settings">Settings</a>
+            )}
             <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
               GitHub {mark("external")}
@@ -584,6 +619,7 @@ export function App({
         id="content"
         className="workspace review-workspace"
         data-page={page}
+        tabIndex={-1}
       >
         {account && (
           <div className="account-strip">
@@ -599,8 +635,14 @@ export function App({
         )}
         <div className="review-masthead">
           <div className="intro">
-            <h1>Review an engineering decision</h1>
-            <p>Find out what needs to be true for your plan to work.</p>
+            <h1>
+              {publicDemo ? "Public demo" : "Review an engineering decision"}
+            </h1>
+            <p>
+              {publicDemo
+                ? "Replay recorded checks in your browser. No account or API key is required."
+                : "Find out what needs to be true for your plan to work."}
+            </p>
           </div>
           <ol className="steps" aria-label="Review steps">
             {stepLabels.map((step, index) => (
@@ -622,18 +664,23 @@ export function App({
           <motion.div key="decision" className="decision-layout" {...enter}>
             <section className="panel">
               <h2 ref={heading} tabIndex={-1}>
-                Describe your decision
+                {publicDemo ? example.title : "Describe your decision"}
               </h2>
               <form onSubmit={onExtract}>
-                <label htmlFor="proposal">Your plan</label>
+                <label htmlFor="proposal">
+                  {publicDemo ? "Bundled plan" : "Your plan"}
+                </label>
                 <p id="proposal-hint" className="proposal-hint">
-                  Tell us what you want to change, why, and what should improve.
+                  {publicDemo
+                    ? "Read the plan, then choose which claims to check."
+                    : "Tell us what you want to change, why, and what should improve."}
                 </p>
                 <textarea
                   ref={proposalField}
                   id="proposal"
                   value={proposal}
                   disabled={extracting}
+                  readOnly={publicDemo}
                   maxLength={limits.proposal}
                   aria-describedby="proposal-hint"
                   placeholder="We want to run fewer tests on each pull request to get feedback faster. We still need to catch bugs in packages that depend on the changed code."
@@ -666,7 +713,11 @@ export function App({
                     type="submit"
                     disabled={extracting || availability === "checking"}
                   >
-                    {extracting ? "Finding claims…" : "Find claims"}
+                    {publicDemo
+                      ? "Inspect claims"
+                      : extracting
+                        ? "Finding claims…"
+                        : "Find claims"}
                   </button>
                 </div>
               </form>
@@ -679,7 +730,14 @@ export function App({
                 <ul className="workspace-list">
                   {demoExamples.map((item) => (
                     <li key={item.id}>
-                      <a href={`/review?example=${item.id}`}>
+                      <a
+                        href={`${publicDemo ? "/demo" : "/review"}?example=${item.id}`}
+                        aria-current={
+                          publicDemo && item.id === scenarioId
+                            ? "page"
+                            : undefined
+                        }
+                      >
                         <span>
                           <strong>{item.label}</strong>
                           <small>{item.title}</small>
@@ -968,7 +1026,11 @@ export function App({
                 .filter((stage) => mode === "live" || progress?.[stage])
                 .map((stage) => (
                   <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
-                    <strong>{stage}</strong>
+                    <strong>
+                      {mode === "demo" && stage === "Synthesis"
+                        ? "Prepare memo"
+                        : stage}
+                    </strong>
                     <span>
                       {progress?.[stage] === "done"
                         ? "Complete"
@@ -1157,7 +1219,9 @@ export function App({
                     className="text-button"
                     onClick={restart}
                   >
-                    Start a new review
+                    {publicDemo
+                      ? "Choose another example"
+                      : "Start a new review"}
                   </button>
                 </>
               )}
