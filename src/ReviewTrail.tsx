@@ -1,12 +1,15 @@
 import { uniqueSourcesByUrl } from "../shared/review.ts";
+import { reviewerStageLabel } from "../shared/reviewers.ts";
 import type { Finding, Source } from "../shared/review.ts";
 
 export function ReviewTrail({
   finding,
   sources,
+  crossfire,
 }: {
   finding: Finding;
   sources: Source[];
+  crossfire: boolean;
 }) {
   const trail = finding.audit ?? [];
   const cited = uniqueSourcesByUrl(
@@ -63,10 +66,10 @@ export function ReviewTrail({
             </span>
           </summary>
           <ol>
-            {trail.map(({ stage, status, observation }) => (
-              <li key={stage}>
+            {trail.map(({ stage, status, observation }, index) => (
+              <li key={`${stage}-${index}`}>
                 <h4>
-                  {stage}{" "}
+                  {crossfire ? reviewerStageLabel(stage) : stage}{" "}
                   <span className={`check-status ${status}`}>{status}</span>
                 </h4>
                 <p>{observation}</p>

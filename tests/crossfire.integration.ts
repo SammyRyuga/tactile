@@ -28,7 +28,13 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
       switch (title) {
         case "ExtractedClaims":
           return JSON.stringify({
-            statements: ["The queue preserves the order of invoice exports."],
+            statements: [
+              "The queue preserves the order of invoice exports.",
+              "A worker can process the queued export.",
+              "The export completion state is visible in the workspace.",
+              "Workers can pause during maintenance.",
+              "A failed export can be retried by an operator.",
+            ],
             agents: [
               {
                 agent: "devils_advocate",
@@ -43,7 +49,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
           });
         case "LoadBearingRanking":
           return JSON.stringify({
-            ranked_indices: [1],
+            ranked_indices: [1, 2, 3, 4, 5],
             load_bearing_count: 1,
             reasons: ["Ordering is part of the decision."],
           });
@@ -78,7 +84,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
   };
   const signal = AbortSignal.timeout(7000);
   const claims = await engine.extract(provider, proposal, signal);
-  assert.equal(claims.length, 1);
+  assert.equal(claims.length, 5);
   assert.equal(
     claims[0].text,
     "The queue preserves the order of invoice exports.",
@@ -92,9 +98,29 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
     signal,
   );
   assert.equal(report.model, "fixture-model");
+  assert.deepEqual(report.crossfireReviewers, [
+    "devils_advocate",
+    "builder",
+    "operator",
+  ]);
+  const focused = await engine.review(
+    provider,
+    { proposal, claims: [claims[0]], reviewers: ["builder"] },
+    () => {},
+    AbortSignal.timeout(4000),
+  );
+  assert.deepEqual(focused.crossfireReviewers, ["builder"]);
+  assert.deepEqual(
+    focused.findings[0].audit?.map(({ stage }) => stage),
+    ["Feasibility"],
+  );
+
   assert.equal(report.crossfireDecision, "Proceed");
   assert.equal(report.findings[0].verdict, "Survived");
-  assert.equal(report.findings[0].claim.id, claims[0].id);
+  assert.deepEqual(
+    report.findings.map(({ claim }) => claim.id),
+    claims.map(({ id }) => id),
+  );
   assert.equal(report.findings[0].claim.loadBearing, true);
   assert.equal(report.findings[0].audit?.length, 3);
   for (const role of [

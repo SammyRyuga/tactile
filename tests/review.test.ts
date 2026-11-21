@@ -16,6 +16,7 @@ import {
 import {
   reportSchema,
   reviewInputSchema,
+  limits,
   toMarkdown,
 } from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
@@ -55,11 +56,20 @@ test("citation destinations are serialized as safe Markdown URLs", () => {
   assert.doesNotMatch(markdown, /<tag>/);
 });
 
-test("review validation requires one to three distinct non-empty claims", () => {
-  const valid = { proposal: demoProposal, claims: demoClaims.slice(0, 3) };
+test("review validation accepts all drafted claims and rejects invalid selections", () => {
+  const valid = {
+    proposal: demoProposal,
+    claims: Array.from({ length: limits.claims }, (_, index) => ({
+      id: `claim-${index + 1}`,
+      text: `Claim ${index + 1} can be tested independently.`,
+    })),
+  };
   assert.equal(reviewInputSchema.safeParse(valid).success, true);
   assert.equal(
-    reviewInputSchema.safeParse({ ...valid, claims: demoClaims }).success,
+    reviewInputSchema.safeParse({
+      ...valid,
+      claims: [...valid.claims, { id: "extra", text: "An extra claim." }],
+    }).success,
     false,
   );
   assert.equal(

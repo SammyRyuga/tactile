@@ -12,6 +12,14 @@ import {
 } from "./ReviewExtras.tsx";
 import { reviewModelSchema, reviewModels } from "../shared/models.ts";
 import { engineeringCheckSchema } from "../shared/engineering.ts";
+import {
+  reviewerIds,
+  reviewerByStage,
+  reviewers,
+  reviewersSchema,
+  reviewerStageLabel,
+} from "../shared/reviewers.ts";
+import type { Reviewer } from "../shared/reviewers.ts";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import { LiveReviewRoom, RecordedReviewRoom } from "./ReviewRoom.tsx";
 import type { FormEvent } from "react";
@@ -149,9 +157,9 @@ function mark(
 }
 
 function seedDraft(claims: Claim[]): ClaimDraft[] {
-  return claims.map((claim, index) => ({
+  return claims.map((claim) => ({
     ...claim,
-    selected: index < limits.selected,
+    selected: true,
     checkDraft: claim.engineeringCheck
       ? {
           kind: claim.engineeringCheck.kind,
@@ -197,6 +205,7 @@ const savedDraftSchema = z
       .max(limits.evidenceItems)
       .optional(),
     mode: z.enum(["demo", "live"]),
+    reviewers: reviewersSchema.optional(),
     report: reportSchema.optional(),
   })
   .refine(({ page, report }) => page !== "report" || Boolean(report));
@@ -326,6 +335,13 @@ export function App({
   const [projectEvidence, setProjectEvidence] = useState<EvidenceDraft[]>(
     () => saved?.projectEvidence ?? [],
   );
+  const [reviewerSelection, setReviewerSelection] = useState<
+    Reviewer[] | undefined
+  >(saved?.reviewers);
+  const reviewPanel =
+    reviewerSelection ??
+    claims.find(({ crossfire }) => crossfire)?.crossfire?.agents ??
+    reviewerIds;
   const [reviewMode, setMode] = useState<"demo" | "live">(
     saved?.mode ?? "demo",
   );
@@ -352,6 +368,7 @@ export function App({
           proposal,
           claims,
           projectEvidence,
+          reviewers: reviewerSelection,
           mode,
           report,
         }),
@@ -365,6 +382,7 @@ export function App({
     proposal,
     claims,
     projectEvidence,
+    reviewerSelection,
     mode,
     report,
     previewProposal,
@@ -445,6 +463,7 @@ export function App({
       if (controller.signal.aborted) return;
       setProposal(parsed.data);
       setClaims(seedDraft(result));
+      setReviewerSelection(undefined);
       setMode("live");
       dispatch({ type: "claims" });
     } catch (cause) {
@@ -495,12 +514,13 @@ export function App({
       proposal,
       claims: reviewClaims,
       projectEvidence: mode === "live" ? projectEvidence : undefined,
+      reviewers: mode === "live" ? reviewPanel : undefined,
     });
     if (!input.success || selected.some((claim) => !claim.text.trim())) {
       setError(
         publicDemo
-          ? "Select one to three claims and give each one a short description."
-          : "Select one to three claims, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
+          ? "Select at least one claim and give each selected claim a short description."
+          : "Select at least one claim, complete any engineering check inputs, and give each evidence item a title and an excerpt.",
       );
       return;
     }
@@ -578,6 +598,7 @@ export function App({
   function recheck(finding: Finding) {
     setProposal(reportProposal);
     setClaims(seedDraft([finding.claim]));
+    setReviewerSelection(report?.crossfireReviewers);
     setMode("live");
     setError("");
     dispatch({ type: "claims" });
@@ -588,6 +609,7 @@ export function App({
     dispatch({ type: "decision" });
     setProposal(publicDemo ? example.proposal : "");
     setClaims([]);
+    setReviewerSelection(undefined);
     setProjectEvidence([]);
     setError("");
   }
@@ -819,18 +841,18 @@ export function App({
                 <p>
                   {mode === "live"
                     ? "Review the extracted assumptions below. You can edit, remove, or add claims before running tests."
-                    : `A claim is something that must be true for your plan to work. Edit the claims and pick up to ${limits.selected} to check.`}
+                    : "A claim is something that must be true for your plan to work. Edit the claims and choose which ones to check."}
                 </p>
               </div>
               <div className="claim-count" role="status">
                 <div className="claim-count-track" aria-hidden="true">
-                  {Array.from({ length: limits.selected }, (_, index) => (
-                    <span key={index} data-filled={index < selected.length} />
+                  {claims.map(({ id }, index) => (
+                    <span key={id} data-filled={index < selected.length} />
                   ))}
                 </div>
                 <span>
                   <strong>
-                    {selected.length} of {limits.selected}
+                    {selected.length} of {claims.length}
                   </strong>{" "}
                   selected
                 </span>
@@ -841,6 +863,40 @@ export function App({
               <p>{proposal}</p>
             </details>
             <form onSubmit={onReview}>
+              {mode === "live" && (
+                <fieldset className="reviewer-picker">
+                  <legend>Adversarial panel</legend>
+                  <div className="reviewer-options">
+                    {reviewerIds.map((id) => (
+                      <label className="check-label reviewer-option" key={id}>
+                        <input
+                          type="checkbox"
+                          checked={reviewPanel.includes(id)}
+                          disabled={
+                            reviewPanel.length === 1 && reviewPanel.includes(id)
+                          }
+                          onChange={(event) =>
+                            setReviewerSelection(
+                              event.target.checked
+                                ? [...reviewPanel, id]
+                                : reviewPanel.filter(
+                                    (reviewer) => reviewer !== id,
+                                  ),
+                            )
+                          }
+                        />
+                        <span>
+                          <strong>{reviewers[id].name}</strong>
+                          <small>{reviewers[id].role}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="section-note">
+                    Steelman weighs their findings and prepares the verdict.
+                  </p>
+                </fieldset>
+              )}
               {mode === "live" && (
                 <EvidenceEditor
                   items={projectEvidence}
@@ -867,10 +923,6 @@ export function App({
                             type="checkbox"
                             aria-label={`Review claim ${index + 1}`}
                             checked={claim.selected}
-                            disabled={
-                              !claim.selected &&
-                              selected.length >= limits.selected
-                            }
                             onChange={(event) =>
                               updateClaim(claim.id, {
                                 selected: event.target.checked,
@@ -1037,16 +1089,23 @@ export function App({
               claims={state.claims}
               progress={state.progress}
               updates={state.updates}
+              panel={mode === "live" ? reviewPanel : undefined}
             />
             <ul className="activity" aria-live="polite">
               {stages
-                .filter((stage) => mode === "live" || progress?.[stage])
+                .filter((stage) => {
+                  if (mode === "demo") return Boolean(progress?.[stage]);
+                  const reviewer = reviewerByStage[stage];
+                  return !reviewer || reviewPanel.includes(reviewer);
+                })
                 .map((stage) => (
                   <li key={stage} data-status={progress?.[stage] ?? "waiting"}>
                     <strong>
                       {mode === "demo" && stage === "Synthesis"
                         ? "Prepare memo"
-                        : stage}
+                        : mode === "live"
+                          ? reviewerStageLabel(stage)
+                          : stage}
                     </strong>
                     <span>
                       {progress?.[stage] === "done"
@@ -1073,7 +1132,7 @@ export function App({
                         {Object.values(state.updates[claim.id]).map(
                           ({ stage, status, detail }) => (
                             <li key={stage}>
-                              <strong>{stage}</strong> ·{" "}
+                              <strong>{reviewerStageLabel(stage)}</strong> ·{" "}
                               {status === "done"
                                 ? "Complete"
                                 : status === "unavailable"
@@ -1111,6 +1170,14 @@ export function App({
                   {report.verifier?.distinct &&
                     ` · Verified by ${report.verifier.model}`}
                 </p>
+                {report.crossfireReviewers && (
+                  <p className="section-note">
+                    {report.crossfireReviewers
+                      .map((id) => reviewers[id].name)
+                      .join(", ")}{" "}
+                    and Steelman
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -1189,7 +1256,11 @@ export function App({
                   <p>
                     <strong>Next step</strong> {finding.nextStep}
                   </p>
-                  <ReviewTrail finding={finding} sources={report.sources} />
+                  <ReviewTrail
+                    finding={finding}
+                    sources={report.sources}
+                    crossfire={Boolean(report.crossfireDecision)}
+                  />
                   {report.mode === "live" && (
                     <MeasurementArtifact finding={finding} />
                   )}

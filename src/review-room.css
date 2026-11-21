@@ -361,3 +361,10 @@
     transition: none;
   }
 }
+
+@media (max-width: 420px) {
+  .review-room[data-panel="crossfire"] .room-station-label {
+    max-width: 5.25rem;
+    white-space: normal;
+  }
+}

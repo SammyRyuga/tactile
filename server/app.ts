@@ -449,7 +449,8 @@ export function createApp(
       const input = reviewInputSchema.safeParse(request.body);
       if (!input.success) {
         response.status(400).json({
-          message: "Confirm between one and three distinct, non-empty claims.",
+          message:
+            "Select at least one claim. Include only distinct claims with text.",
         });
         return;
       }

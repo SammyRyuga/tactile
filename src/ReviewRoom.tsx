@@ -1,5 +1,7 @@
 import { useId, useState } from "react";
 import type { Claim, ProgressEvent, Report } from "../shared/review.ts";
+import { reviewerIds, reviewers } from "../shared/reviewers.ts";
+import type { Reviewer } from "../shared/reviewers.ts";
 import "./review-room.css";
 
 type Stage = ProgressEvent["stage"];
@@ -7,15 +9,27 @@ type Status = ProgressEvent["status"] | "waiting" | "unrecorded";
 type Check = { stage: Stage; status: Status; detail?: string; claim?: string };
 
 const stations = [
-  { id: "assumptions", label: "Assumptions", stages: ["Assumptions"] },
+  {
+    id: "assumptions",
+    reviewer: "devils_advocate",
+    label: "Assumptions",
+    stages: ["Assumptions"],
+  },
   {
     id: "feasibility",
+    reviewer: "builder",
     label: "Feasibility",
     stages: ["Feasibility", "Engineering check", "Arithmetic"],
   },
-  { id: "adoption", label: "Adoption", stages: ["Adoption"] },
+  {
+    id: "adoption",
+    reviewer: "operator",
+    label: "Adoption",
+    stages: ["Adoption"],
+  },
   {
     id: "evidence",
+    reviewer: "researcher",
     label: "Evidence",
     stages: [
       "Evidence",
@@ -25,9 +39,10 @@ const stations = [
       "Verification",
     ],
   },
-  { id: "memo", label: "Decision memo", stages: ["Synthesis"] },
+  { id: "memo", reviewer: null, label: "Decision memo", stages: ["Synthesis"] },
 ] as const satisfies readonly {
   id: string;
+  reviewer: Reviewer | null;
   label: string;
   stages: readonly Stage[];
 }[];
@@ -52,27 +67,42 @@ function stationStatus(checks: Check[]): Status {
 function ReviewRoom({
   checks,
   recommendation,
+  panel,
 }: {
   checks: Check[];
   recommendation?: string;
+  panel?: readonly Reviewer[];
 }) {
   const [picked, setPicked] = useState<string>();
   const detailId = useId();
   const recorded = recommendation !== undefined;
   const positions = stations.map((station) => {
+    const stages: readonly Stage[] = station.stages;
     const assigned = checks.filter(({ stage }) =>
-      (station.stages as readonly Stage[]).includes(stage),
+      panel && stage === "Verification"
+        ? station.id === "memo"
+        : stages.includes(stage),
     );
     const status = stationStatus(assigned);
+    const onPanel =
+      !panel || !station.reviewer || panel.includes(station.reviewer);
     return {
       ...station,
+      label: panel
+        ? station.reviewer
+          ? reviewers[station.reviewer].name
+          : "Steelman"
+        : station.label,
       assigned,
+      onPanel,
       status:
-        recorded && status === "waiting"
-          ? station.id === "memo"
-            ? ("done" as const)
-            : ("unrecorded" as const)
-          : status,
+        !onPanel && status === "waiting"
+          ? ("skipped" as const)
+          : recorded && status === "waiting"
+            ? station.id === "memo"
+              ? ("done" as const)
+              : ("unrecorded" as const)
+            : status,
     };
   });
   const selected =
@@ -80,11 +110,12 @@ function ReviewRoom({
     positions.find(({ status }) => status === "running") ??
     positions.find(({ status }) => status === "unavailable") ??
     positions.find(({ status }) => status === "done") ??
+    positions.find(({ onPanel }) => onPanel) ??
     positions[0];
   const excerpt = selected.assigned.find(({ detail }) => detail);
 
   return (
-    <div className="review-room">
+    <div className="review-room" data-panel={panel ? "crossfire" : undefined}>
       <div className="room-scene" role="group" aria-label="Review stations">
         <div className="room-platform" aria-hidden="true">
           <div className="room-deck" />
@@ -151,7 +182,9 @@ function ReviewRoom({
           <p className="room-note">
             {recorded
               ? "This station has no recorded checks."
-              : "Check updates will appear here."}
+              : selected.onPanel
+                ? "Check updates will appear here."
+                : "This reviewer was skipped."}
           </p>
         ) : null}
         {selected.id === "memo" && recorded && !excerpt?.detail && (
@@ -174,10 +207,12 @@ export function LiveReviewRoom({
   claims,
   progress,
   updates,
+  panel,
 }: {
   claims: Claim[];
   progress: Partial<Record<Stage, ProgressEvent["status"]>>;
   updates: Record<string, Partial<Record<Stage, ProgressEvent>>>;
+  panel?: readonly Reviewer[];
 }) {
   const checks: Check[] = Object.entries(progress).map(([stage, status]) => ({
     stage: stage as Stage,
@@ -188,7 +223,7 @@ export function LiveReviewRoom({
       checks.push({ ...event, claim: claim.text });
     }
   }
-  return <ReviewRoom checks={checks} />;
+  return <ReviewRoom checks={checks} panel={panel} />;
 }
 
 export function RecordedReviewRoom({ report }: { report: Report }) {
@@ -209,7 +244,15 @@ export function RecordedReviewRoom({ report }: { report: Report }) {
   return (
     <details className="proposal room-disclosure">
       <summary>See the review room</summary>
-      <ReviewRoom checks={checks} recommendation={report.recommendation} />
+      <ReviewRoom
+        checks={checks}
+        recommendation={report.recommendation}
+        panel={
+          report.crossfireDecision
+            ? (report.crossfireReviewers ?? reviewerIds)
+            : undefined
+        }
+      />
     </details>
   );
 }

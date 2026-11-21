@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { engineeringCheckSchema } from "./engineering.ts";
+import { reviewersSchema, reviewerStageLabel } from "./reviewers.ts";
 
 export const limits = {
   proposal: 3000,
   claim: 240,
   claims: 6,
-  selected: 3,
   evidenceItems: 3,
   evidenceText: 2400,
 } as const;
@@ -47,9 +47,7 @@ export const evidenceListSchema = z
   );
 
 const crossfireClaimSchema = z.object({
-  agents: z
-    .array(z.enum(["devils_advocate", "builder", "operator", "researcher"]))
-    .max(4),
+  agents: reviewersSchema,
   reversibility: z.enum(["one_way", "two_way"]).nullish(),
   deadline: z.string().max(120).nullish(),
   mechanism: z.string().max(240).nullish(),
@@ -76,10 +74,11 @@ export const claimSchema = z.object({
 export const reviewInputSchema = z.object({
   proposal: proposalSchema,
   projectEvidence: evidenceListSchema.optional(),
+  reviewers: reviewersSchema.optional(),
   claims: z
     .array(claimSchema)
     .min(1)
-    .max(limits.selected)
+    .max(limits.claims)
     .refine(
       (claims) => new Set(claims.map(({ id }) => id)).size === claims.length,
       "Claim IDs must be unique.",
@@ -184,6 +183,7 @@ export const reportSchema = z.object({
   crossfireDecision: z
     .enum(["Proceed", "Proceed with Changes", "Hold", "Drop"])
     .optional(),
+  crossfireReviewers: reviewersSchema.optional(),
   crossfireMemo: z
     .object({
       survivingCore: z.string(),
@@ -346,7 +346,7 @@ export function toMarkdown(
           (check.sourceIds ?? []).flatMap((id) => sources.get(id) ?? []),
         ).map((source) => markdownSource(source, origin));
         lines.push(
-          `- **${check.stage} · ${check.status}** ${markdownText(check.observation)}${titles.length ? ` (${titles.join(", ")})` : ""}`,
+          `- **${report.crossfireDecision ? reviewerStageLabel(check.stage) : check.stage} · ${check.status}** ${markdownText(check.observation)}${titles.length ? ` (${titles.join(", ")})` : ""}`,
         );
       }
     }

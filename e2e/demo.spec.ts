@@ -279,7 +279,7 @@ test("an unavailable authentication service keeps the workspace protected", asyn
   ).toHaveCount(0);
 });
 
-test("claim controls preserve the selection limit and keyboard editing", async ({
+test("claim controls select every claim and preserve keyboard editing", async ({
   page,
 }) => {
   await mockAuthentication(page);
@@ -288,17 +288,20 @@ test("claim controls preserve the selection limit and keyboard editing", async (
   await signIn(page);
   const first = page.getByRole("checkbox", { name: "Review claim 1" });
   const fourth = page.getByRole("checkbox", { name: "Review claim 4" });
-  await expect(fourth).toBeDisabled();
+  await expect(fourth).toBeChecked();
+  await expect(page.getByRole("status")).toContainText("4 of 4");
   await first.focus();
   await page.keyboard.press("Space");
   await expect(first).not.toBeChecked();
-  await expect(page.getByRole("status")).toContainText("2 of 3");
-  await fourth.check();
-  await expect(page.getByRole("status")).toContainText("3 of 3");
+  await expect(page.getByRole("status")).toContainText("3 of 4");
+  await first.check();
+  await expect(page.getByRole("status")).toContainText("4 of 4");
   await page.getByRole("button", { name: "Add claim" }).click();
   const added = page.getByRole("textbox", { name: "Claim 5" });
   await expect(added).toBeFocused();
   await added.fill("The pilot covers all supported clients.");
+  await page.getByRole("checkbox", { name: "Review claim 5" }).check();
+  await expect(page.getByRole("status")).toContainText("5 of 5");
   await page.getByRole("button", { name: "Remove claim 5" }).click();
   await expect(added).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Claim 4" })).toBeFocused();
@@ -307,6 +310,8 @@ test("claim controls preserve the selection limit and keyboard editing", async (
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.getByRole("button", { name: "Run review" }).click();
+  await expect(page.locator(".findings > article")).toHaveCount(4);
 });
 
 test("settings require sign-in and store the appearance preference across reloads", async ({

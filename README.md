@@ -26,8 +26,8 @@ Open `/demo` on a current build to try CI coverage, replica consistency, or feat
 
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
 2. Open **Workspace**, enter a proposal, and select **Run stress test** for a live review. To explore first, choose a case from the **Example library**.
-3. Edit the claims, select up to three, and mark claims that could change your decision as **Critical to the plan**.
-4. Select **Run Tests** for a live review. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
+3. Edit the claims, select the ones you want to test, and mark claims that could change your decision as **Critical to the plan**.
+4. Check the **Adversarial panel** and choose which reviewers to include. Select **Run Tests** for a live review. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
 Before running a live review, expand **Project evidence** to attach or paste up to three text excerpts. Attachments become context for Crossfire’s analysis. The app sends that context to your configured model provider.
 
@@ -75,7 +75,7 @@ To use the authenticated workspace, install Python 3.11 or newer and run `npm ru
 
 ## How review works
 
-- **Claim Map.** Crossfire extracts testable assumptions and selects an adversarial panel. Confirm up to three claims before running tests.
+- **Claim Map.** Crossfire extracts testable assumptions and selects an adversarial panel. Confirm any or all claims before running tests.
 - **Isolated tests and cross-examination.** The selected evaluators test claims independently, look for evidence, and follow up on critical blockers.
 - **Decision Memo.** Crossfire’s Steelman reconciles findings into **Survived**, **Weakened**, **Broken**, or **Unresolved**. The memo records **Proceed**, **Proceed with Changes**, **Hold**, or **Drop**, with its deciding factor, dissent, and next actions when available.
 
