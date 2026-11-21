@@ -86,4 +86,30 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     page.getByLabel("Engineering proposal"),
     "::placeholder",
   );
+
+  const library = page.locator(".workspace-library");
+  const history = page.getByRole("region", { name: "Recent reports" });
+  for (const [scheme, apricot, blue] of [
+    ["dark", "rgb(82, 54, 45)", "rgb(41, 59, 81)"],
+    ["light", "rgb(255, 214, 191)", "rgb(220, 232, 255)"],
+  ] as const) {
+    if (scheme === "light") {
+      await page.getByRole("button", { name: "Dark mode" }).click();
+    }
+    await expect(page.locator("html")).toHaveAttribute("data-theme", scheme);
+    await expect(library).toHaveCSS("background-color", apricot);
+    await expect(history).toHaveCSS("background-color", blue);
+    await expectReadable(library.getByRole("heading"));
+    await expectReadable(library.getByText("Practice with bundled evidence."));
+    await expectReadable(history.getByRole("heading"));
+    await expectReadable(history.getByText("Saved in this tab."));
+    const example = library.getByRole("link", { name: /CI coverage/ });
+    await example.hover();
+    await expectReadable(example.getByText("Run fewer tests per pull request"));
+    const recent = history.getByRole("button", {
+      name: /Replace full test runs/,
+    });
+    await recent.hover();
+    await expectReadable(recent.locator("small"));
+  }
 });

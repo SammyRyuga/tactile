@@ -53,3 +53,4 @@
 - Added bounded redirects, compressed responses, partial-body processing, and per-source fetch diagnostics. Arithmetic now checks explicit equations in prose and covers all six quantitative corpus cases.
 - Stopped the proposal panel from stretching to match report history. Simplified the sidebar and verified it in Chromium at desktop and 320px widths, in RTL, and at a 720 CSS-pixel viewport.
 - Ran one credentialed Meta pass over all 15 development cases. Twenty-five of 36 findings were unresolved. [Measured results and misses](docs/evaluation.md#meta-development-pass)
+- Restored expressive apricot and blue surfaces for the compact workspace sidebar, with corresponding light and dark contrast checks.
