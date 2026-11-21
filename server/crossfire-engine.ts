@@ -137,10 +137,15 @@ function evaluatorStage(name: unknown) {
     : undefined;
 }
 
-export function createCrossfireEngine(pythonPath?: string) {
-  const executable = pythonPath ?? resolve(".venv/bin/python");
+export function createCrossfireEngine(pythonPath?: string, hosted = false) {
+  const dependencies =
+    hosted && !pythonPath ? resolve(".crossfire-python") : undefined;
+  const executable =
+    pythonPath ?? (dependencies ? "python3" : resolve(".venv/bin/python"));
   const worker = resolve("server/crossfire/worker.py");
-  accessSync(executable);
+  accessSync(
+    dependencies ? resolve(dependencies, "pydantic/__init__.py") : executable,
+  );
   accessSync(worker);
 
   async function run(
@@ -157,7 +162,11 @@ export function createCrossfireEngine(pythonPath?: string) {
       });
     const child = spawn(executable, ["-I", "-B", worker], {
       stdio: ["pipe", "pipe", "ignore"],
-      env: { PATH: process.env.PATH, PYTHON_DOTENV_DISABLED: "1" },
+      env: {
+        PATH: process.env.PATH,
+        PYTHON_DOTENV_DISABLED: "1",
+        TACTILE_CROSSFIRE_LIBS: dependencies,
+      },
     });
     const abort = () => child.kill("SIGTERM");
     signal.addEventListener("abort", abort, { once: true });

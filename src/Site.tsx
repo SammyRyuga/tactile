@@ -121,8 +121,7 @@ function Login({
         </h1>
         <p className="field-note">
           To review your own plan, add your Meta Model API key in Settings after
-          you sign in. <a href="/demo">Try the public demo</a> with bundled
-          evidence.
+          you sign in. You can try an example without a key after signing in.
         </p>
         {session ? (
           <a className="button primary" href={next}>
@@ -435,7 +434,10 @@ function AccountSite() {
           notice={notice}
         />
       ) : (
-        <Home signedIn={Boolean(session)} />
+        <Home
+          signedIn={Boolean(session)}
+          publicExamples={!loading && !client && !authUnavailable}
+        />
       )}
     </>
   );

@@ -131,3 +131,7 @@
 
 - Integrated the pinned Crossfire core in the authenticated live review flow. The review uses Crossfire’s extraction prompts, panel, ranking, reconciliation, and decision synthesis. The existing review room consumes translated progress events.
 - Retained Tactile’s model picker, API and report storage. Added Crossfire’s claim verdicts and memo sections to the current report layout. The gateway supplies the selected provider and Tactile’s bounded public-page reader.
+
+## Render release for Crossfire
+
+- Prepare and verify Crossfire’s Python dependencies during an authenticated Render build. Route bundled examples through sign-in on that service and retain the public fixture walkthrough for staging without Supabase.

@@ -1385,3 +1385,23 @@ test("Crossfire provider messages preserve roles and use Meta Responses content 
     '{"testable":true}',
   );
 });
+
+test("authenticated deployments redirect public example URLs into the protected workspace", async () => {
+  await withServer(
+    createApp(undefined, {
+      auth: { url: "https://project.example", publishableKey: "fixture" },
+    }),
+    async (url) => {
+      const example = await fetch(url + "/demo?example=replica", {
+        redirect: "manual",
+      });
+      assert.equal(example.status, 302);
+      assert.equal(example.headers.get("Location"), "/review?example=replica");
+      const unknown = await fetch(
+        url + "/demo?example=https://example.invalid",
+        { redirect: "manual" },
+      );
+      assert.equal(unknown.headers.get("Location"), "/review?example=flag");
+    },
+  );
+});
