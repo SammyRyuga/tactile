@@ -184,3 +184,9 @@
 - Placed Copy Markdown and Export Markdown in the Results header. The flag warning appears only when the recorded persisted-write claim was contradicted and cites the bundled timeline. Edited and unchecked claims retain their uncertainty and coverage guidance.
 - Labeled missing fixture checks as not included, distinct from skipped, incomplete, and completed checks. The finished memo has its own ready state. Inspected all four screens and the room in light and dark from 320 to 1440 CSS pixels, with a Chromium 200% zoom pass for long text and an empty selection.
 - Node 22.23.5 and 24.19.0 each passed 60 automated tests, 32 Chromium tests, fixture evaluation, production builds, and both dependency audits with zero vulnerabilities. All four Crossfire integration tests passed on Windows.
+
+## Public-demo black-box QA · November 22, 2026
+
+- Exercised 53 public-demo cases across 159 Chromium and Edge sessions. The matrix recorded 49 passing cases, three reproducible defects, and one blocked anonymous evidence-URL case.
+- The recorded demo preserved unchecked-claim warnings, kept unrelated claims unresolved without sources, and included portable fixture evidence in downloaded memos. Authenticated live review remains pending authorized configuration.
+- Documented zero-selection accessibility feedback, browser history skipping intermediate steps, and duplicate downloads on rapid activation in [the QA defect report](qa/blackbox/DEFECTS.md). The harness and evidence index are in [the QA run report](qa/blackbox/RUN_REPORT.md).
