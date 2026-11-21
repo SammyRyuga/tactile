@@ -15,6 +15,7 @@ import type {
   Source,
 } from "../shared/review.ts";
 import { checkArithmetic } from "./arithmetic.ts";
+import { readSource, sourceExcerpt } from "./source-reader.ts";
 import type { ReviewProvider } from "./provider.ts";
 
 const extractionSchema = z.object({
@@ -30,6 +31,7 @@ const checkSchema = z.object({
       id: z.string(),
       outcome: z.enum(["concern", "no credible concern", "needs information"]),
       observation: z.string(),
+      proposalExcerpt: z.string().nullable(),
     }),
   ),
 });
@@ -57,6 +59,7 @@ export const synthesisSchema = z.object({
       rationale: z.string(),
       nextStep: z.string(),
       sourceIds: z.array(z.string()),
+      proposalExcerpt: z.string().nullable(),
       reason: unresolvedReasonSchema.nullable(),
       missingInformation: z.string().nullable(),
       minimalFix: z.string().nullable(),
@@ -101,6 +104,10 @@ export async function extractClaims(
     throw new ProposalScopeError(
       "Add a testable engineering assumption before starting the review.",
     );
+  return capLoadBearing(claims);
+}
+
+function capLoadBearing(claims: Claim[]) {
   let critical = 0;
   const maxCritical = Math.max(1, Math.floor(claims.length / 2));
   return claims.map((claim) => ({
@@ -128,6 +135,12 @@ const specialists = [
     prompt:
       "Check ownership, operational burden, adoption friction, and rollout incentives.",
   },
+  {
+    stage: "Evidence critique",
+    risk: "evidence",
+    prompt:
+      "Look for insufficient measurements, mismatched comparison groups, and causal conclusions stronger than the proposed evidence. Missing evidence alone means needs information.",
+  },
 ] as const;
 
 type Audit = NonNullable<Finding["audit"]>;
@@ -143,8 +156,16 @@ export async function runReview(
   input: ReviewInput,
   emit: (event: ReviewEvent) => void,
   signal: AbortSignal,
-  options: { verifierModel?: string; log?: Log } = {},
+  options: {
+    verifierModel?: string;
+    log?: Log;
+    sourceReader?: typeof readSource;
+  } = {},
 ): Promise<Report> {
+  input = { ...input, claims: capLoadBearing(input.claims) };
+  const evidenceClaims = input.claims.filter(
+    ({ risk }) => risk === "technical" || risk === "evidence",
+  );
   async function check<T>(
     stage: ProgressEvent["stage"],
     run: () => Promise<T>,
@@ -187,7 +208,7 @@ export async function runReview(
       }
       const result = await check(stage, () =>
         provider.structured(
-          `${boundary} ${prompt} Return one finding per assigned ID. Choose no credible concern if the claim is sound. State missing local data without manufacturing criticism.`,
+          `${boundary} ${prompt} Return one finding per assigned ID. Choose no credible concern if the claim is sound. State missing local data without manufacturing criticism. If a concern follows directly from explicit proposal premises without external facts or unknown local state, provide an exact, contiguous, substantive quote of the relevant proposal text in proposalExcerpt. Otherwise use null.`,
           { proposal: input.proposal, claims },
           checkSchema,
           signal,
@@ -197,40 +218,53 @@ export async function runReview(
     }),
   );
 
-  const evidenceTask = check("Evidence", () =>
-    Promise.all(
-      input.claims.map(async (claim, claimIndex) => {
-        try {
-          const result = await provider.research(
-            `${boundary} Research public technical facts about the claim. Prefer original documentation. Use generic queries. Keep private names or project details out of searches. Attach a citation to each factual sentence and identify local measurements that cannot be established publicly.`,
-            { claim: claim.text, risk: claim.risk ?? "logic" },
-            signal,
-            { maxToolCalls: claim.loadBearing ? 3 : 2 },
-          );
-          return {
-            id: claim.id,
-            summary: result.text,
-            sources: result.citations.slice(0, 5).map(
-              (source, index): Source => ({
-                ...source,
-                id: `source-${claimIndex + 1}-${index + 1}`,
-              }),
-            ),
-            failed: false,
-          };
-        } catch (error) {
-          signal.throwIfAborted();
-          options.log?.({
-            stage: "Evidence",
-            event: "claim failed",
-            elapsedMs: 0,
-            errorType: error instanceof Error ? error.name : "unknown",
-          });
-          return { id: claim.id, summary: "", sources: [], failed: true };
-        }
-      }),
-    ),
-  );
+  if (!evidenceClaims.length)
+    emit({ type: "progress", stage: "Evidence", status: "skipped" });
+  const evidenceTask = evidenceClaims.length
+    ? check("Evidence", () =>
+        Promise.all(
+          evidenceClaims.map(async (claim) => {
+            const claimIndex = input.claims.indexOf(claim);
+            const started = Date.now();
+            try {
+              const result = await provider.research(
+                `${boundary} Start with searches for disconfirming evidence, counterexamples, and known failure modes. Check applicability and search for corroboration. If no credible counterevidence exists, say so. Prefer original documentation. Use generic queries. Keep private names or project details out of searches. Attach a citation to each factual sentence and identify local measurements that cannot be established publicly.`,
+                { claim: claim.text, risk: claim.risk ?? "logic" },
+                signal,
+                { maxToolCalls: claim.loadBearing ? 3 : 2 },
+              );
+              if (!result.citations.length)
+                options.log?.({
+                  stage: "Evidence",
+                  event: "zero citations",
+                  elapsedMs: Date.now() - started,
+                });
+              return {
+                id: claim.id,
+                summary: result.text,
+                sources: result.citations.slice(0, 5).map(
+                  (source, index): Source => ({
+                    url: source.url,
+                    title: source.title,
+                    id: `source-${claimIndex + 1}-${index + 1}`,
+                  }),
+                ),
+                failed: false,
+              };
+            } catch (error) {
+              signal.throwIfAborted();
+              options.log?.({
+                stage: "Evidence",
+                event: "claim failed",
+                elapsedMs: Date.now() - started,
+                errorType: error instanceof Error ? error.name : "unknown",
+              });
+              return { id: claim.id, summary: "", sources: [], failed: true };
+            }
+          }),
+        ),
+      )
+    : undefined;
 
   const mathByClaim = new Map(
     input.claims.map((claim) => [claim.id, checkArithmetic(claim.text)]),
@@ -246,12 +280,34 @@ export async function runReview(
     assessments,
     evidenceTask,
   ]);
-  const reviewable = (evidence ?? []).flatMap(({ id, sources }) =>
-    sources.map(({ id: sourceId, passage }) => ({
-      id: sourceId,
-      claim: input.claims.find((claim) => claim.id === id)?.text,
-      passage,
-    })),
+  const pages = new Map<string, Promise<string | undefined>>();
+  const read = options.sourceReader ?? readSource;
+  const cited = await Promise.all(
+    (evidence ?? []).flatMap(({ id, sources }) => {
+      const claim = input.claims.find((item) => item.id === id)?.text ?? "";
+      return sources.map(async (source) => {
+        const page =
+          pages.get(source.url) ??
+          read(source.url, signal).catch(() => undefined);
+        pages.set(source.url, page);
+        const body = await page;
+        const passage = body
+          ? sourceExcerpt(body, claim) || undefined
+          : undefined;
+        return {
+          source: {
+            ...source,
+            passage,
+            passageOrigin: passage ? ("source" as const) : undefined,
+          },
+          claim,
+        };
+      });
+    }),
+  );
+  signal.throwIfAborted();
+  const reviewable = cited.flatMap(({ source, claim }) =>
+    source.passage ? [{ id: source.id, claim, passage: source.passage }] : [],
   );
   const verification = reviewable.length
     ? await check("Verification", () =>
@@ -260,22 +316,25 @@ export async function runReview(
           { passages: reviewable },
           verificationSchema,
           signal,
-          options.verifierModel,
+          { model: options.verifierModel },
         ),
       )
     : undefined;
   if (!reviewable.length)
     emit({ type: "progress", stage: "Verification", status: "skipped" });
 
-  const annotated = (evidence ?? [])
-    .flatMap(({ sources }) => sources)
+  const annotated = cited
+    .map(({ source }) => source)
     .map((source) => {
       const judgments = verification?.judgments.filter(
         ({ id }) => id === source.id,
       );
       return {
         ...source,
-        relation: judgments?.length === 1 ? judgments[0].relation : undefined,
+        relation:
+          source.passage && judgments?.length === 1
+            ? judgments[0].relation
+            : undefined,
       };
     });
   const trails = input.claims.map((claim) => {
@@ -283,10 +342,19 @@ export async function runReview(
     const sources = annotated.filter((source) =>
       research?.sources.some(({ id }) => id === source.id),
     );
+    const internal: string[] = [];
     const checks: Audit = specialistResults
       .filter(({ claims }) => claims.some(({ id }) => id === claim.id))
       .map(({ stage, result }) => {
         const finding = result?.findings.find(({ id }) => id === claim.id);
+        const quote = finding?.proposalExcerpt?.trim();
+        if (
+          finding?.outcome === "concern" &&
+          quote &&
+          quote.length >= 12 &&
+          input.proposal.includes(quote)
+        )
+          internal.push(quote);
         return {
           stage,
           status: finding ? "complete" : "failed",
@@ -310,17 +378,23 @@ export async function runReview(
     checks.push(
       {
         stage: "Evidence",
-        status: research && !research.failed ? "complete" : "failed",
+        status: research
+          ? research.failed
+            ? "failed"
+            : "complete"
+          : "skipped",
         observation:
           research?.summary ||
           (research?.failed
             ? "The search request failed."
-            : "The search returned no summary."),
+            : research
+              ? "The search returned no summary."
+              : "This risk was routed to proposal analysis."),
         sourceIds: sources.map(({ id }) => id),
       },
       {
         stage: "Verification",
-        status: sources.length
+        status: sources.some(({ passage }) => passage)
           ? verification
             ? "complete"
             : "failed"
@@ -331,7 +405,7 @@ export async function runReview(
                 const explanation = verification?.judgments.find(
                   ({ id }) => id === source.id,
                 )?.explanation;
-                return `${source.title} · ${source.relation ?? "unverified"}${explanation ? ` · ${explanation}` : ""}`;
+                return `${source.title} · ${source.relation ?? (source.passage ? "unverified" : "source excerpt unavailable")}${explanation ? ` · ${explanation}` : ""}`;
               })
               .join("\n")
               .slice(0, 3600)
@@ -339,16 +413,17 @@ export async function runReview(
         sourceIds: sources.map(({ id }) => id),
       },
     );
-    return { claim, checks, sources };
+    return { claim, checks, sources, internal };
   });
 
   const result = await check("Synthesis", () =>
     provider.structured(
-      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Supported requires supporting passages, Contradicted requires directly contradictory passages, and Weakened requires qualifying or contradictory passages. Cite only IDs verified for that claim. If checks failed, sources conflict without resolution, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
+      `${boundary} Adjudicate each claim and give a practical, qualified decision recommendation. Supported requires supporting source passages. Contradicted and Weakened can follow from a directly contradictory or qualifying source passage or from an explicit proposal premise supplied in proposalExcerpts and a specialist concern. For a proposal-derived finding, copy the supplied exact quote into proposalExcerpt, explain the inference, and return no source IDs. Otherwise, use null for proposalExcerpt. Never use a proposal excerpt to assert an external fact or an unmeasured outcome. Check failures are local to that check. If no reliable basis remains, sources conflict, or local evidence is missing, use Unresolved with the corresponding reason and the precise missing information. For Weakened or Contradicted, give the smallest change that preserves the decision's intent and its concrete tradeoff. Use null for fields that do not apply.`,
       {
         proposal: input.proposal,
-        claims: trails.map(({ claim, checks, sources }) => ({
+        claims: trails.map(({ claim, checks, sources, internal }) => ({
           claim,
+          proposalExcerpts: internal,
           checks,
           sources: sources.filter(
             ({ relation }) => relation && relation !== "unrelated",
@@ -360,106 +435,142 @@ export async function runReview(
     ),
   );
 
-  const findings: Finding[] = trails.map(({ claim, checks, sources }) => {
-    const entries = result?.findings.filter(({ id }) => id === claim.id) ?? [];
-    const entry = entries.length === 1 ? entries[0] : undefined;
-    const unresolved = (
-      reason: NonNullable<Finding["reason"]>,
-      rationale: string,
-    ): Finding => ({
-      claim,
-      verdict: "Unresolved",
-      reason,
-      rationale,
-      nextStep:
-        entry?.nextStep.trim() ||
-        "Review the trail and collect project-specific evidence.",
-      missingInformation:
-        reason === "Check failed"
-          ? undefined
-          : entry?.missingInformation?.trim() ||
-            "A verified source or project-specific measurement that addresses this claim.",
-      sourceIds: [],
-      audit: checks,
-    });
-    if (!entry || checks.some(({ status }) => status === "failed")) {
-      if (!entry)
+  const findings: Finding[] = trails.map(
+    ({ claim, checks, sources, internal }) => {
+      const entries =
+        result?.findings.filter(({ id }) => id === claim.id) ?? [];
+      const entry = entries.length === 1 ? entries[0] : undefined;
+      const unresolved = (
+        reason: NonNullable<Finding["reason"]>,
+        rationale: string,
+      ): Finding => ({
+        claim,
+        verdict: "Unresolved",
+        reason,
+        rationale,
+        nextStep:
+          entry?.nextStep.trim() ||
+          "Review the trail and collect project-specific evidence.",
+        missingInformation:
+          reason === "Check failed"
+            ? undefined
+            : entry?.missingInformation?.trim() ||
+              "A verified source or project-specific measurement that addresses this claim.",
+        sourceIds: [],
+        audit: checks,
+      });
+      const mismatch = mathByClaim
+        .get(claim.id)
+        ?.find(({ correct }) => !correct);
+      if (mismatch) {
+        const correction =
+          mismatch.actual === null
+            ? "The expression has no finite result."
+            : `The expression evaluates to ${mismatch.actual}.`;
+        return {
+          claim,
+          verdict: "Contradicted",
+          rationale: `Arithmetic check · ${mismatch.equation}. ${correction}`,
+          nextStep:
+            "Correct the equation, then revisit any decision that depends on its result.",
+          sourceIds: [],
+          basis: "arithmetic",
+          audit: checks,
+        };
+      }
+      if (!entry) {
         checks.push({
           stage: "Synthesis",
           status: "failed",
           observation:
             "Synthesis did not return a valid result for this claim.",
         });
-      return unresolved(
-        "Check failed",
-        "One or more checks could not be completed.",
+        return unresolved(
+          "Check failed",
+          "One or more checks could not be completed.",
+        );
+      }
+      const selected = [...new Set(entry.sourceIds)].map((id) =>
+        sources.find((source) => source.id === id),
       );
-    }
-    const selected = [...new Set(entry.sourceIds)].map((id) =>
-      sources.find((source) => source.id === id),
-    );
-    const has = (relation: Source["relation"]) =>
-      selected.some((source) => source?.relation === relation);
-    const allowed = selected.every(
-      (source) => source?.relation && source.relation !== "unrelated",
-    );
-    const supports = sources.some(({ relation }) => relation === "supports");
-    const contradicts = sources.some(
-      ({ relation }) => relation === "contradicts",
-    );
-    if ((supports && contradicts) || entry.reason === "Sources conflict") {
-      return unresolved(
-        "Sources conflict",
-        "The checks found conflicting evidence that needs reconciliation.",
+      const has = (relation: Source["relation"]) =>
+        selected.some((source) => source?.relation === relation);
+      const allowed = selected.every(
+        (source) => source?.relation && source.relation !== "unrelated",
       );
-    }
-    if (
-      entry.verdict === "Supported" &&
-      mathByClaim.get(claim.id)?.some(({ correct }) => !correct)
-    ) {
-      return unresolved(
-        "Evidence insufficient",
-        "The arithmetic check found a mismatch in the stated equation.",
+      const supports = sources.some(({ relation }) => relation === "supports");
+      const contradicts = sources.some(
+        ({ relation }) => relation === "contradicts",
       );
-    }
-    const matches =
-      entry.verdict === "Supported"
-        ? has("supports")
-        : entry.verdict === "Contradicted"
-          ? has("contradicts")
-          : has("qualifies") || has("contradicts");
-    if (entry.verdict === "Unresolved" || !allowed || !matches) {
-      return unresolved(
-        entry.reason === "Check failed"
-          ? "Check failed"
-          : "Evidence insufficient",
-        entry.verdict === "Unresolved"
-          ? entry.rationale
-          : "The cited passages do not establish this verdict.",
-      );
-    }
-    return {
-      claim,
-      verdict: entry.verdict,
-      rationale: entry.rationale.slice(0, 700),
-      nextStep: entry.nextStep.slice(0, 700),
-      sourceIds: [...new Set(entry.sourceIds)],
-      repair:
-        entry.verdict !== "Supported" &&
-        entry.minimalFix?.trim() &&
-        entry.tradeoff?.trim()
-          ? {
-              minimalFix: entry.minimalFix.trim(),
-              tradeoff: entry.tradeoff.trim(),
-            }
-          : undefined,
-      audit: checks,
-    };
-  });
+      if ((supports && contradicts) || entry.reason === "Sources conflict") {
+        return unresolved(
+          "Sources conflict",
+          "The checks found conflicting evidence that needs reconciliation.",
+        );
+      }
+      const proposalDerived =
+        Boolean(
+          entry.proposalExcerpt &&
+          internal.includes(entry.proposalExcerpt.trim()),
+        ) &&
+        selected.length === 0 &&
+        (entry.verdict === "Contradicted" || entry.verdict === "Weakened");
+      const matches =
+        entry.verdict === "Supported"
+          ? has("supports")
+          : entry.verdict === "Contradicted"
+            ? has("contradicts")
+            : has("qualifies") || has("contradicts");
+      if (
+        entry.verdict === "Unresolved" ||
+        !allowed ||
+        (!matches && !proposalDerived)
+      ) {
+        return unresolved(
+          entry.reason === "Check failed" ||
+            (!matches && checks.some(({ status }) => status === "failed"))
+            ? "Check failed"
+            : "Evidence insufficient",
+          entry.verdict === "Unresolved"
+            ? entry.rationale
+            : "The completed checks do not establish this verdict.",
+        );
+      }
+      if (proposalDerived)
+        checks.push({
+          stage: "Synthesis",
+          status: "complete",
+          observation: `Proposal premise · ${internal.join(" · ")}`.slice(
+            0,
+            1400,
+          ),
+        });
+      return {
+        claim,
+        verdict: entry.verdict,
+        basis: proposalDerived ? "proposal" : "source",
+        rationale: entry.rationale.slice(0, 700),
+        nextStep: entry.nextStep.slice(0, 700),
+        sourceIds: [...new Set(entry.sourceIds)],
+        repair:
+          entry.verdict !== "Supported" &&
+          entry.minimalFix?.trim() &&
+          entry.tradeoff?.trim()
+            ? {
+                minimalFix: entry.minimalFix.trim(),
+                tradeoff: entry.tradeoff.trim(),
+              }
+            : undefined,
+        audit: checks,
+      };
+    },
+  );
   return {
     mode: "live",
     recommendation:
-      result?.recommendation.trim().slice(0, 800) ||
+      (findings.some(({ basis }) => basis === "arithmetic")
+        ? "Correct the contradicted calculation and reassess decisions that rely on it."
+        : result?.recommendation.trim().slice(0, 800)) ||
       "Review the completed checks and retry the unavailable ones before committing to the proposal.",
     findings,
     sources: annotated,

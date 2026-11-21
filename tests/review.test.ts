@@ -98,3 +98,23 @@ test("explicit arithmetic distinguishes valid, false, and undefined equations", 
     ],
   );
 });
+
+test("arithmetic respects precedence, grouping, strict boundaries and stated rounding", () => {
+  const equations =
+    "Capacity: 1,000 + 500 × 2 = 2,000; (20 - 4) / 2 / 2 = 4; 1 / 3 = 0.33 (rounded to 2 decimal places); 2.675 + 0 = 2.68 (rounded to 2 decimal places)";
+  assert.deepEqual(
+    checkArithmetic(equations).map(({ actual, correct }) => [actual, correct]),
+    [
+      [2000, true],
+      [4, true],
+      [0.33, true],
+      [2.68, true],
+    ],
+  );
+  assert.deepEqual(
+    checkArithmetic(
+      "v1 + 2 = 3; 10 + 2 = 12 ms; 100,00 + 2 = 10002; 2 + 2 = 4...",
+    ),
+    [],
+  );
+});

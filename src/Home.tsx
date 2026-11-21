@@ -130,8 +130,8 @@ export function Home({ signedIn }: { signedIn: boolean }) {
             holds, where it breaks, and what would change the verdict.
           </p>
           <div className="home-actions" data-hero-copy>
-            <a className="home-button filled" href="/review?example=ci">
-              {signedIn ? "Open an example" : "Sign in to review"}{" "}
+            <a className="home-button filled" href="/review">
+              {signedIn ? "Open workspace" : "Sign in to workspace"}{" "}
               <span aria-hidden="true">↗</span>
             </a>
             <a className="home-button plain" href="#examples">

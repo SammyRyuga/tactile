@@ -681,3 +681,73 @@
     transition: none;
   }
 }
+
+.workspace-sidebar {
+  display: grid;
+  gap: 1rem;
+  align-self: start;
+  min-width: 0;
+}
+
+.workspace-list {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.workspace-list :is(a, button) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid var(--review-rule);
+  border-radius: 0.85rem;
+  background: var(--review-paper);
+  color: var(--review-ink);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.workspace-list :is(a, button):hover {
+  border-color: var(--review-muted);
+  background: var(--review-ground);
+}
+
+.workspace-list small {
+  display: block;
+  color: var(--review-muted);
+  margin-top: 0.2rem;
+}
+
+.workspace-list :is(strong, small) {
+  overflow-wrap: anywhere;
+}
+
+.workspace-list svg {
+  flex: none;
+}
+
+.report-tools {
+  margin: 0 0 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-list :is(a, button) {
+    transition: none;
+  }
+}
+
+.finding-basis {
+  margin-inline-start: 0.6rem;
+  color: var(--review-muted);
+  font-size: 0.82rem;
+}

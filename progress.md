@@ -37,3 +37,10 @@
 - Required a verified Supabase session for the review workspace and Settings, including legacy example links.
 - Added motion to the claim editor with reduced-motion support, and a browser-persisted dark theme.
 - Added authenticated, session-scoped Meta Model API key settings and an adapter for Muse Spark. Provider requests are covered by fixtures pending a credentialed run.
+
+## Workspace and review reliability
+
+- Opened the blank proposal workspace after sign-in and moved optional cases into an example library. Added reduced-motion-aware transitions, recent reports that preserve the active draft, and clipboard export.
+- Routed search by risk, enforced the load-bearing cap at review time, and added an evidence specialist. Proposal-grounded findings survive unavailable search. Explicit arithmetic mismatches can determine a verdict.
+- Verified citation excerpts from bounded public HTTPS requests. Unavailable pages remain visible in the trail without a verification judgment. Exercised the source reader against the public PostgreSQL documentation.
+- Added a Meta verifier override, a citation smoke probe, and zero-citation diagnostics. Added a raw-proposal baseline, request metrics, and case-level uncertainty to the evaluation runner. Credentialed provider runs and independent holdout cases remain pending.

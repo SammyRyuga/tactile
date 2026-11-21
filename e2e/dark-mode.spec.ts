@@ -47,12 +47,18 @@ test("dark theme keeps headings, inputs, controls, and verdicts readable", async
     page.getByRole("heading", { name: "Inspect a review." }),
   );
   await expectReadable(
-    page.getByRole("link", { name: "Sign in to review", exact: true }),
+    page.getByRole("link", { name: "Sign in to workspace", exact: true }),
   );
   await page
-    .getByRole("link", { name: "Sign in to review", exact: true })
+    .getByRole("link", { name: "Sign in to workspace", exact: true })
     .click();
   await signIn(page);
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(
+    page.getByRole("heading", { name: "Describe your decision" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Engineering proposal")).toHaveValue("");
+  await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
     page.getByRole("heading", { name: "Confirm the claims" }),
   ).toBeVisible();

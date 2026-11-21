@@ -10,6 +10,7 @@ import {
   personalKeySchema,
 } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
+import type { readSource } from "./source-reader.ts";
 
 export function createApp(
   provider?: ReviewProvider,
@@ -21,12 +22,14 @@ export function createApp(
     allowDevAssets?: boolean;
     trustProxy?: boolean;
     verifierModel?: string;
+    metaVerifierModel?: string;
+    sourceReader?: typeof readSource;
   } = {},
 ) {
   const app = express();
   app.disable("x-powered-by");
   let active = 0;
-  const settings = createProviderSettings();
+  const settings = createProviderSettings(options.metaVerifierModel);
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
   const preAuthUsage = new Map<string, number>();
@@ -290,6 +293,7 @@ export function createApp(
       };
       const report = await runReview(client, input.data, emit, signal, {
         verifierModel: options.verifierModel,
+        sourceReader: options.sourceReader,
         log: (entry) =>
           console.info(
             JSON.stringify({

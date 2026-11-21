@@ -60,7 +60,11 @@ export function ReviewTrail({
                   )}
                   {source.passage && (
                     <blockquote>
-                      <small>Cited research excerpt</small>
+                      <small>
+                        {source.passageOrigin === "source"
+                          ? "Fetched source excerpt"
+                          : "Cited research excerpt"}
+                      </small>
                       <p>{source.passage}</p>
                     </blockquote>
                   )}

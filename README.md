@@ -21,9 +21,9 @@ Tactile turns a proposed change into testable claims. It routes those claims to 
 ## Try a review
 
 1. Sign in to [Tactile](https://tactile-compute50.onrender.com/login).
-2. Open a bundled example from the homepage, or enter a proposal in **Workspace** and select **Extract claims**.
+2. Open **Workspace**, enter a proposal, and select **Extract claims**. To explore first, choose a case from the **Example library**.
 3. Edit the claims, select up to three, and mark any that would change your decision if they failed as **Load-bearing**.
-4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then select **Export Markdown** to share the result.
+4. Select **Run review**. Open a finding’s **Review trail** to inspect the checks and evidence, then copy or export the report as Markdown. Recent reports are available in the same signed-in tab.
 
 The signed-in examples cover changed-package tests, replica consistency, and feature-flag rollback. They use bundled evidence and work without a provider key. Live reviews send your proposal to the configured provider and use web search where applicable. Use proposals you can share with the provider.
 
@@ -62,7 +62,8 @@ Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Sup
 | `SUPABASE_PUBLISHABLE_KEY` | Public key for browser authentication and authenticated quota calls.              |
 | `OPENAI_API_KEY`           | Optional server-side key shared by the deployment. Keep it out of source control. |
 | `OPENAI_MODEL`             | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.          |
-| `OPENAI_VERIFIER_MODEL`    | Optional model for passage verification. Defaults to the main model.              |
+| `OPENAI_VERIFIER_MODEL`    | Optional model for OpenAI passage verification. Defaults to the main model.       |
+| `META_VERIFIER_MODEL`      | Optional model for Meta passage verification. Defaults to Muse Spark.             |
 | `PORT`                     | HTTP port. Defaults to `5173` locally.                                            |
 | `ALLOWED_HOSTS`            | Comma-separated API hostnames for additional domains.                             |
 
@@ -70,7 +71,7 @@ Open [Tactile on localhost](http://127.0.0.1:5173/). Sign in with a verified Sup
 
 - **Claim selection.** Extract up to six claims from a proposal and confirm up to three for review.
 - **Checks by risk.** Route claims to specialist checks for assumptions, engineering feasibility, or adoption and operations. Load-bearing claims get a larger search allowance. Explicit equations in claim text are checked with deterministic arithmetic.
-- **Evidence and verdict.** Verify whether retrieved excerpts support, contradict, or qualify a claim. Keep source links and check observations visible in the report. An unresolved verdict identifies gaps in evidence, conflicting sources, or a failed check.
+- **Evidence and verdict.** Verify excerpts fetched from cited pages. Proposal-derived findings reference an explicit premise, and deterministic arithmetic can establish a contradiction directly. Keep source links and check observations visible in the report. An unresolved verdict identifies gaps in evidence, conflicting sources, or a failed check.
 - **Decision memo.** See the smallest viable change and tradeoff when the review identifies a repair. Export the findings and review trails as Markdown.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.

@@ -10,10 +10,16 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     page.getByRole("heading", { name: "Decisions, under load." }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Sign in to review", exact: true })
+    .getByRole("link", { name: "Sign in to workspace", exact: true })
     .click();
   await expect(page).toHaveURL(/\/login\?next=/);
   await signIn(page);
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(
+    page.getByRole("heading", { name: "Describe your decision" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Engineering proposal")).toHaveValue("");
+  await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
     page.getByRole("heading", { name: "Confirm the claims" }),
   ).toBeVisible();
@@ -31,6 +37,12 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
       "The consumer imports the changed public schema contract.",
     ),
   ).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy Markdown" }).click();
+  await expect(page.getByRole("status")).toHaveText("Report copied.");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+    "Tactile decision review",
+  );
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export Markdown" }).click();
   const download = await downloadPromise;
@@ -44,6 +56,20 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   await expect(
     page.getByRole("heading", { name: "Decision report" }),
   ).toBeVisible();
+  await page.goto("/review");
+  await page
+    .getByLabel("Engineering proposal")
+    .fill("A separate draft decision to preserve.");
+  const history = page.getByRole("region", { name: "Recent reports" });
+  await expect(history).toBeVisible();
+  await history.getByRole("button", { name: /Replace full test runs/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Decision report" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Back to workspace" }).click();
+  await expect(page.getByLabel("Engineering proposal")).toHaveValue(
+    "A separate draft decision to preserve.",
+  );
 });
 
 test("the case selector opens the corresponding bundled review", async ({

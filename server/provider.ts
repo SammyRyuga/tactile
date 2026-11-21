@@ -33,7 +33,7 @@ export interface ReviewProvider {
     data: unknown,
     schema: z.ZodType<T>,
     signal: AbortSignal,
-    modelOverride?: string,
+    verification?: { model?: string },
   ): Promise<T>;
   research(
     instruction: string,
@@ -43,11 +43,27 @@ export interface ReviewProvider {
   ): Promise<{ text: string; citations: Citation[] }>;
 }
 
+export type ProviderUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
+
+const usageSchema = z.object({
+  usage: z.object({
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
+  }),
+});
+
 export function createProvider(
   key: string,
   model: string,
   request = fetch,
   vendor: "openai" | "meta" = "openai",
+  config: {
+    verifierModel?: string;
+    onUsage?: (usage: ProviderUsage) => void;
+  } = {},
 ): ReviewProvider {
   async function respond(
     instructions: string,
@@ -78,17 +94,25 @@ export function createProvider(
           input: JSON.stringify(data),
           store: false,
           max_output_tokens: maxOutputTokens,
-          ...(requestModel.startsWith("gpt-5")
-            ? { reasoning: { effort: "low" } }
-            : {}),
+          ...(vendor === "meta"
+            ? { reasoning: { effort: "medium" } }
+            : requestModel.startsWith("gpt-5")
+              ? { reasoning: { effort: "low" } }
+              : {}),
           ...options,
         }),
+      });
+      const payload: unknown = response.ok ? await response.json() : undefined;
+      const usage = usageSchema.safeParse(payload);
+      config.onUsage?.({
+        inputTokens: usage.success ? usage.data.usage.input_tokens : null,
+        outputTokens: usage.success ? usage.data.usage.output_tokens : null,
       });
       if (!response.ok)
         throw new Error(
           `Provider request failed with status ${response.status}.`,
         );
-      return response.json();
+      return payload;
     }
     const first = await send(5500);
     const exhausted = z
@@ -118,14 +142,17 @@ export function createProvider(
       data: unknown,
       schema: z.ZodType<T>,
       signal: AbortSignal,
-      modelOverride?: string,
+      verification?: { model?: string },
     ) {
       const jsonSchema = z.toJSONSchema(schema);
       delete jsonSchema.$schema;
+      const verifier =
+        verification &&
+        (vendor === "openai"
+          ? (verification.model ?? config.verifierModel)
+          : config.verifierModel);
       const result = await respond(instruction, data, signal, {
-        ...(modelOverride && vendor === "openai"
-          ? { model: modelOverride }
-          : {}),
+        ...(verifier ? { model: verifier } : {}),
         text: {
           format: {
             type: "json_schema",

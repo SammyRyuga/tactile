@@ -51,6 +51,7 @@ export const stages = [
   "Feasibility",
   "Adoption",
   "Arithmetic",
+  "Evidence critique",
   "Evidence",
   "Verification",
   "Synthesis",
@@ -62,6 +63,7 @@ export const sourceSchema = z.object({
   id: idSchema,
   title: z.string(),
   passage: z.string().optional(),
+  passageOrigin: z.literal("source").optional(),
   startIndex: z.number().int().optional(),
   endIndex: z.number().int().optional(),
   relation: z
@@ -76,6 +78,7 @@ export const sourceSchema = z.object({
 export const findingSchema = z.object({
   claim: claimSchema,
   verdict: verdictSchema,
+  basis: z.enum(["proposal", "arithmetic", "source"]).optional(),
   rationale: z.string(),
   nextStep: z.string(),
   sourceIds: z.array(idSchema),
@@ -210,7 +213,7 @@ export function toMarkdown(
       lines.push(`- [${title}](<${url}>)`);
       if (source.passage)
         lines.push(
-          `  - Cited research excerpt · ${markdownText(source.passage)}`,
+          `  - ${source.passageOrigin === "source" ? "Fetched source excerpt" : "Cited research excerpt"} · ${markdownText(source.passage)}`,
         );
     }
   }

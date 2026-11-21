@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
+import { z } from "zod";
 import { createApp } from "../server/app.ts";
 import { createProvider } from "../server/provider.ts";
 import { runReview } from "../server/pipeline.ts";
@@ -11,6 +12,8 @@ import type { ReviewEvent } from "../shared/review.ts";
 
 const input = { proposal: demoProposal, claims: demoClaims.slice(0, 2) };
 const signal = new AbortController().signal;
+const sourceReader = async () =>
+  "Fetched page with text independent of the provider response.";
 const citation = {
   type: "url_citation",
   url: "https://example.com/source",
@@ -33,6 +36,8 @@ function mockProvider(
     malformed?: boolean;
     searchDown?: boolean;
     unrelated?: boolean;
+    internal?: boolean;
+    inventedQuote?: boolean;
   } = {},
 ) {
   return createProvider("fixture", "fixture", async (_url, init) => {
@@ -67,6 +72,11 @@ function mockProvider(
     }
     if (body.instructions.includes("Assess each research excerpt")) {
       const { passages } = JSON.parse(body.input);
+      assert.ok(
+        passages.every(({ passage }: { passage: string }) =>
+          passage.startsWith("Fetched page"),
+        ),
+      );
       return success(
         JSON.stringify({
           judgments: passages.map(({ id }: { id: string }) => ({
@@ -84,7 +94,11 @@ function mockProvider(
           recommendation: "Check before rollout.",
           findings: input.claims.map(({ id }, index) => ({
             id,
-            verdict: options.conflict ? "Unresolved" : "Supported",
+            verdict: options.conflict
+              ? "Unresolved"
+              : options.internal
+                ? "Contradicted"
+                : "Supported",
             rationale: options.conflict
               ? "The sources conflict."
               : "This mock has evidence.",
@@ -93,11 +107,16 @@ function mockProvider(
             missingInformation: options.conflict
               ? "A reconciled measurement."
               : null,
-            minimalFix: null,
-            tradeoff: null,
-            sourceIds: [
-              options.wrongCitation ? "unknown" : `source-${index + 1}-1`,
-            ],
+            proposalExcerpt: options.internal
+              ? "a shared schema package consumed by checkout and reporting"
+              : null,
+            minimalFix: options.internal
+              ? "Keep affected consumers in scope."
+              : null,
+            tradeoff: options.internal ? "Longer checks." : null,
+            sourceIds: options.internal
+              ? []
+              : [options.wrongCitation ? "unknown" : `source-${index + 1}-1`],
           })),
         }),
       );
@@ -106,8 +125,15 @@ function mockProvider(
       JSON.stringify({
         findings: input.claims.map(({ id }) => ({
           id,
-          outcome: "no credible concern",
-          observation: "No credible failure found within the fixture.",
+          outcome: options.internal ? "concern" : "no credible concern",
+          observation: options.internal
+            ? "A shared schema can affect its consumers."
+            : "No credible failure found within the fixture.",
+          proposalExcerpt: options.inventedQuote
+            ? "This text does not appear in the proposal."
+            : options.internal
+              ? "a shared schema package consumed by checkout and reporting"
+              : null,
         })),
       }),
     );
@@ -121,6 +147,7 @@ test("provider citation parsing keeps only valid URLs and parallel stages preced
     input,
     (event) => events.push(event),
     signal,
+    { sourceReader },
   );
   assert.deepEqual(
     report.findings.map(({ verdict }) => verdict),
@@ -162,6 +189,7 @@ for (const condition of [
       input,
       () => {},
       signal,
+      { sourceReader },
     );
     assert.ok(report.findings.every(({ verdict }) => verdict === "Unresolved"));
     assert.equal(
@@ -177,6 +205,81 @@ for (const condition of [
       assert.equal(report.recommendation, "Check before rollout.");
   });
 }
+
+test("proposal-derived contradiction and repair survive search failure", async () => {
+  const report = await runReview(
+    mockProvider({ internal: true, searchDown: true }),
+    input,
+    () => {},
+    signal,
+  );
+  assert.equal(report.findings[0].basis, "proposal");
+  assert.equal(report.findings[0].verdict, "Contradicted");
+  assert.ok(report.findings[0].repair);
+  assert.ok(
+    report.findings[0].audit?.some(
+      ({ stage, status }) => stage === "Evidence" && status === "failed",
+    ),
+  );
+  const invented = await runReview(
+    mockProvider({ internal: true, inventedQuote: true, searchDown: true }),
+    input,
+    () => {},
+    signal,
+  );
+  assert.equal(invented.findings[0].verdict, "Unresolved");
+});
+
+test("unreadable citations cannot support a verdict", async () => {
+  const report = await runReview(mockProvider(), input, () => {}, signal, {
+    sourceReader: async () => undefined,
+  });
+  assert.equal(report.findings[0].verdict, "Unresolved");
+  assert.equal(report.sources[0].passage, undefined);
+  assert.equal(report.sources[0].relation, undefined);
+});
+
+test("arithmetic decides an explicit mismatch even when synthesis fails", async () => {
+  const report = await runReview(
+    mockProvider({ malformed: true }),
+    {
+      ...input,
+      claims: [
+        { id: "math", risk: "logic", text: "(1,000 + 500) × 2 = 2,500" },
+      ],
+    },
+    () => {},
+    signal,
+  );
+  assert.equal(report.findings[0].basis, "arithmetic");
+  assert.equal(report.findings[0].verdict, "Contradicted");
+  assert.match(report.findings[0].rationale, /3000/);
+  assert.ok(
+    report.findings[0].audit?.some(
+      ({ stage, status }) => stage === "Evidence" && status === "skipped",
+    ),
+  );
+});
+
+test("review input cannot expand the server search budget", async () => {
+  const report = await runReview(
+    mockProvider(),
+    {
+      ...input,
+      claims: [
+        ...input.claims,
+        { ...input.claims[1], id: "extra", loadBearing: true },
+      ],
+    },
+    () => {},
+    signal,
+    { sourceReader },
+  );
+  assert.equal(
+    report.findings.filter(({ claim }) => claim.loadBearing).length,
+    1,
+  );
+});
 
 async function withServer(
   app: ReturnType<typeof createApp>,
@@ -202,7 +305,7 @@ function post(url: string, body: object, signal?: AbortSignal) {
 }
 
 test("live HTTP endpoints return extracted claims and a validated NDJSON report", async () => {
-  await withServer(createApp(mockProvider()), async (url) => {
+  await withServer(createApp(mockProvider(), { sourceReader }), async (url) => {
     const status = await fetch(url + "/api/status");
     assert.deepEqual(await status.json(), { live: true });
     const claims = await post(url + "/api/claims", { proposal: demoProposal });
@@ -240,23 +343,26 @@ test("client cancellation reaches in-flight provider work and the same input can
   });
   const provider = mockProvider();
   await withServer(
-    createApp({
-      ...provider,
-      structured(instructions, data, schema, signal) {
-        if (!stalled)
-          return provider.structured(instructions, data, schema, signal);
-        return new Promise((_, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              observeAbort();
-              reject(signal.reason);
-            },
-            { once: true },
-          );
-        });
+    createApp(
+      {
+        ...provider,
+        structured(instructions, data, schema, signal) {
+          if (!stalled)
+            return provider.structured(instructions, data, schema, signal);
+          return new Promise((_, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                observeAbort();
+                reject(signal.reason);
+              },
+              { once: true },
+            );
+          });
+        },
       },
-    }),
+      { sourceReader },
+    ),
     async (url) => {
       const controller = new AbortController();
       const response = await post(
@@ -385,6 +491,7 @@ test("Meta research calls Meta's Responses API with its search format", async ()
       const body = JSON.parse(String(init?.body));
       assert.equal(body.model, "muse-spark-1.3");
       assert.equal(body.store, false);
+      assert.deepEqual(body.reasoning, { effort: "medium" });
       assert.deepEqual(body.tools, [
         { type: "web_search", search_context_size: "high" },
       ]);
@@ -400,4 +507,23 @@ test("Meta research calls Meta's Responses API with its search format", async ()
     { maxToolCalls: 3 },
   );
   assert.equal(result.citations.length, 1);
+});
+
+test("Meta verification uses its own override and strict structured output", async () => {
+  const provider = createProvider(
+    "synthetic-test-key",
+    "muse-spark-1.3",
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, "muse-ember-1.0");
+      assert.equal(body.text.format.type, "json_schema");
+      assert.equal(body.text.format.strict, true);
+      return success("{}");
+    },
+    "meta",
+    { verifierModel: "muse-ember-1.0" },
+  );
+  await provider.structured("Verify a passage.", {}, z.object({}), signal, {
+    model: "gpt-5-mini",
+  });
 });

@@ -28,7 +28,7 @@ function sessionKey(
   }
 }
 
-export function createProviderSettings() {
+export function createProviderSettings(metaVerifierModel?: string) {
   const keys = new Map<string, { key: string; expiresAt: number }>();
   function get(account: string, token: string) {
     const id = sessionKey(account, token);
@@ -65,7 +65,9 @@ export function createProviderSettings() {
     provider(account: string, token: string) {
       const entry = get(account, token);
       return entry
-        ? createProvider(entry.key, "muse-spark-1.3", fetch, "meta")
+        ? createProvider(entry.key, "muse-spark-1.3", fetch, "meta", {
+            verifierModel: metaVerifierModel,
+          })
         : undefined;
     },
   };

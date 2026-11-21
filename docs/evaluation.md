@@ -1,19 +1,22 @@
 # Evaluation
 
-The development and holdout splits contain 15 cases each. Each split covers sound, mixed, uncertain, quantitative, and out-of-scope decisions. Expected findings are checked in before provider runs. The holdout cases are visible in the repository, so keep them out of prompt adjustments and document any reuse.
+The development and holdout splits contain 15 cases each across sound, mixed, uncertain, quantitative, and out-of-scope decisions. Expected findings are recorded before provider runs. The visible, team-authored holdout gives a preliminary comparison. A stronger evaluation needs new cases written and graded outside the project.
 
 ```sh
 npm run eval -- --list
 npm run eval -- --smoke
+npm run eval -- --smoke --meta
 npm run --silent eval -- --live development > development.jsonl
 npm run --silent eval -- --live holdout > holdout.jsonl
 npm run eval -- --score independent-marks.json
 ```
 
-The live runner repeats every case three times and stores raw outputs. It compares the full workflow with a single critique, a best-of-N pool with the same number of model requests, and a research baseline that can make multiple searches in one request. The comparison records call counts. Token budgets and provider prices can still differ. Out-of-scope cases compare the two scope gates.
+The default runner uses `OPENAI_API_KEY`. Set `META_API_KEY` locally for `--meta`. The Meta smoke test checks that the Responses API returns at least one URL citation, then exercises claim extraction and review. It prints stage diagnostics and fails if every adjudication check fails. `OPENAI_VERIFIER_MODEL` and `META_VERIFIER_MODEL` optionally select a separate verifier model for their provider. [Meta Responses schemas](https://dev.meta.ai/docs/api-reference/responses/schemas) · [Meta search grounding](https://dev.meta.ai/docs/cookbook/search-grounding)
 
-Assign a reviewer who did not develop the prompts. Blind system identities, grade each response against the expected finding, and check whether each citation directly supports the associated statement. For best-of-N, retain the strongest sample using the same rubric and report that selection as an upper bound.
+The live runner repeats each case three times and records raw outputs. Systems include Tactile, a single search-enabled critique, a best-of-N pool sized to Tactile’s provider request count, a research agent with a larger search budget, and a raw-proposal critique that receives only the original proposal. Out-of-scope cases compare the two scope gates. Metrics include elapsed time, observed HTTP responses, and input and output tokens when the provider reports them. Request counts and search settings are imperfect proxies for cost.
 
-Pass the scorer a JSON array with one object per evaluated case, repetition, and system. Fields are `caseId`, `repetition`, `system` (`tactile`, `single`, `best-of-n`, or `research-agent`), `caught`, `unsupportedConclusions`, `relevantCitations`, and `totalCitations`. Score the untouched holdout separately.
+Blind system identities and ask an independent reviewer to check the expected finding and verify each citation against its associated statement. Grade a false alarm when a response confidently asserts a substantive defect that is absent or unsupported. For best-of-N, grade the strongest response using the same rubric and report that score as an upper bound.
 
-No credentialed development or holdout result is available. The runner uses the configured provider quota and requires `OPENAI_API_KEY`.
+Pass the scorer one JSON object per evaluated case, repetition, and system. Each object includes `caseId`, `category`, `repetition`, `system` (`tactile`, `single`, `best-of-n`, `research-agent`, or `raw-proposal`), `caught`, `falseAlarm`, `unsupportedConclusions`, `relevantCitations`, and `totalCitations`. Score the two splits separately. Per-category and aggregate results include 95% percentile bootstrap intervals that resample whole cases, keeping repeated trials together. With only three cases per category, treat these estimates as descriptive.
+
+Credentialed smoke and comparative results are pending.

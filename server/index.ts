@@ -37,6 +37,7 @@ const app = createApp(hosted && !auth ? undefined : provider, {
   allowDevAssets: dev,
   trustProxy: hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
+  metaVerifierModel: process.env.META_VERIFIER_MODEL?.trim() || undefined,
 });
 app.get("/demo-evidence.html", (_request, response) =>
   response.redirect(301, "/example-evidence.html"),

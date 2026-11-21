@@ -1,9 +1,16 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import type { FormEvent } from "react";
-import { demoClaims, demoProposal, runDemo } from "../shared/demo.ts";
+import {
+  demoClaims,
+  demoExamples,
+  demoProposal,
+  runDemo,
+} from "../shared/demo.ts";
 import {
   claimSchema,
   reportSchema,
@@ -33,12 +40,13 @@ type Progress = Partial<
 type Workflow =
   | { page: "decision" | "claims" }
   | { page: "running"; progress: Progress }
-  | { page: "report"; report: Report };
+  | { page: "report"; report: Report; previewProposal?: string };
 
 type WorkflowAction =
   | { type: "decision" | "claims" | "start" }
   | ProgressEvent
-  | { type: "report"; report: Report };
+  | { type: "report"; report: Report }
+  | { type: "preview"; report: Report; proposal: string };
 
 function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
   switch (action.type) {
@@ -54,6 +62,12 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
             progress: { ...state.progress, [action.stage]: action.status },
           }
         : state;
+    case "preview":
+      return {
+        page: "report",
+        report: action.report,
+        previewProposal: action.proposal,
+      };
     case "report":
       return state.page === "running"
         ? { page: "report", report: action.report }
@@ -133,6 +147,29 @@ const savedDraftSchema = z
   })
   .refine(({ page, report }) => page !== "report" || Boolean(report));
 
+const recentSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      savedAt: z.string(),
+      proposal: z.string().max(limits.proposal),
+      report: reportSchema,
+    }),
+  )
+  .max(5);
+type Recent = z.infer<typeof recentSchema>[number];
+
+function readRecent(key: string): Recent[] {
+  try {
+    const result = recentSchema.safeParse(
+      JSON.parse(sessionStorage.getItem(key) ?? "[]"),
+    );
+    return result.success ? result.data : [];
+  } catch {
+    return [];
+  }
+}
+
 function readDraft(key: string) {
   try {
     const result = savedDraftSchema.safeParse(
@@ -172,6 +209,15 @@ export function App({
       : "example"
     : "workspace";
   const storageKey = `tactile-review-v1:${accountId ?? "guest"}:${locationKey}`;
+  const recentKey = `tactile-review-v1:${accountId ?? "guest"}:recent`;
+  const [recent, setRecent] = useState(() => readRecent(recentKey));
+  const [copyStatus, setCopyStatus] = useState("");
+  const reduceMotion = useReducedMotion();
+  const enter: MotionProps = {
+    initial: reduceMotion ? false : { opacity: 0, y: 8 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+  };
   const [saved] = useState(() => readDraft(storageKey));
   const [state, dispatch] = useReducer(
     reviewWorkflow,
@@ -189,9 +235,11 @@ export function App({
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
   const progress = page === "running" ? state.progress : undefined;
+  const previewProposal = page === "report" ? state.previewProposal : undefined;
   const [proposal, setProposal] = useState(
     saved?.proposal ?? (startExample ? example.proposal : ""),
   );
+  const reportProposal = previewProposal ?? proposal;
   const [claims, setClaims] = useState<ClaimDraft[]>(
     () => saved?.claims ?? (startExample ? seedDraft(example.claims) : []),
   );
@@ -209,6 +257,7 @@ export function App({
   const current = page === "decision" ? 0 : page === "claims" ? 1 : 2;
 
   useEffect(() => {
+    if (previewProposal !== undefined) return;
     try {
       sessionStorage.setItem(
         storageKey,
@@ -223,7 +272,15 @@ export function App({
     } catch {
       // The review remains usable when browser storage is unavailable.
     }
-  }, [storageKey, page, proposal, claims, mode, report]);
+  }, [storageKey, page, proposal, claims, mode, report, previewProposal]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(recentKey, JSON.stringify(recent));
+    } catch {
+      // Browser storage can be unavailable.
+    }
+  }, [recentKey, recent]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -321,9 +378,20 @@ export function App({
     const controller = new AbortController();
     request.current = controller;
     setError("");
+    setCopyStatus("");
     dispatch({ type: "start" });
     const emit = (event: ReviewEvent) => {
-      if (!controller.signal.aborted && event.type !== "error") dispatch(event);
+      if (controller.signal.aborted || event.type === "error") return;
+      if (event.type === "report") {
+        const record = {
+          id: crypto.randomUUID(),
+          savedAt: new Date().toISOString(),
+          proposal: input.data.proposal,
+          report: event.report,
+        };
+        setRecent((history) => [record, ...history].slice(0, 5));
+      }
+      dispatch(event);
     };
 
     try {
@@ -354,7 +422,31 @@ export function App({
     dispatch({ type: "claims" });
   }
 
+  function reopen(entry: Recent) {
+    setCopyStatus("");
+    setError("");
+    dispatch({
+      type: "preview",
+      report: entry.report,
+      proposal: entry.proposal,
+    });
+  }
+
+  async function copyReport(currentReport: Report) {
+    try {
+      await navigator.clipboard.writeText(
+        toMarkdown(reportProposal, currentReport, window.location.origin),
+      );
+      setCopyStatus("Report copied.");
+    } catch {
+      setCopyStatus(
+        "Clipboard unavailable. Use Export Markdown to save the report.",
+      );
+    }
+  }
+
   function restart() {
+    setCopyStatus("");
     dispatch({ type: "decision" });
     setProposal("");
     setClaims([]);
@@ -423,7 +515,7 @@ export function App({
         </div>
 
         {page === "decision" && (
-          <div className="decision-layout">
+          <motion.div key="decision" className="decision-layout" {...enter}>
             <section className="panel">
               <h2 ref={heading} tabIndex={-1}>
                 Describe your decision
@@ -472,50 +564,68 @@ export function App({
                   >
                     {extracting ? "Extracting claims…" : "Extract claims"}
                   </button>
-                  <button
-                    className={
-                      availability === "demo" &&
-                      proposal.trim() !== example.proposal
-                        ? "button primary"
-                        : "button"
-                    }
-                    type="button"
-                    disabled={extracting}
-                    onClick={openDemo}
-                  >
-                    Open example {mark("arrow")}
-                  </button>
                 </div>
               </form>
             </section>
-            <aside className="panel example">
-              <h2>Try an example</h2>
-              <p className="example-title">
-                {example.title ?? defaultExample.title}
-              </p>
-              <p>
-                {initialExample
-                  ? "Load the bundled proposal to see how its assumptions are tested."
-                  : "Faster test feedback sounds good. What happens when a change breaks a package that depends on it?"}
-              </p>
-              <button
-                className="button"
-                type="button"
-                disabled={extracting}
-                onClick={() => {
-                  setProposal(example.proposal);
-                  setError("");
-                  proposalField.current?.focus();
-                }}
-              >
-                Load example
-              </button>
+            <aside className="workspace-sidebar">
+              <section className="panel example">
+                <h2>Example library</h2>
+                <p>
+                  Try a proposal and review its claims with bundled evidence.
+                </p>
+                <ul className="workspace-list">
+                  {demoExamples.map((item) => (
+                    <li key={item.id}>
+                      <a href={`/review?example=${item.id}`}>
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.title}</small>
+                        </span>
+                        {mark("arrow")}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              {recent.length > 0 && (
+                <section
+                  className="panel example"
+                  aria-labelledby="recent-reports-title"
+                >
+                  <h2 id="recent-reports-title">Recent reports</h2>
+                  <p>Available in this tab for your current session.</p>
+                  <ul className="workspace-list">
+                    {recent.map((entry) => (
+                      <li key={entry.id}>
+                        <button type="button" onClick={() => reopen(entry)}>
+                          <span>
+                            <strong>
+                              {entry.proposal.split("\n")[0].slice(0, 85)}
+                            </strong>
+                            <small>
+                              {new Date(entry.savedAt).toLocaleDateString()} ·{" "}
+                              {entry.report.mode === "live"
+                                ? "Live review"
+                                : "Bundled example"}
+                            </small>
+                          </span>
+                          {mark("arrow")}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
             </aside>
-          </div>
+          </motion.div>
         )}
 
         {page === "claims" && (
-          <section className="panel claim-editor">
+          <motion.section
+            key="claims"
+            className="panel claim-editor"
+            {...enter}
+          >
             <div className="claim-editor-head">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
@@ -705,11 +815,11 @@ export function App({
                 </div>
               </div>
             </form>
-          </section>
+          </motion.section>
         )}
 
         {page === "running" && (
-          <section className="panel">
+          <motion.section key="running" className="panel" {...enter}>
             <h2 ref={heading} tabIndex={-1}>
               Reviewing your claims
             </h2>
@@ -739,11 +849,11 @@ export function App({
             <button type="button" className="button" onClick={cancelReview}>
               Cancel review
             </button>
-          </section>
+          </motion.section>
         )}
 
         {page === "report" && report && (
-          <section className="panel report">
+          <motion.section key="report" className="panel report" {...enter}>
             <div className="split report-header">
               <div>
                 <h2 ref={heading} tabIndex={-1}>
@@ -758,10 +868,22 @@ export function App({
               <button
                 type="button"
                 className="button"
-                onClick={() => exportReport(proposal, report)}
+                onClick={() => exportReport(reportProposal, report)}
               >
                 {mark("download")} Export Markdown
               </button>
+            </div>
+            <div className="actions report-tools">
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void copyReport(report)}
+              >
+                Copy Markdown
+              </button>
+              <span className="field-note" role="status">
+                {copyStatus}
+              </span>
             </div>
             <div className="recommendation">
               <h3>Recommended next step</h3>
@@ -769,7 +891,7 @@ export function App({
             </div>
             <details className="proposal">
               <summary>Read your proposal</summary>
-              <p>{proposal}</p>
+              <p>{reportProposal}</p>
             </details>
             <div className="findings">
               {report.findings.map((finding) => (
@@ -777,6 +899,15 @@ export function App({
                   <span className={`verdict ${finding.verdict.toLowerCase()}`}>
                     {finding.verdict}
                   </span>
+                  {finding.basis && (
+                    <span className="finding-basis">
+                      {finding.basis === "proposal"
+                        ? "Proposal reasoning"
+                        : finding.basis === "arithmetic"
+                          ? "Arithmetic check"
+                          : "Verified source"}
+                    </span>
+                  )}
                   <h3>{finding.claim.text}</h3>
                   <p>{finding.rationale}</p>
                   <p>
@@ -804,18 +935,34 @@ export function App({
               ))}
             </div>
             <div className="actions">
-              <button
-                type="button"
-                className="button"
-                onClick={() => dispatch({ type: "claims" })}
-              >
-                Edit claims
-              </button>
-              <button type="button" className="text-button" onClick={restart}>
-                Start a new review
-              </button>
+              {previewProposal !== undefined ? (
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => dispatch({ type: "decision" })}
+                >
+                  Back to workspace
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => dispatch({ type: "claims" })}
+                  >
+                    Edit claims
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={restart}
+                  >
+                    Start a new review
+                  </button>
+                </>
+              )}
             </div>
-          </section>
+          </motion.section>
         )}
 
         <footer>
