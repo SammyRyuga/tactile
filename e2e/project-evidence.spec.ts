@@ -4,7 +4,11 @@ import type { ReviewInput } from "../shared/review.ts";
 
 test("project evidence can verify a claim and support a one-claim re-review", async ({
   page,
-}) => {
+}, testInfo) => {
+  if (testInfo.project.name === "mobile") {
+    await page.setViewportSize({ width: 320, height: 820 });
+    await page.emulateMedia({ colorScheme: "dark" });
+  }
   await mockAuthentication(page);
   const quote =
     "Checkout staging p95 was 128 ms under 500 requests per second.";
@@ -120,6 +124,18 @@ test("project evidence can verify a claim and support a one-claim re-review", as
   await expect(page.getByLabel("Evidence excerpt 1")).toHaveValue(quote);
   const claim = page.locator(".claim-row").nth(1);
   await claim.getByText("Claim options").click();
+  const risk = claim.getByRole("combobox", { name: "Main risk for claim 2" });
+  await risk.press("Space");
+  await expect(risk).toHaveCSS("appearance", "base-select");
+  await expect(risk.locator("option:checked")).toHaveCSS(
+    "background-color",
+    testInfo.project.name === "mobile"
+      ? "rgb(41, 59, 81)"
+      : "rgb(220, 232, 255)",
+  );
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(risk).toHaveValue("evidence");
   await claim.getByText("Add an engineering check").click();
   await claim.getByLabel("Check", { exact: true }).selectOption("throughput");
   await claim.getByLabel("Jobs per minute per worker").fill("120");
@@ -134,6 +150,7 @@ test("project evidence can verify a claim and support a one-claim re-review", as
     "builder",
   ]);
   expect(submitted[0].projectEvidence?.[0].text).toBe(quote);
+  expect(submitted[0].claims[1].risk).toBe("evidence");
   expect(submitted[0].claims[1].engineeringCheck?.values).toEqual([120, 5, 10]);
   await page.getByText("Settle this claim").click();
   const artifact = page.waitForEvent("download");

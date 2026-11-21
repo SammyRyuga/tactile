@@ -658,15 +658,6 @@ a.button {
   align-items: center;
   margin: 0;
 }
-.claim-meta select {
-  max-width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 0.35rem;
-  color: var(--ink);
-  background: var(--paper);
-  padding: 0.35rem;
-  font: inherit;
-}
 .finding-note {
   background: var(--tint);
   border-radius: 0.45rem;
