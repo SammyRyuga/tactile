@@ -12,6 +12,35 @@ import {
   validateMetaKey,
 } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
+import { ProviderResponseError } from "./provider.ts";
+
+function providerFailure(error: unknown, timedOut: boolean) {
+  if (timedOut || (error instanceof Error && error.name === "TimeoutError"))
+    return {
+      status: 504,
+      message:
+        "The provider request timed out. Your inputs are ready to retry.",
+    };
+  if (error instanceof ProviderResponseError) {
+    if ([402, 429].includes(error.status))
+      return {
+        status: 429,
+        message:
+          "The provider reached a usage or billing limit. Check provider usage and try again.",
+      };
+    if ([401, 403].includes(error.status))
+      return {
+        status: 502,
+        message:
+          "The provider rejected the configured key or model access. Check Settings and try again.",
+      };
+  }
+  return {
+    status: 503,
+    message:
+      "The live provider is temporarily unavailable. Try again shortly. Your inputs are ready to retry.",
+  };
+}
 
 export function createApp(
   provider?: ReviewProvider,
@@ -228,6 +257,19 @@ export function createApp(
     response.json({ saved: false });
   });
 
+  async function reserveQuota(session: { account: string; token: string }) {
+    if (options.reserveUsage) return options.reserveUsage(session.token);
+    const now = Date.now();
+    if (now >= windowEnds) {
+      windowEnds = now + 3_600_000;
+      accountUsage.clear();
+    }
+    const count = accountUsage.get(session.account) ?? 0;
+    if (count >= 12) return false;
+    accountUsage.set(session.account, count + 1);
+    return true;
+  }
+
   async function execute(
     request: Request,
     response: Response,
@@ -239,56 +281,19 @@ export function createApp(
         .json({ message: "Expected an application/json request." });
       return;
     }
-    let client = provider;
-    if (options.verifySession) {
-      const session = await requireSession(request, response);
-      if (!session) return;
-      client = settings.provider(session.account, session.token) ?? provider;
-      if (!client) {
-        response.status(409).json({
-          message:
-            "Add a Meta Model API key in Settings to extract claims or run a live review.",
-        });
-        return;
-      }
-      if (active >= 2) {
-        response
-          .status(429)
-          .json({ message: "Reviews are busy. Try again shortly." });
-        return;
-      }
-      try {
-        let allowed: boolean;
-        if (options.reserveUsage) {
-          allowed = await options.reserveUsage(session.token);
-        } else {
-          const now = Date.now();
-          if (now >= windowEnds) {
-            windowEnds = now + 3_600_000;
-            accountUsage.clear();
-          }
-          const count = accountUsage.get(session.account) ?? 0;
-          allowed = count < 12;
-          if (allowed) accountUsage.set(session.account, count + 1);
-        }
-        if (response.destroyed) return;
-        if (!allowed) {
-          response.status(429).json({
-            message: "The hourly live review limit has been reached.",
-          });
-          return;
-        }
-      } catch {
-        response.status(503).json({
-          message: "Review quota verification is temporarily unavailable.",
-        });
-        return;
-      }
-    }
+    const session = options.verifySession
+      ? await requireSession(request, response)
+      : undefined;
+    if (options.verifySession && !session) return;
+    const client =
+      (session && settings.provider(session.account, session.token)) ??
+      provider;
     if (!client) {
-      response
-        .status(503)
-        .json({ message: "Live reviews require a provider key." });
+      response.status(session ? 409 : 503).json({
+        message: session
+          ? "Add a Meta Model API key in Settings to extract claims or run a live review."
+          : "Live reviews require a provider key.",
+      });
       return;
     }
     if (active >= 2) {
@@ -306,6 +311,25 @@ export function createApp(
     ]);
     active++;
     try {
+      if (session) {
+        try {
+          const allowed = await reserveQuota(session);
+          if (response.destroyed) return;
+          if (!allowed) {
+            response.status(429).json({
+              message: "The hourly live review limit has been reached.",
+            });
+            return;
+          }
+        } catch {
+          if (!response.destroyed)
+            response.status(503).json({
+              message: "Review quota verification is temporarily unavailable.",
+            });
+          return;
+        }
+      }
+      signal.throwIfAborted();
       await run(client, signal);
     } catch (error) {
       if (disconnected.signal.aborted) return;
@@ -321,14 +345,12 @@ export function createApp(
           timeout: signal.aborted,
         }),
       );
-      const message = signal.aborted
-        ? "The review timed out. Your inputs are ready to retry."
-        : "The live provider could not complete the request. Check your key and try again.";
+      const { status, message } = providerFailure(error, signal.aborted);
       if (response.headersSent) {
         const event: ReviewEvent = { type: "error", message };
         response.end(JSON.stringify(event) + "\n");
       } else {
-        response.status(signal.aborted ? 504 : 502).json({ message });
+        response.status(status).json({ message });
       }
     } finally {
       active--;

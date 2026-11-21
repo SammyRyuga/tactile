@@ -16,6 +16,12 @@ export function ReviewTrail({
   );
   return (
     <>
+      {finding.proposalExcerpt && (
+        <div className="finding-note">
+          <strong>Verified proposal excerpt</strong>
+          <blockquote>{finding.proposalExcerpt}</blockquote>
+        </div>
+      )}
       {finding.reason && (
         <div className="finding-note">
           <strong>{finding.reason}</strong>

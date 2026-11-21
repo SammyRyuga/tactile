@@ -40,6 +40,17 @@ test("edited claims lose fixture citations and stay unresolved", () => {
   );
 });
 
+test("citation destinations are serialized as safe Markdown URLs", () => {
+  const report = demoReport({
+    proposal: demoProposal,
+    claims: [demoClaims[0]],
+  });
+  report.sources[0].url = "https://example.com/a>\n?q=<tag>";
+  const markdown = toMarkdown(demoProposal, report);
+  assert.match(markdown, /<https:\/\/example\.com\/a%3E\?q=%3Ctag%3E>/);
+  assert.doesNotMatch(markdown, /<tag>/);
+});
+
 test("review validation requires one to three distinct non-empty claims", () => {
   const valid = { proposal: demoProposal, claims: demoClaims.slice(0, 3) };
   assert.equal(reviewInputSchema.safeParse(valid).success, true);
@@ -178,6 +189,7 @@ test("implicit integer rounding is distinguished from exact arithmetic errors", 
     ["100 / 3 = 33.3", true, undefined],
     ["100 / 3 = 33", false, "nearest integer"],
     ["1000 / 7 = 142 requests", false, "floor"],
+    ["100 / 3 = 34 workers", false, "ceiling"],
     ["100 / 3 = exactly 33", false, undefined],
     ["100 / 3 = 33 (rounded to 0 decimal places)", true, undefined],
     ["100 / 3 = 30 requests", false, undefined],
@@ -186,4 +198,8 @@ test("implicit integer rounding is distinguished from exact arithmetic errors", 
     assert.equal(finding?.correct, correct, text);
     assert.equal(finding?.rounding, rounding, text);
   }
+});
+
+test("a partial right-hand expression cannot produce a deterministic verdict", () => {
+  assert.deepEqual(checkArithmetic("2 + 2 = 5 - 1; 12 / 2 = 12 / 2"), []);
 });

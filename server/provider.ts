@@ -59,6 +59,16 @@ const usageSchema = z.object({
 
 export const metaStructuredEffort = "low";
 
+export class ProviderResponseError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`Provider request failed with status ${status}.`);
+    this.name = "ProviderResponseError";
+    this.status = status;
+  }
+}
+
 export function createProvider(
   key: string,
   model: string,
@@ -67,6 +77,7 @@ export function createProvider(
   config: {
     verifierModel?: string;
     requestTimeoutMs?: number;
+    onRequest?: () => void;
     onUsage?: (usage: ProviderUsage) => void;
   } = {},
 ): ReviewProvider {
@@ -89,8 +100,10 @@ export function createProvider(
         vendor === "meta"
           ? "https://api.meta.ai/v1/responses"
           : "https://api.openai.com/v1/responses";
+      config.onRequest?.();
       const response = await request(endpoint, {
         method: "POST",
+        redirect: "error",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${key}`,
@@ -120,10 +133,10 @@ export function createProvider(
         inputTokens: usage.success ? usage.data.usage.input_tokens : null,
         outputTokens: usage.success ? usage.data.usage.output_tokens : null,
       });
-      if (!response.ok)
-        throw new Error(
-          `Provider request failed with status ${response.status}.`,
-        );
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new ProviderResponseError(response.status);
+      }
       return payload;
     }
     const first = await send(5500);
