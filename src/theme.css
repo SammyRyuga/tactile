@@ -213,8 +213,7 @@
     .review-workspace .intro p,
     .claim-editor-head p,
     .claim-row-head .claim-name,
-    .claim-mode,
-    .review-workspace .step-count
+    .claim-mode
   ) {
   color: #cbd7c9;
 }
@@ -241,18 +240,17 @@
   background: #2c382d;
   border-color: #829868;
 }
-[data-theme="dark"]
-  :is(
-    .claim-pick,
-    .claim-pick:has(:disabled),
-    .review-workspace .claim-editor .claim-meta select,
-    .review-workspace .example-title,
-    .review-workspace .claim-remove,
-    .review-workspace .step-count
-  ) {
-  background: #354437;
+[data-theme="dark"] .claim-pick,
+[data-theme="dark"] .review-workspace .claim-editor .claim-meta select,
+[data-theme="dark"] .review-workspace .example-title,
+[data-theme="dark"] .review-workspace .claim-remove {
+  background: var(--dark-control);
   border-color: #5a6c5b;
   color: #e0eadd;
+}
+[data-theme="dark"] .claim-pick:has(:disabled) {
+  background: #2f3a30;
+  color: #aebcad;
 }
 [data-theme="dark"] .claim-pick[data-checked="true"] {
   background: #40532d;
@@ -311,4 +309,142 @@
 }
 [data-theme="dark"] :focus-visible {
   outline-color: #c9e888;
+}
+
+:root[data-theme="dark"] {
+  --dark-control: #354437;
+  --dark-hover: #3a4c3e;
+  --dark-accent: #dafa70;
+  --dark-on-accent: #172015;
+  --dark-info: #293b51;
+  --dark-on-info: #e2edff;
+  --dark-success: #384b2b;
+  --dark-on-success: #e4f5c5;
+  --dark-warning: #4c3a22;
+  --dark-on-warning: #ffe4ad;
+  --dark-danger: #50312b;
+  --dark-on-danger: #ffd4c9;
+  background: var(--paper-ground);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .examples-field {
+  color: var(--ink);
+}
+
+[data-theme="dark"] .review-workspace .steps li {
+  background: #394b62;
+  color: var(--dark-on-info);
+}
+
+[data-theme="dark"] .review-workspace .steps li[aria-current] {
+  background: var(--dark-accent);
+  color: var(--dark-on-accent);
+}
+
+[data-theme="dark"] .review-workspace .steps .step-count {
+  background: transparent;
+  border-color: currentColor;
+  color: inherit;
+}
+
+[data-theme="dark"] .review-workspace .steps [aria-current] .step-count {
+  background: var(--dark-on-accent);
+  border-color: transparent;
+  color: var(--dark-accent);
+}
+
+[data-theme="dark"] :is(input, textarea)::placeholder {
+  color: #a6b4a5;
+  opacity: 1;
+}
+
+[data-theme="dark"] :is(.review-workspace, .auth-page) textarea:focus-visible,
+[data-theme="dark"] .auth-page input:focus-visible {
+  outline-color: #c9e888;
+}
+
+[data-theme="dark"]
+  .review-workspace
+  .claim-editor
+  .claim-row
+  textarea:is(:hover, :focus) {
+  background: #1b211c;
+  border-color: #7c907e;
+}
+
+[data-theme="dark"]
+  :is(.review-workspace, .auth-page)
+  .button:not(.primary):not(:disabled),
+[data-theme="dark"] .settings-page .button:not(.primary):not(:disabled) {
+  border-color: #829184;
+}
+
+[data-theme="dark"]
+  :is(.review-workspace, .auth-page, .settings-page)
+  :is(.button:not(.primary), .text-button):not(:disabled):hover {
+  background: var(--dark-hover);
+  color: var(--ink);
+}
+
+[data-theme="dark"]
+  :is(.review-workspace, .auth-page, .settings-page)
+  .button.primary:not(:disabled):hover {
+  background: #cbea62;
+  color: var(--dark-on-accent);
+}
+
+[data-theme="dark"]
+  :is(.review-workspace, .auth-page, .settings-page)
+  .button:disabled {
+  background: #303b31;
+  border-color: #59685b;
+  color: #adbbad;
+}
+
+[data-theme="dark"] .review-workspace input[type="checkbox"] {
+  accent-color: #c8e482;
+}
+
+[data-theme="dark"] .review-workspace .claim-remove:hover {
+  background: var(--dark-danger);
+  color: var(--dark-on-danger);
+}
+
+[data-theme="dark"] :is(.review-workspace, .home-page) .verdict {
+  background: var(--dark-control);
+  color: var(--ink);
+}
+
+[data-theme="dark"] :is(.review-workspace, .home-page) .verdict.supported,
+[data-theme="dark"] .review-workspace .review-trail h4 .check-status.complete,
+[data-theme="dark"] .review-workspace .activity li[data-status="done"] {
+  background: var(--dark-success);
+  color: var(--dark-on-success);
+}
+
+[data-theme="dark"] :is(.review-workspace, .home-page) .verdict.weakened {
+  background: var(--dark-warning);
+  color: var(--dark-on-warning);
+}
+
+[data-theme="dark"] :is(.review-workspace, .home-page) .verdict.contradicted,
+[data-theme="dark"] .review-workspace .review-trail h4 .check-status.failed,
+[data-theme="dark"] .review-workspace .activity li[data-status="unavailable"] {
+  background: var(--dark-danger);
+  color: var(--dark-on-danger);
+}
+
+[data-theme="dark"] .review-workspace .activity li[data-status="running"] {
+  background: var(--dark-info);
+  color: var(--dark-on-info);
+}
+
+[data-theme="dark"] .review-workspace .activity span {
+  color: inherit;
+}
+
+[data-theme="dark"] .review-workspace .review-trail h4 .check-status.skipped {
+  background: var(--dark-control);
+  color: var(--quiet);
 }

@@ -15,3 +15,23 @@ pre {
 a {
   color: #254d39;
 }
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  background: #171b18;
+}
+
+[data-theme="dark"] body {
+  color: #edf1e8;
+  background: #171b18;
+}
+
+[data-theme="dark"] pre {
+  color: #edf1e8;
+  background: #222a24;
+  border-color: #58665a;
+}
+
+[data-theme="dark"] a {
+  color: #d1eb9e;
+}
