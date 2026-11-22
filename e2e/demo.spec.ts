@@ -1,6 +1,63 @@
 import { expect, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { mockAuthentication, signIn } from "./auth-fixture.ts";
+
+test("the production demo stays public after a worker startup failure", async ({
+  page,
+  request,
+}) => {
+  const reservation = createServer().listen(0, "127.0.0.1");
+  await once(reservation, "listening");
+  const address = reservation.address();
+  if (!address || typeof address === "string")
+    throw new Error("Could not reserve a smoke test port.");
+  await new Promise<void>((finish) => reservation.close(() => finish()));
+  const origin = `http://127.0.0.1:${address.port}`;
+  const directory = await mkdtemp(join(tmpdir(), "tactile-no-python-"));
+  const server = spawn(process.execPath, ["build/server/index.js"], {
+    env: {
+      ...process.env,
+      RENDER: "",
+      PORT: String(address.port),
+      SUPABASE_URL: origin,
+      SUPABASE_PUBLISHABLE_KEY: "fixture",
+      TACTILE_PYTHON: join(directory, "absent-python"),
+      OPENAI_API_KEY: "",
+      META_API_KEY: "",
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  const exited = once(server, "exit");
+  let diagnostic = "";
+  server.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+    diagnostic += chunk;
+  });
+  try {
+    await expect
+      .poll(() => diagnostic)
+      .toContain('"reason":"python_not_found"');
+    expect(diagnostic).not.toContain("absent-python");
+    expect((await request.get(origin + "/health")).ok()).toBe(true);
+    expect(
+      (await request.get(origin + "/api/settings/provider")).status(),
+    ).toBe(401);
+    await page.goto(origin + "/demo?example=flag");
+    await page.getByRole("button", { name: "Review example" }).click();
+    await page.getByRole("button", { name: "Run checks" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Review results" }),
+    ).toBeVisible();
+  } finally {
+    server.kill();
+    await exited;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("signed-in user reviews an example, exports, and restores the report", async ({
   page,

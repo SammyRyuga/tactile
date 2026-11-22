@@ -1,4 +1,5 @@
 import { createCrossfireEngine } from "./crossfire-engine.ts";
+import { CrossfireStartupError } from "./crossfire-runtime.ts";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
@@ -34,20 +35,28 @@ const proxyRanges = (process.env.TRUSTED_PROXY_RANGES ?? "")
   .map((range) => range.trim())
   .filter(Boolean)
   .map((range) => ipaddr.parseCIDR(range));
-let crossfire: ReturnType<typeof createCrossfireEngine> | undefined;
-if (auth) {
+async function initializeCrossfire() {
   try {
     const engine = createCrossfireEngine(process.env.TACTILE_PYTHON, hosted);
-    engine.checkRuntime();
-    crossfire = engine;
-  } catch {
-    console.error(JSON.stringify({ event: "crossfire_runtime_unavailable" }));
+    const readiness = await engine.checkRuntime();
+    appOptions.crossfire = engine;
+    appOptions.crossfireUnavailable = false;
+    console.info(
+      JSON.stringify({ event: "crossfire_runtime_ready", ...readiness }),
+    );
+  } catch (error) {
+    const diagnostic =
+      error instanceof CrossfireStartupError
+        ? error.diagnostic
+        : { reason: "spawn_failed" };
+    console.error(
+      JSON.stringify({ event: "crossfire_runtime_unavailable", ...diagnostic }),
+    );
   }
 }
-const app = createApp(provider, {
+const appOptions: NonNullable<Parameters<typeof createApp>[1]> = {
   auth,
-  crossfire,
-  crossfireUnavailable: Boolean(auth && !crossfire),
+  crossfireUnavailable: Boolean(auth),
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,
   revision: hosted ? process.env.RENDER_GIT_COMMIT : undefined,
@@ -63,7 +72,8 @@ const app = createApp(provider, {
           "proxy"
     : hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
-});
+};
+const app = createApp(provider, appOptions);
 app.get("/demo-evidence.html", (_request, response) =>
   response.redirect(301, "/example-evidence.html"),
 );
@@ -99,8 +109,9 @@ if (dev) {
   );
 }
 
-server.listen(port, host, () =>
+server.listen(port, host, () => {
   console.log(
     `Tactile ready at http://${host}:${port} (${provider ? "shared provider configured" : "per-session provider settings"})`,
-  ),
-);
+  );
+  if (auth) void initializeCrossfire();
+});

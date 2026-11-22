@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createApp } from "../server/app.ts";
 import { toMarkdown } from "../shared/review.ts";
 import { reviewModelSchema } from "../shared/models.ts";
@@ -12,6 +15,11 @@ import {
   CrossfireClarification,
   CrossfireRuntimeError,
 } from "../server/crossfire-engine.ts";
+import {
+  CrossfireStartupError,
+  crossfireRuntime,
+  verifyCrossfireRuntime,
+} from "../server/crossfire-runtime.ts";
 import type { ReviewProvider } from "../server/provider.ts";
 import { createProvider, ProviderResponseError } from "../server/provider.ts";
 import type { ReviewEvent } from "../shared/review.ts";
@@ -181,7 +189,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
       return { text: passage };
     },
   );
-  mockEngine.checkRuntime();
+  await mockEngine.checkRuntime();
   const app = createApp(undefined, {
     auth: { url: "https://auth.example.invalid", publishableKey: "fixture" },
     crossfire: mockEngine,
@@ -536,7 +544,10 @@ test("SEC-02 · Crossfire stops on provider quota and preserves the retry delay"
 
 test("Crossfire subprocess exit is distinguishable from a provider failure", async () => {
   const brokenEngine = createCrossfireEngine(process.execPath);
-  assert.throws(() => brokenEngine.checkRuntime(), CrossfireRuntimeError);
+  await assert.rejects(
+    () => brokenEngine.checkRuntime(),
+    CrossfireStartupError,
+  );
   const provider = createProvider(
     "synthetic-key",
     "fixture",
@@ -549,6 +560,99 @@ test("Crossfire subprocess exit is distinguishable from a provider failure", asy
     () => brokenEngine.extract(provider, proposal, AbortSignal.timeout(8_000)),
     CrossfireRuntimeError,
   );
+});
+
+test("Crossfire readiness accepts delayed JSON and reports bounded startup failures", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "tactile-worker-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const runtime = crossfireRuntime(
+    process.env.TACTILE_PYTHON,
+    process.env.RENDER === "true",
+  );
+  const worker = join(directory, "worker.py");
+  const fixture = { ...runtime, worker };
+  const missingTarget = join(directory, "missing-deps");
+  const emptyTarget = join(directory, "empty-deps");
+  await mkdir(emptyTarget);
+
+  await assert.rejects(
+    verifyCrossfireRuntime({
+      ...runtime,
+      executable: join(directory, "missing-python"),
+    }),
+    {
+      message: "python_not_found",
+    },
+  );
+  await assert.rejects(
+    verifyCrossfireRuntime({ ...runtime, dependencies: missingTarget }),
+    {
+      message: "dependency_target_missing",
+    },
+  );
+  await assert.rejects(
+    verifyCrossfireRuntime({ ...runtime, dependencies: emptyTarget }),
+    {
+      message: "missing_module",
+    },
+  );
+
+  await writeFile(
+    worker,
+    'import time; time.sleep(5.4); print(\'{\\n  "kind": "ready"\\n}\')\n',
+  );
+  await assert.rejects(verifyCrossfireRuntime(fixture, 100), {
+    message: "timeout",
+  });
+  assert.ok((await verifyCrossfireRuntime(fixture)).elapsedMs >= 5_000);
+
+  await writeFile(
+    worker,
+    'print("unexpected output")\nprint(\'{"kind":"ready"}\')\n',
+  );
+  await assert.rejects(verifyCrossfireRuntime(fixture), {
+    message: "invalid_handshake",
+  });
+  await writeFile(worker, "raise SystemExit(7)\n");
+  await assert.rejects(verifyCrossfireRuntime(fixture), (error: unknown) => {
+    assert.ok(error instanceof CrossfireStartupError);
+    assert.equal(error.diagnostic.reason, "nonzero_exit");
+    assert.equal(error.diagnostic.exitCode, 7);
+    return true;
+  });
+
+  for (const [exception, reason] of [
+    ["ModuleNotFoundError", "missing_module"],
+    ["ImportError", "import_failed"],
+  ]) {
+    await writeFile(
+      worker,
+      `
+import asyncio
+import sys
+async def run(_command):
+    raise ${exception}("synthetic private diagnostic")
+if __name__ == "__main__":
+    try:
+        asyncio.run(run({}))
+    except ImportError:
+        print('{"kind":"error"}')
+        print("synthetic private diagnostic", file=sys.stderr)
+        sys.exit(1)
+`,
+    );
+    await assert.rejects(verifyCrossfireRuntime(fixture), (error: unknown) => {
+      assert.ok(error instanceof CrossfireStartupError);
+      assert.equal(error.diagnostic.reason, reason);
+      assert.equal(error.diagnostic.exitCode, 1);
+      assert.doesNotMatch(
+        JSON.stringify(error),
+        /synthetic private diagnostic/,
+      );
+      return true;
+    });
+  }
+  await engine.checkRuntime();
 });
 
 test("canceling Crossfire aborts the provider request already in flight", async () => {
