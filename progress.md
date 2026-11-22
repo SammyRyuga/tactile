@@ -198,9 +198,20 @@
 - Added rate limits to the routes flagged by CodeQL, kept the existing 12/hour default in an owner-configurable Supabase quota migration, and preserved provider Retry-After metadata. The local PostgreSQL test verified quota adjustment and permissions. Hosted databases and provider accounts were outside the run.
 - The [black-box rerun](qa/blackbox/RUN_REPORT.md#follow-up-repair-verification) recorded 156 passed and three blocked executions out of 159. The authenticated evidence URL editor is still unavailable to anonymous testers.
 
+## Merged UI release verification · November 22, 2026
+
+- The published site reported revision `224efa8e7f559041a37a20bcc7fc7a97a30a37d9` after [PR #31](https://github.com/SammyRyuga/tactile/pull/31). CI and CodeQL passed on that revision. Desktop and mobile browser checks confirmed the homepage and team credits. The hosted examples redirected to sign-in at that revision.
+- A clean Node 24 checkout passed the repository check, 46 Chromium tests, fixture evaluation, five Crossfire integration tests, and both npm audits. The local production build completed all three recorded examples and exported their memos without credentials.
+
 ## Public demo and Meta integration candidate · November 22, 2026
 
 - Kept all recorded examples public when Supabase is configured and left the workspace, provider settings, and live APIs protected.
 - Replaced the paid generation probe for saving a Meta key with the authenticated model list. Settings preserves unsaved input through failures and distinguishes access, request format, billing, rate limit, network and upstream errors with a safe request ID.
 - Verified all three selected model IDs through the mocked HTTP-to-Crossfire flow, including structured generation, selected reviewers, fixture evidence, streamed progress, and Markdown export. Local checks passed 65 Node tests, 48 Chromium tests, six Python Crossfire tests, fixture evaluation and both dependency audits. A separate Supabase-configured local deployment passed all eight public smoke tests.
 - The [live Meta checklist](docs/meta-live-verification.md) records what the mocks prove and how an authorized user can verify real provider access. Ryan’s original failure remains unconfirmed. Real provider calls, authenticated hosted verification and release approval remain pending.
+
+## Repository cleanup · November 22, 2026
+
+- Preserved the timed Round 1 walkthrough, exact-revision smoke checks, and historical release verification from closed [PR #32](https://github.com/SammyRyuga/tactile/pull/32). Updated the README and staging guide for the combined public demo and authenticated workspace.
+- Removed the completed Round 1 execution plan from the active tree. The evaluation report retains the measured outcomes and grading limitations, and the QA harness retains the browser cases and evidence.
+- A clean Node 24 install passed the repository check, production build, 65 Node tests, 48 Chromium tests, six Crossfire integration tests, fixture evaluation, and both npm audits. The tracked-file credential scan reported no matches.

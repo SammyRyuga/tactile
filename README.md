@@ -43,7 +43,7 @@ The example library covers changed-package tests, replica consistency, and featu
 
 Open **Settings** after signing in. Use the header theme button to switch between light and dark. Tactile remembers your theme in that browser. The claim editor and other animated surfaces respect the system’s reduced-motion preference.
 
-To configure live reviews, paste your **Meta Model API key** in Settings. Choose Muse Spark, Ember, or Wonder for live reviews. Tactile checks that your key can run the selected model before saving. Your Meta account determines model access. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
+To configure live reviews, paste your **Meta Model API key** in Settings. Choose Muse Spark, Ember, or Wonder for live reviews. Tactile checks that the selected model appears in the model list returned for your key before saving. Follow the [live verification procedure](docs/meta-live-verification.md) to confirm that generation and review complete. Your Meta account determines model access. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
 
 ![Tactile Settings in dark mode with an empty provider key field](docs/screenshots/settings.webp)
 
@@ -84,7 +84,7 @@ The browser keeps drafts and completed reports in the tab’s session storage. R
 
 ## Deploy to Render
 
-Follow the [independent staging guide](docs/DUAL_DEPLOYMENT.md) to create a separate web service from this repository, verify its deployed commit, and run the public demo smoke tests. On an authenticated Render service, `npm run build` installs and checks the pinned Python dependencies. The example library requires sign-in when Supabase is configured.
+Follow the [deployment and staging guide](docs/DUAL_DEPLOYMENT.md) to verify the deployed commit and run the public demo smoke tests. A current build serves the anonymous examples at `/demo` and protects the workspace at `/review` and `/settings`. On an authenticated Render service, `npm run build` installs and checks the pinned Python dependencies. Independent staging is available for rehearsals.
 
 ## Development and evaluation
 

@@ -2,18 +2,20 @@
 
 Both developers can run the React frontend and Express API from the same GitHub repository. Each deployment owner controls their own service, settings, and releases. The same current build serves the anonymous demo and, when Supabase is configured, the protected workspace. Independent staging stays useful for owner-controlled rehearsals and release testing.
 
-| Mode                                 | Requirements                                                               | Behavior                                                                                                                                                      |
-| ------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public demo at `/demo`               | A current Tactile build                                                    | Replays bundled evidence for CI coverage, replica consistency, and flag rollback in the browser. Edited claims outside the fixture are marked **Unresolved**. |
-| Authenticated workspace at `/review` | Supabase Auth and a verified account                                       | Keeps reports and drafts in the signed-in tab and supports bundled runs without a provider key.                                                               |
-| Live AI review                       | A verified account, the quota migration, and a validated personal Meta key | Performs live extraction and review through the protected API. Provider usage is billed to that key's account.                                                |
+| Mode                                 | Requirements                                                                 | Behavior                                                                                                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public demo at `/demo`               | A current Tactile build                                                      | Replays bundled evidence for CI coverage, replica consistency, and flag rollback in the browser. Edited claims outside the fixture are marked **Unresolved**. |
+| Authenticated workspace at `/review` | Supabase Auth and a verified account                                         | Keeps reports and drafts in the signed-in tab and supports bundled runs without a provider key.                                                               |
+| Live AI review                       | A verified account, both quota migrations, and a validated personal Meta key | Performs live extraction and review through the protected API. Provider usage is billed to that key's account.                                                |
 
 ## Create the independent Render service
 
 1. Sign in to Render with the account that will own staging. Choose **New → Web Service** and connect the GitHub repository `SammyRyuga/tactile`. Grant the GitHub integration access to this repository only. Use the Git-connected service option so Render can see CI results.
 2. Create a **new** service with an available name such as `tactile-round1-staging`. Use the settings below. Keep it in a separate project or workspace from the existing service, with no shared environment group.
-3. Leave Supabase and AI provider environment variables unset. Wait for the first build. If needed, choose **Manual Deploy → Deploy latest commit** on the new service after confirming `main` still points to the checked merge. Render's skip marker on that merge suppresses automatic deploys for the rollout. To deploy a specific earlier commit, select **Deploy a specific commit** and restore **After CI Checks Pass** afterward.
+3. Leave Supabase and AI provider environment variables unset for a demo-only staging service. If no automatic deploy is scheduled and a manual rollout has been approved, choose **Manual Deploy → Deploy a specific commit** on the service you are authorized to operate. Select the exact revision that passed CI and verify it at `/health`.
 4. Verify the running revision and smoke-test the generated HTTPS origin as described below.
+
+Use the [local rehearsal](round1-demo.md#run-it-locally) if an authorized staging service is unavailable.
 
 | Render setting        | Value                                   |
 | --------------------- | --------------------------------------- |
@@ -30,12 +32,12 @@ Render supplies the port, public hostname, and Git revision. For an optional cus
 
 ## Verify a deployment
 
-In a repository checkout with Node 24, replace the sample origin with the new service's HTTPS origin. Compare `revision` from `/health` to the checked commit. Use `git rev-parse origin/main` after fetching when testing the latest merge. Then run the desktop and mobile smoke tests.
+In a repository checkout with Node 24, replace the sample origin with the service's HTTPS origin. Compare `revision` from `/health` to the checked commit. Use `git rev-parse origin/main` after fetching when testing the latest merge. Open `/demo?example=flag` in a fresh browser session and confirm that **Public demo** opens directly. If you see a sign-in redirect, check the deployed revision and route before presenting. Then run the desktop and mobile smoke tests.
 
 ```sh
 git fetch origin main
 git rev-parse origin/main
-npm ci
+npm ci --include=dev
 npx playwright install chromium
 curl --fail --show-error https://your-staging-service.onrender.com/health
 TACTILE_SMOKE_URL=https://your-staging-service.onrender.com npm run test:e2e
