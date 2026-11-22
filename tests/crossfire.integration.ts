@@ -330,7 +330,11 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
         JSON.stringify(finish.report.findings),
       );
       const memo = toMarkdown(proposal, finish.report);
-      assert.ok(memo.includes(source));
+      assert.ok(
+        memo
+          .split("\n")
+          .includes(`- [Fixture queue documentation](<${source}>)`),
+      );
       assert.doesNotMatch(memo, /synthetic-crossfire-fixture/);
     }
     assert.deepEqual([...accessed], [...selected]);
