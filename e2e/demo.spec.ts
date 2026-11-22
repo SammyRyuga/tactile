@@ -375,7 +375,7 @@ test("settings require sign-in and store the appearance preference across reload
     .fill("synthetic-fixture-key");
   await page.getByRole("button", { name: "Save key" }).click();
   await expect(page.getByRole("status")).toHaveText(
-    "Key saved for this session. Meta lists the selected model for this key.",
+    "Key saved for this session. Meta verified the selected model.",
   );
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.getByRole("radio", { name: /Muse Ember/ }).check();
