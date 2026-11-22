@@ -1096,6 +1096,13 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
             data: [{ id: "muse-spark-1.3" }, { id: "muse-ember-1.0" }],
           });
         }
+        if (url === "https://api.meta.ai/v1/models/muse-wonder-1.0") {
+          assert.equal(init?.method, "GET");
+          return Response.json(
+            { error: { code: "model_not_found" } },
+            { status: 404 },
+          );
+        }
         assert.equal(url, "https://api.meta.ai/v1/responses");
         const body = JSON.parse(String(init?.body));
         if (body.text) {
@@ -1561,4 +1568,64 @@ test("canceled or timed-out Meta lookups never validate and provider sessions ex
   assert.ok(settings.get("account", session));
   t.mock.timers.tick(1000);
   assert.equal(settings.get("account", session), undefined);
+});
+
+test("Meta key validation can verify one model when the catalog disagrees", async () => {
+  const token = keySessionToken(1);
+  const catalogUrl = "https://api.meta.ai/v1/models";
+  const selectedModel = "muse-spark-1.3";
+  const requests: string[] = [];
+  await withServer(
+    createApp(undefined, {
+      verifySession: async (value) => (value === token ? "test-account" : null),
+      metaRequest: async (url, init) => {
+        const address = String(url);
+        const header = new Headers(init?.headers).get("Authorization");
+        assert.equal(init?.method, "GET");
+        assert.equal(init?.body, undefined);
+        requests.push(address);
+        if (address === catalogUrl) {
+          if (header === "Bearer fixture-missing-from-catalog")
+            return Response.json({
+              object: "list",
+              data: [{ id: "another-model" }],
+            });
+          return new Response("Catalog route unavailable", { status: 404 });
+        }
+        assert.equal(address, catalogUrl + "/" + selectedModel);
+        return header === "Bearer fixture-both-routes-missing"
+          ? new Response("Temporary endpoint miss", { status: 404 })
+          : Response.json({ object: "model", id: selectedModel });
+      },
+    }),
+    async (url) => {
+      const endpoint = url + "/api/settings/provider";
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+      const save = (key: string) =>
+        fetch(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ key, model: selectedModel }),
+        });
+      const unavailable = await save("fixture-both-routes-missing");
+      assert.equal(unavailable.status, 503);
+      assert.equal((await unavailable.json()).code, "provider_catalog");
+      assert.equal(
+        (await (await fetch(endpoint, { headers })).json()).saved,
+        false,
+      );
+      assert.equal((await save("fixture-missing-from-catalog")).status, 201);
+      assert.equal((await save("fixture-catalog-route-missing")).status, 201);
+      assert.deepEqual(
+        requests,
+        Array.from({ length: 3 }, () => [
+          catalogUrl,
+          catalogUrl + "/" + selectedModel,
+        ]).flat(),
+      );
+    },
+  );
 });

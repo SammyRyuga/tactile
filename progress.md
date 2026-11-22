@@ -215,3 +215,8 @@
 - Preserved the timed Round 1 walkthrough, exact-revision smoke checks, and historical release verification from closed [PR #32](https://github.com/SammyRyuga/tactile/pull/32). Updated the README and staging guide for the combined public demo and authenticated workspace.
 - Removed the completed Round 1 execution plan from the active tree. The evaluation report retains the measured outcomes and grading limitations, and the QA harness retains the browser cases and evidence.
 - A clean Node 24 install passed the repository check, production build, 65 Node tests, 48 Chromium tests, six Crossfire integration tests, fixture evaluation, and both npm audits. The tracked-file credential scan reported no matches.
+
+## Meta model validation recovery
+
+- Verify the selected model directly when Meta's model catalog is unavailable with a 404, malformed, or omits the selected ID.
+- Distinguish an endpoint failure from Meta confirming that a model is unavailable. Log the model and lookup outcome without credentials.

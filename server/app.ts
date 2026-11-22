@@ -23,6 +23,7 @@ import { z } from "zod";
 import type { PublicAuthConfig } from "./auth.ts";
 import {
   createProviderSettings,
+  MetaModelLookupError,
   personalKeySchema,
   providerSessionId,
   validateMetaKey,
@@ -50,6 +51,17 @@ function providerFailure(
       code: "review_engine",
       message:
         "The live review engine could not complete the request. Your inputs are ready to retry.",
+    };
+  if (
+    validation &&
+    error instanceof MetaModelLookupError &&
+    error.status !== 404
+  )
+    return {
+      status: 503,
+      code: "provider_catalog",
+      message:
+        "Tactile could not verify the selected model with Meta. Try saving again shortly.",
     };
   if (error instanceof ProviderResponseError) {
     const retryAfter = error.retryAfter;
@@ -378,12 +390,21 @@ export function createApp(
       validatingKeys.set(id, controller);
       const deadline = AbortSignal.timeout(15_000);
       try {
-        await validateMetaKey(
+        const catalogFallback = await validateMetaKey(
           key,
           model,
           AbortSignal.any([controller.signal, deadline]),
           options.metaRequest,
         );
+        if (catalogFallback)
+          console.info(
+            JSON.stringify({
+              event: "meta_key_validation_model_lookup",
+              requestId: response.getHeader("X-Request-Id"),
+              model,
+              catalogOutcome: catalogFallback,
+            }),
+          );
       } catch (error) {
         if (response.destroyed) return;
         if (controller.signal.aborted) {
@@ -402,8 +423,17 @@ export function createApp(
             event: "meta_key_validation_failed",
             requestId: response.getHeader("X-Request-Id"),
             code,
+            model,
+            catalogOutcome:
+              error instanceof MetaModelLookupError
+                ? error.catalogOutcome
+                : undefined,
             upstreamStatus:
-              error instanceof ProviderResponseError ? error.status : undefined,
+              error instanceof MetaModelLookupError
+                ? error.detailStatus
+                : error instanceof ProviderResponseError
+                  ? error.status
+                  : undefined,
           }),
         );
         if (retryAfter) response.set("Retry-After", retryAfter);
