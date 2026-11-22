@@ -17,10 +17,19 @@ const stateSchema = z.object({
 });
 type KeyState = z.infer<typeof stateSchema>;
 
+class SettingsRequestError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 async function updateKey(
   token: string,
   method = "GET",
-  input?: { key?: string; model: ReviewModel },
+  input?: { key?: string; model: ReviewModel; verification?: "generation" },
   signal?: AbortSignal,
 ) {
   const response = await fetch("/api/settings/provider", {
@@ -34,11 +43,14 @@ async function updateKey(
   });
   const result: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const error = z.object({ message: z.string() }).safeParse(result);
-    throw new Error(
-      error.success
-        ? error.data.message + requestReference(response)
-        : "Could not update the provider key." + requestReference(response),
+    const error = z
+      .object({ message: z.string(), code: z.string().optional() })
+      .safeParse(result);
+    throw new SettingsRequestError(
+      (error.success
+        ? error.data.message
+        : "Could not update the provider key.") + requestReference(response),
+      error.success ? error.data.code : undefined,
     );
   }
   const parsed = stateSchema.safeParse(result);
@@ -66,6 +78,7 @@ export function Settings({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [canTestModel, setCanTestModel] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -91,19 +104,26 @@ export function Settings({
     event.preventDefault();
     if (busy) return;
     const form = event.currentTarget;
-    const key = new FormData(form).get("meta-key")?.toString().trim();
+    const formData = new FormData(
+      form,
+      (event.nativeEvent as SubmitEvent).submitter,
+    );
+    const key = formData.get("meta-key")?.toString().trim();
+    const testGeneration = formData.get("verification") === "generation";
     if (!key && (!keyState?.saved || keyEntered)) {
       setMessage("");
       setError("Enter your Meta Model API key.");
       return;
     }
     setBusy(true);
+    setCanTestModel(false);
     setError("");
     setMessage("");
     try {
       const saved = await updateKey(token, "POST", {
         key: key || undefined,
         model,
+        verification: testGeneration ? "generation" : undefined,
       });
       form.reset();
       setKeyEntered(false);
@@ -111,10 +131,17 @@ export function Settings({
       setModel(saved.model);
       setMessage(
         key
-          ? "Key saved for this session. Meta lists the selected model for this key."
+          ? testGeneration
+            ? "Model test passed. Key saved for this session."
+            : "Key saved for this session. Meta verified the selected model."
           : `Review model saved. New reviews will use ${reviewModels[saved.model].name}.`,
       );
     } catch (cause) {
+      setCanTestModel(
+        cause instanceof SettingsRequestError &&
+          (cause.code === "provider_model" ||
+            cause.code === "provider_catalog"),
+      );
       setError(
         cause instanceof Error && cause.name === "TimeoutError"
           ? "Settings did not respond in time. Try saving again."
@@ -183,7 +210,7 @@ export function Settings({
             </span>
           )}
         </div>
-        <form onSubmit={save}>
+        <form id="provider-key-form" onSubmit={save}>
           <fieldset className="model-picker" disabled={busy || !keyState}>
             <legend>Review model</legend>
             <div className="model-options">
@@ -278,6 +305,25 @@ export function Settings({
           <p className="error" role="alert">
             {error}
           </p>
+        )}
+        {canTestModel && (
+          <div className="actions">
+            <button
+              className="button"
+              type="submit"
+              form="provider-key-form"
+              name="verification"
+              value="generation"
+              aria-describedby="meta-test-note"
+              disabled={busy}
+            >
+              Test model and save
+            </button>
+            <p className="field-note" id="meta-test-note">
+              Sends one short prompt to Meta using your key and may use a small
+              amount of your API quota.
+            </p>
+          </div>
         )}
       </section>
 

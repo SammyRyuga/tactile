@@ -6,6 +6,7 @@ import {
   providerFetch,
   providerRetryAfter,
   ProviderResponseError,
+  metaStructuredEffort,
 } from "./provider.ts";
 import { reviewModelSchema } from "../shared/models.ts";
 import type { ReviewModel } from "../shared/models.ts";
@@ -21,6 +22,7 @@ export const personalKeySchema = z.object({
     .regex(/^[!-~]+$/)
     .optional(),
   model: reviewModelSchema.optional(),
+  verification: z.literal("generation").optional(),
 });
 
 const metaModelList = z.object({
@@ -112,6 +114,63 @@ export async function validateMetaKey(
   }
   await detail.body?.cancel();
   throw new ProviderResponseError(detail.status, providerRetryAfter(detail));
+}
+
+const metaTestResult = z.object({
+  status: z.literal("completed"),
+  model: z.string(),
+  output: z.array(z.object({ content: z.array(z.unknown()).optional() })),
+});
+const metaTestText = z.object({
+  type: z.literal("output_text"),
+  text: z.string().trim().min(1),
+});
+
+export async function testMetaGeneration(
+  key: string,
+  model: ReviewModel,
+  signal: AbortSignal,
+  request = fetch,
+) {
+  const response = await providerFetch(
+    request,
+    "https://api.meta.ai/v1/responses",
+    {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input: "Reply with OK.",
+        reasoning: { effort: metaStructuredEffort },
+        max_output_tokens: 256,
+        store: false,
+      }),
+      signal,
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new ProviderResponseError(
+      response.status,
+      providerRetryAfter(response),
+    );
+  }
+  const parsed = metaTestResult.safeParse(
+    await response.json().catch(() => null),
+  );
+  signal.throwIfAborted();
+  if (
+    !parsed.success ||
+    parsed.data.model !== model ||
+    !parsed.data.output.some(({ content }) =>
+      content?.some((part) => metaTestText.safeParse(part).success),
+    )
+  )
+    throw new ProviderResponseError(502);
 }
 
 export function providerSessionId(
