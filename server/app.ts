@@ -26,6 +26,7 @@ import {
   MetaModelLookupError,
   personalKeySchema,
   providerSessionId,
+  testMetaGeneration,
   validateMetaKey,
 } from "./provider-settings.ts";
 import type { ClaimCache } from "./provider-settings.ts";
@@ -371,6 +372,7 @@ export function createApp(
         return;
       }
       const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
+      const testGeneration = parsed.data.verification === "generation";
       if (validatingKeys.has(id)) {
         response.status(429).json({
           message:
@@ -390,21 +392,33 @@ export function createApp(
       validatingKeys.set(id, controller);
       const deadline = AbortSignal.timeout(15_000);
       try {
-        const catalogFallback = await validateMetaKey(
-          key,
-          model,
-          AbortSignal.any([controller.signal, deadline]),
-          options.metaRequest,
-        );
-        if (catalogFallback)
+        const signal = AbortSignal.any([controller.signal, deadline]);
+        if (testGeneration) {
+          await testMetaGeneration(key, model, signal, options.metaRequest);
           console.info(
             JSON.stringify({
-              event: "meta_key_validation_model_lookup",
+              event: "meta_key_generation_verified",
               requestId: response.getHeader("X-Request-Id"),
               model,
-              catalogOutcome: catalogFallback,
             }),
           );
+        } else {
+          const catalogFallback = await validateMetaKey(
+            key,
+            model,
+            signal,
+            options.metaRequest,
+          );
+          if (catalogFallback)
+            console.info(
+              JSON.stringify({
+                event: "meta_key_validation_model_lookup",
+                requestId: response.getHeader("X-Request-Id"),
+                model,
+                catalogOutcome: catalogFallback,
+              }),
+            );
+        }
       } catch (error) {
         if (response.destroyed) return;
         if (controller.signal.aborted) {
@@ -424,6 +438,7 @@ export function createApp(
             requestId: response.getHeader("X-Request-Id"),
             code,
             model,
+            verification: testGeneration ? "generation" : "metadata",
             catalogOutcome:
               error instanceof MetaModelLookupError
                 ? error.catalogOutcome
@@ -437,7 +452,15 @@ export function createApp(
           }),
         );
         if (retryAfter) response.set("Retry-After", retryAfter);
-        response.status(status).json({ code, message });
+        response.status(status).json(
+          testGeneration && code === "provider_model"
+            ? {
+                code: "provider_model_test",
+                message:
+                  "Meta rejected the generation test for the selected model. Re-enter your key or choose another model.",
+              }
+            : { code, message },
+        );
         return;
       } finally {
         validatingKeys.delete(id);

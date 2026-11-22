@@ -1629,3 +1629,70 @@ test("Meta key validation can verify one model when the catalog disagrees", asyn
     },
   );
 });
+
+test("explicit Meta generation verification saves a key only after a completed response", async () => {
+  const token = keySessionToken(1);
+  const model = "muse-spark-1.3";
+  let generated = 0;
+  await withServer(
+    createApp(undefined, {
+      verifySession: async (value) => (value === token ? "test-account" : null),
+      metaRequest: async (url, init) => {
+        if (url === "https://api.meta.ai/v1/models")
+          return Response.json({ object: "list", data: [] });
+        if (url === "https://api.meta.ai/v1/models/" + model)
+          return Response.json(
+            { error: { code: "model_not_found" } },
+            { status: 404 },
+          );
+        assert.equal(url, "https://api.meta.ai/v1/responses");
+        assert.equal(init?.method, "POST");
+        assert.equal(init?.redirect, "error");
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.model, model);
+        assert.equal(body.max_output_tokens, 256);
+        assert.equal(body.store, false);
+        assert.equal(body.tools, undefined);
+        generated++;
+        const key = new Headers(init?.headers).get("authorization");
+        return key === "Bearer incomplete-generation-key"
+          ? Response.json({ status: "incomplete", model, output: [] })
+          : Response.json({
+              status: "completed",
+              model,
+              output: [{ content: [{ type: "output_text", text: "OK" }] }],
+            });
+      },
+    }),
+    async (url) => {
+      const endpoint = url + "/api/settings/provider";
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+      const save = (key: string, verification?: "generation") =>
+        fetch(endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ key, model, verification }),
+        });
+      const metadata = await save("synthetic-generation-key");
+      assert.equal(metadata.status, 422);
+      assert.equal((await metadata.json()).code, "provider_model");
+      assert.equal(generated, 0);
+      const incomplete = await save("incomplete-generation-key", "generation");
+      assert.equal(incomplete.status, 503);
+      assert.equal(
+        (await (await fetch(endpoint, { headers })).json()).saved,
+        false,
+      );
+      const accepted = await save("synthetic-generation-key", "generation");
+      assert.equal(accepted.status, 201);
+      const state = await accepted.json();
+      assert.equal(state.model, model);
+      assert.equal(state.saved, true);
+      assert.equal(generated, 2);
+      assert.doesNotMatch(JSON.stringify(state), /synthetic-generation-key/);
+    },
+  );
+});

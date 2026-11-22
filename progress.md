@@ -220,3 +220,8 @@
 
 - Verify the selected model directly when Meta's model catalog is unavailable with a 404, malformed, or omits the selected ID.
 - Distinguish an endpoint failure from Meta confirming that a model is unavailable. Log the model and lookup outcome without credentials.
+
+## Explicit Meta model test
+
+- When Meta's metadata lookup rejects a Settings save, offer an explicit short generation test of the selected model.
+- Keep ordinary saves free of generation calls. Save after a model test only when Meta completes generation for the requested model and returns text.
