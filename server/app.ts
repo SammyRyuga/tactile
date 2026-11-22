@@ -2,7 +2,8 @@ import { demoExamples } from "../shared/demo.ts";
 import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { isIP } from "node:net";
 import type { ErrorRequestHandler, Request, Response } from "express";
 import {
   attachmentKindSchema,
@@ -41,6 +42,7 @@ function providerFailure(error: unknown, timedOut: boolean) {
         status: 429,
         message:
           "The provider reached a usage or billing limit. Check provider usage and try again.",
+        retryAfter: error.retryAfter,
       };
     if ([401, 403].includes(error.status))
       return {
@@ -65,7 +67,7 @@ export function createApp(
     reserveUsage?: (token: string) => Promise<boolean>;
     revision?: string;
     allowDevAssets?: boolean;
-    trustProxy?: boolean;
+    trustProxy?: boolean | ((address: string, hop: number) => boolean);
     verifierModel?: string;
     metaVerifierModel?: string;
     metaRequest?: typeof fetch;
@@ -88,7 +90,11 @@ export function createApp(
   const preAuthUsage = new Map<string, number>();
   let windowEnds = 0;
   let preAuthEnds = 0;
-  if (options.trustProxy) app.set("trust proxy", 1);
+  if (options.trustProxy)
+    app.set(
+      "trust proxy",
+      options.trustProxy === true ? 1 : options.trustProxy,
+    );
 
   const authOrigin = options.auth ? new URL(options.auth.url).origin : "";
   app.use((_request, response, next) => {
@@ -116,7 +122,11 @@ export function createApp(
   });
 
   app.use("/api", (request, response, next) => {
-    if (!allowedHosts.includes(request.hostname)) {
+    const host = request
+      .get("Host")
+      ?.match(/^([a-z0-9.-]+|\[[a-f0-9:]+\])(?::\d+)?$/i)?.[1]
+      .toLowerCase();
+    if (!host || !allowedHosts.includes(host)) {
       response.status(403).json({ message: "Unrecognized API host." });
       return;
     }
@@ -191,6 +201,17 @@ export function createApp(
   );
   app.use("/api", express.json({ limit: "80kb" }));
 
+  const limitProviderSettings = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+      message:
+        "Too many status or provider settings requests. Try again in a minute.",
+    },
+  });
+
   async function requireSession(request: Request, response: Response) {
     const token = request.get("Authorization")?.match(/^Bearer (\S+)$/i)?.[1];
     if (!options.verifySession || !token) {
@@ -202,11 +223,13 @@ export function createApp(
       preAuthEnds = now + 60_000;
       preAuthUsage.clear();
     }
-    const address = request.ip ?? "unknown";
+    const address =
+      request.ip && isIP(request.ip) ? ipKeyGenerator(request.ip) : "unknown";
     const attempts = preAuthUsage.get(address) ?? 0;
     if (attempts >= 30 || (!attempts && preAuthUsage.size >= 2000)) {
       response
         .status(429)
+        .set("Retry-After", String(Math.ceil((preAuthEnds - now) / 1000)))
         .json({ message: "Too many sign-in checks. Try again in a minute." });
       return undefined;
     }
@@ -227,7 +250,7 @@ export function createApp(
     }
   }
 
-  app.get("/api/status", async (request, response) => {
+  app.get("/api/status", limitProviderSettings, async (request, response) => {
     if (!request.get("Authorization")) {
       response.json({ live: Boolean(provider) });
       return;
@@ -238,130 +261,145 @@ export function createApp(
       live: Boolean(settings.get(session.account, session.token) || provider),
     });
   });
-  app.get("/api/settings/provider", async (request, response) => {
-    const session = await requireSession(request, response);
-    if (!session) return;
-    const stored = settings.get(session.account, session.token);
-    response.json({
-      saved: Boolean(stored),
-      expiresAt: stored?.expiresAt,
-      model: stored?.model ?? defaultReviewModel,
-    });
-  });
-  app.post("/api/settings/provider", async (request, response) => {
-    const session = await requireSession(request, response);
-    if (!session) return;
-    const parsed = personalKeySchema.safeParse(request.body);
-    if (!parsed.success) {
-      response.status(400).json({
-        message: "Choose a review model and check your Meta API key.",
+  app.get(
+    "/api/settings/provider",
+    limitProviderSettings,
+    async (request, response) => {
+      const session = await requireSession(request, response);
+      if (!session) return;
+      const stored = settings.get(session.account, session.token);
+      response.json({
+        saved: Boolean(stored),
+        expiresAt: stored?.expiresAt,
+        model: stored?.model ?? defaultReviewModel,
       });
-      return;
-    }
-    const id = providerSessionId(session.account, session.token);
-    if (!id) {
-      response
-        .status(401)
-        .json({ message: "Sign in again before saving a provider key." });
-      return;
-    }
-    const stored = settings.get(session.account, session.token);
-    const key = parsed.data.key ?? stored?.key;
-    if (!key) {
-      response
-        .status(400)
-        .json({ message: "Enter your Meta Model API key to save this model." });
-      return;
-    }
-    const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
-    if (validatingKeys.has(id)) {
-      response.status(429).json({
-        message: "A key validation is already in progress. Try again shortly.",
-      });
-      return;
-    }
-    if (validatingKeys.size >= maxConcurrentKeyValidations) {
-      response
-        .status(429)
-        .json({ message: "Key validation is busy. Try again shortly." });
-      return;
-    }
-    const controller = new AbortController();
-    const stop = () => controller.abort();
-    response.once("close", stop);
-    validatingKeys.set(id, controller);
-    let status: number;
-    try {
-      status = await validateMetaKey(
+    },
+  );
+  app.post(
+    "/api/settings/provider",
+    limitProviderSettings,
+    async (request, response) => {
+      const session = await requireSession(request, response);
+      if (!session) return;
+      const parsed = personalKeySchema.safeParse(request.body);
+      if (!parsed.success) {
+        response.status(400).json({
+          message: "Choose a review model and check your Meta API key.",
+        });
+        return;
+      }
+      const id = providerSessionId(session.account, session.token);
+      if (!id) {
+        response
+          .status(401)
+          .json({ message: "Sign in again before saving a provider key." });
+        return;
+      }
+      const stored = settings.get(session.account, session.token);
+      const key = parsed.data.key ?? stored?.key;
+      if (!key) {
+        response.status(400).json({
+          message: "Enter your Meta Model API key to save this model.",
+        });
+        return;
+      }
+      const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
+      if (validatingKeys.has(id)) {
+        response.status(429).json({
+          message:
+            "A key validation is already in progress. Try again shortly.",
+        });
+        return;
+      }
+      if (validatingKeys.size >= maxConcurrentKeyValidations) {
+        response
+          .status(429)
+          .json({ message: "Key validation is busy. Try again shortly." });
+        return;
+      }
+      const controller = new AbortController();
+      const stop = () => controller.abort();
+      response.once("close", stop);
+      validatingKeys.set(id, controller);
+      let status: number;
+      let retryAfter: string | undefined;
+      try {
+        ({ status, retryAfter } = await validateMetaKey(
+          key,
+          AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+          options.metaRequest,
+          model,
+        ));
+      } catch {
+        status = 503;
+      } finally {
+        validatingKeys.delete(id);
+        response.off("close", stop);
+      }
+      if (response.destroyed) return;
+      if (controller.signal.aborted) {
+        response
+          .status(409)
+          .json({ message: "The key validation was canceled." });
+        return;
+      }
+      if (status === 400) {
+        console.info(
+          JSON.stringify({
+            event: "meta_key_validation_request_rejected",
+            requestId: response.getHeader("X-Request-Id"),
+            upstreamStatus: status,
+          }),
+        );
+        response.status(502).json({
+          message:
+            "Meta declined the validation request. Your key could not be checked. Try again shortly.",
+        });
+        return;
+      }
+      if (status !== 200) {
+        const rejected = [401, 403, 404].includes(status);
+        const quota = [402, 429].includes(status);
+        if (quota && retryAfter) response.set("Retry-After", retryAfter);
+        response.status(rejected ? 422 : quota ? 429 : 503).json({
+          message: rejected
+            ? "Meta rejected the key or your account cannot use this model. Check your key or choose another model."
+            : quota
+              ? "Meta could not run the validation. Check your usage limits or billing and try again."
+              : "Meta key validation is temporarily unavailable. Try again shortly.",
+        });
+        return;
+      }
+      const expiresAt = settings.save(
+        session.account,
+        session.token,
         key,
-        AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-        options.metaRequest,
         model,
+        parsed.data.key ? undefined : stored?.expiresAt,
       );
-    } catch {
-      status = 503;
-    } finally {
-      validatingKeys.delete(id);
-      response.off("close", stop);
-    }
-    if (response.destroyed) return;
-    if (controller.signal.aborted) {
+      if (!expiresAt) {
+        response
+          .status(503)
+          .json({ message: "The key could not be saved for this session." });
+        return;
+      }
       response
-        .status(409)
-        .json({ message: "The key validation was canceled." });
-      return;
-    }
-    if (status === 400) {
-      console.info(
-        JSON.stringify({
-          event: "meta_key_validation_request_rejected",
-          requestId: response.getHeader("X-Request-Id"),
-          upstreamStatus: status,
-        }),
-      );
-      response.status(502).json({
-        message:
-          "Meta declined the validation request. Your key could not be checked. Try again shortly.",
-      });
-      return;
-    }
-    if (status !== 200) {
-      const rejected = [401, 403, 404].includes(status);
-      const quota = [402, 429].includes(status);
-      response.status(rejected ? 422 : quota ? 429 : 503).json({
-        message: rejected
-          ? "Meta rejected the key or your account cannot use this model. Check your key or choose another model."
-          : quota
-            ? "Meta could not run the validation. Check your usage limits or billing and try again."
-            : "Meta key validation is temporarily unavailable. Try again shortly.",
-      });
-      return;
-    }
-    const expiresAt = settings.save(
-      session.account,
-      session.token,
-      key,
-      model,
-      parsed.data.key ? undefined : stored?.expiresAt,
-    );
-    if (!expiresAt) {
-      response
-        .status(503)
-        .json({ message: "The key could not be saved for this session." });
-      return;
-    }
-    response
-      .status(parsed.data.key ? 201 : 200)
-      .json({ saved: true, expiresAt, model });
-  });
-  app.delete("/api/settings/provider", async (request, response) => {
-    const session = await requireSession(request, response);
-    if (!session) return;
-    const id = providerSessionId(session.account, session.token);
-    if (id) validatingKeys.get(id)?.abort();
-    settings.clear(session.account, session.token);
-    response.json({ saved: false });
-  });
+        .status(parsed.data.key ? 201 : 200)
+        .json({ saved: true, expiresAt, model });
+    },
+  );
+  app.delete(
+    "/api/settings/provider",
+    limitProviderSettings,
+    async (request, response) => {
+      const session = await requireSession(request, response);
+      if (!session) return;
+      const id = providerSessionId(session.account, session.token);
+      if (id) validatingKeys.get(id)?.abort();
+      settings.clear(session.account, session.token);
+      response.json({ saved: false });
+    },
+  );
 
   async function reserveQuota(session: { account: string; token: string }) {
     if (options.reserveUsage) return options.reserveUsage(session.token);
@@ -544,11 +582,15 @@ export function createApp(
           timeout: signal.aborted,
         }),
       );
-      const { status, message } = providerFailure(error, signal.aborted);
+      const { status, message, retryAfter } = providerFailure(
+        error,
+        signal.aborted,
+      );
       if (response.headersSent) {
-        const event: ReviewEvent = { type: "error", message };
+        const event: ReviewEvent = { type: "error", message, retryAfter };
         response.end(JSON.stringify(event) + "\n");
       } else {
+        if (retryAfter) response.set("Retry-After", retryAfter);
         response.status(status).json({ message });
       }
     } finally {

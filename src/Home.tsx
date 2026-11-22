@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { demoExamples } from "../shared/demo.ts";
+import { TeamCredits } from "./TeamCredits.tsx";
 
 const steps = [
   [
@@ -43,8 +44,6 @@ export function Home({
 }) {
   const root = useRef<HTMLElement>(null);
   const [selected, setSelected] = useState(0);
-  const example = demoExamples[selected];
-  const first = example.findings[0];
 
   useEffect(() => {
     const media = matchMedia("(prefers-reduced-motion: reduce)");
@@ -195,31 +194,42 @@ export function Home({
             ))}
           </div>
           <div className="case-board" aria-live="polite">
-            <div className="case-proposal" data-ui>
-              <span className="case-label">The proposal</span>
-              <h3>{example.title}</h3>
-              <p>{example.proposal}</p>
-              <a
-                className="home-button filled"
-                href={`${publicExamples ? "/demo" : "/review"}?example=${example.id}`}
-              >
-                Try this example <span aria-hidden="true">↗</span>
-              </a>
-            </div>
-            <div className="case-finding" data-ui>
-              <span className="case-label">Finding</span>
-              <span className={`verdict ${first.verdict.toLowerCase()}`}>
-                {first.verdict}
-              </span>
-              <p className="case-claim">{first.claim.text}</p>
-              <p>{first.rationale}</p>
-              {first.repair && (
-                <div className="case-repair">
-                  <strong>Smallest viable change</strong>
-                  <p>{first.repair.minimalFix}</p>
+            {demoExamples.map((item, index) => {
+              const first = item.findings[0];
+              return (
+                <div
+                  className="case-pair"
+                  key={item.id}
+                  inert={index !== selected}
+                >
+                  <div className="case-proposal" data-ui>
+                    <span className="case-label">The proposal</span>
+                    <h3>{item.title}</h3>
+                    <p>{item.proposal}</p>
+                    <a
+                      className="home-button filled"
+                      href={`${publicExamples ? "/demo" : "/review"}?example=${item.id}`}
+                    >
+                      Try this example <span aria-hidden="true">↗</span>
+                    </a>
+                  </div>
+                  <div className="case-finding" data-ui>
+                    <span className="case-label">Finding</span>
+                    <span className={`verdict ${first.verdict.toLowerCase()}`}>
+                      {first.verdict}
+                    </span>
+                    <p className="case-claim">{first.claim.text}</p>
+                    <p>{first.rationale}</p>
+                    {first.repair && (
+                      <div className="case-repair">
+                        <strong>Smallest viable change</strong>
+                        <p>{first.repair.minimalFix}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -264,24 +274,36 @@ export function Home({
             Change the example <span aria-hidden="true">↑</span>
           </a>
         </div>
-        <div className="trace-preview" data-ui aria-live="polite">
-          <h3>Review trail</h3>
-          <p>
-            {example.label} · {first.audit?.length ?? 0} recorded checks
-          </p>
-          <ol>
-            {first.audit?.map(({ stage, observation }) => (
-              <li key={stage}>
-                <strong>{stage}</strong>
-                <p>{observation}</p>
-              </li>
-            ))}
-          </ol>
-          {example.sources[0] && (
-            <a href={example.sources[0].url}>
-              Read bundled evidence <span aria-hidden="true">↗</span>
-            </a>
-          )}
+        <div className="trace-previews" aria-live="polite">
+          {demoExamples.map((item, index) => {
+            const first = item.findings[0];
+            return (
+              <div
+                className="trace-preview"
+                data-ui
+                key={item.id}
+                inert={index !== selected}
+              >
+                <h3>Review trail</h3>
+                <p>
+                  {item.label} · {first.audit?.length ?? 0} recorded checks
+                </p>
+                <ol>
+                  {first.audit?.map(({ stage, observation }) => (
+                    <li key={stage}>
+                      <strong>{stage}</strong>
+                      <p>{observation}</p>
+                    </li>
+                  ))}
+                </ol>
+                {item.sources[0] && (
+                  <a href={item.sources[0].url}>
+                    Read bundled evidence <span aria-hidden="true">↗</span>
+                  </a>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -316,11 +338,7 @@ export function Home({
 
       <footer className="home-width home-footer">
         <strong>Tactile</strong>
-        <span>
-          Built for Compute 50 by{" "}
-          <a href="https://github.com/ryanfer123">ryanfer123</a> and{" "}
-          <a href="https://github.com/SammyRyuga">SammyRyuga</a>.
-        </span>
+        <TeamCredits />
         <a href="https://github.com/SammyRyuga/tactile">
           GitHub <span aria-hidden="true">↗</span>
         </a>

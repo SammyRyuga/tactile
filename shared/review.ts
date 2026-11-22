@@ -277,7 +277,11 @@ export const reviewEventSchema = z.discriminatedUnion("type", [
     status: z.enum(["running", "done", "unavailable", "skipped"]),
   }),
   z.object({ type: z.literal("report"), report: reportSchema }),
-  z.object({ type: z.literal("error"), message: z.string() }),
+  z.object({
+    type: z.literal("error"),
+    message: z.string(),
+    retryAfter: z.string().optional(),
+  }),
 ]);
 
 export type ProjectEvidence = z.infer<typeof projectEvidenceSchema>;

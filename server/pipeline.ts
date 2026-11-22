@@ -19,6 +19,7 @@ import { checkArithmetic } from "./arithmetic.ts";
 import type { SourceRead } from "./source-reader.ts";
 import { readSource, sourceExcerpt } from "./source-reader.ts";
 import type { ReviewProvider } from "./provider.ts";
+import { isProviderLimit } from "./provider.ts";
 
 const extractionSchema = z.object({
   scope: z.enum(["engineering", "out of scope", "needs clarification"]),
@@ -226,6 +227,7 @@ export async function runReview(
       });
       return result;
     } catch (error) {
+      if (isProviderLimit(error)) throw error;
       signal.throwIfAborted();
       progress("unavailable");
       options.log?.({
@@ -301,6 +303,7 @@ export async function runReview(
                   failed: false,
                 };
               } catch (error) {
+                if (isProviderLimit(error)) throw error;
                 signal.throwIfAborted();
                 options.log?.({
                   stage: "Evidence",
@@ -527,6 +530,7 @@ export async function runReview(
               : "Targeted blocker search returned no citations.",
           };
         } catch (error) {
+          if (isProviderLimit(error)) throw error;
           signal.throwIfAborted();
           probe = {
             citations: [],

@@ -189,6 +189,9 @@
   :is(.method-steps li, .faq-list details, .trace-preview li) {
   background: #2c392e;
 }
+[data-theme="dark"] .method-steps li::before {
+  color: #172015;
+}
 [data-theme="dark"] .method-steps li:nth-child(2) {
   background: #344527;
 }

@@ -6,6 +6,7 @@ import {
   CrossfireClarification,
 } from "../server/crossfire-engine.ts";
 import type { ReviewProvider } from "../server/provider.ts";
+import { createProvider, ProviderResponseError } from "../server/provider.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 
 const engine = createCrossfireEngine(
@@ -280,4 +281,28 @@ test("Crossfire applies selected Steelman fixes with its original rewrite method
     AbortSignal.timeout(8000),
   );
   assert.match(revised.proposal, /^Keep a backup/);
+});
+
+test("SEC-02 · Crossfire stops on provider quota and preserves the retry delay", async () => {
+  let calls = 0;
+  const provider = createProvider(
+    "synthetic-key",
+    "test",
+    async () => {
+      calls += 1;
+      return new Response(null, {
+        status: 429,
+        headers: { "Retry-After": "17" },
+      });
+    },
+    "meta",
+  );
+  await assert.rejects(
+    () => engine.extract(provider, proposal, AbortSignal.timeout(10_000)),
+    (error: unknown) =>
+      error instanceof ProviderResponseError &&
+      error.status === 429 &&
+      error.retryAfter === "17",
+  );
+  assert.equal(calls, 1);
 });

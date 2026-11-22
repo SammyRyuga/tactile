@@ -1,8 +1,15 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
+import { TeamCredits } from "./TeamCredits.tsx";
 import { ProposalAttachments } from "./ProposalAttachments.tsx";
 import { ProposalRevision } from "./ProposalRevision.tsx";
 import type { CheckDraft, EvidenceDraft } from "./EvidenceEditor.tsx";
@@ -84,8 +91,23 @@ type Workflow =
     }
   | { page: "report"; report: Report; previewProposal?: string };
 
+type DemoStep = Extract<Workflow, { page: "decision" | "claims" | "report" }>;
+
+function demoHistoryStep(exampleId: string | undefined): DemoStep | undefined {
+  const entry = window.history.state?.tactileDemo;
+  if (!entry || entry.exampleId !== exampleId) return undefined;
+  if (entry.page === "decision" || entry.page === "claims")
+    return { page: entry.page };
+  if (entry.page !== "report") return undefined;
+  const parsed = reportSchema.safeParse(entry.report);
+  if (parsed.success && parsed.data.mode === "demo")
+    return { page: "report", report: parsed.data };
+  return undefined;
+}
+
 type WorkflowAction =
   | { type: "decision" | "claims" }
+  | { type: "restore-demo-step"; step: DemoStep }
   | { type: "start"; claims: Claim[] }
   | ProgressEvent
   | { type: "report"; report: Report }
@@ -93,6 +115,8 @@ type WorkflowAction =
 
 function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
   switch (action.type) {
+    case "restore-demo-step":
+      return action.step;
     case "decision":
     case "claims":
       return { page: action.type };
@@ -321,15 +345,19 @@ export function App({
   const [state, dispatch] = useReducer(
     reviewWorkflow,
     undefined,
-    (): Workflow =>
-      saved?.page === "report" && saved.report
+    (): Workflow => {
+      const entry = publicDemo ? demoHistoryStep(scenarioId) : undefined;
+      // A tab opened or restored without its draft can still start the recorded example.
+      if (entry && (entry.page === "decision" || saved)) return entry;
+      return saved?.page === "report" && saved.report
         ? { page: "report", report: saved.report }
         : {
             page:
               saved?.page === "claims" || (!saved && startExample)
                 ? "claims"
                 : "decision",
-          },
+          };
+    },
   );
   const { page } = state;
   const report = page === "report" ? state.report : undefined;
@@ -392,8 +420,46 @@ export function App({
   const heading = useRef<HTMLHeadingElement>(null);
   const proposalField = useRef<HTMLTextAreaElement>(null);
   const previousPage = useRef<Workflow["page"]>("decision");
+  const initializedDemoHistory = useRef(false);
   const selected = claims.filter((claim) => claim.selected);
+  const selectionGuidance = !selected.length
+    ? claims.length
+      ? "Include at least one assumption to run checks."
+      : "Add an assumption to start checking your plan."
+    : undefined;
   const current = page === "decision" ? 0 : page === "claims" ? 1 : 2;
+
+  useLayoutEffect(() => {
+    if (!publicDemo || page === "running") return;
+    const currentEntry = demoHistoryStep(scenarioId);
+    const method = initializedDemoHistory.current
+      ? "pushState"
+      : "replaceState";
+    initializedDemoHistory.current = true;
+    if (currentEntry?.page === page) return;
+    window.history[method](
+      {
+        ...window.history.state,
+        tactileDemo: { exampleId: scenarioId, page, report },
+      },
+      "",
+    );
+  }, [publicDemo, scenarioId, page, report]);
+
+  useEffect(() => {
+    if (!publicDemo) return;
+    function restoreStep() {
+      const entry = demoHistoryStep(scenarioId);
+      if (!entry) return;
+      request.current?.abort();
+      request.current = null;
+      setError("");
+      setCopyStatus("");
+      dispatch({ type: "restore-demo-step", step: entry });
+    }
+    window.addEventListener("popstate", restoreStep);
+    return () => window.removeEventListener("popstate", restoreStep);
+  }, [publicDemo, scenarioId]);
 
   useEffect(() => {
     if (previewProposal !== undefined) return;
@@ -1043,7 +1109,7 @@ export function App({
                   critical if the plan depends on it.
                 </p>
               </div>
-              <div className="claim-count" role="status">
+              <div className="claim-count" role="status" aria-atomic="true">
                 <div className="claim-count-track" aria-hidden="true">
                   {claims.map(({ id }, index) => (
                     <span key={id} data-filled={index < selected.length} />
@@ -1055,6 +1121,13 @@ export function App({
                   </strong>{" "}
                   selected
                 </span>
+                {selectionGuidance && (
+                  <span className="sr-only">
+                    {claims.length
+                      ? ". Select at least one assumption to run checks."
+                      : ". Add an assumption to run checks."}
+                  </span>
+                )}
               </div>
             </div>
             <form onSubmit={onReview}>
@@ -1139,11 +1212,9 @@ export function App({
                   </div>
                 ))}
               </div>
-              {!selected.length && (
-                <p className="field-note">
-                  {claims.length
-                    ? "Include at least one assumption to run checks."
-                    : "Add an assumption to start checking your plan."}
+              {selectionGuidance && (
+                <p className="field-note" id="selection-guidance">
+                  {selectionGuidance}
                 </p>
               )}
               <ReviewSettings
@@ -1205,6 +1276,9 @@ export function App({
                     type="submit"
                     className="button primary"
                     disabled={!selected.length}
+                    aria-describedby={
+                      selectionGuidance ? "selection-guidance" : undefined
+                    }
                   >
                     Run checks {mark("arrow")}
                   </button>
@@ -1336,7 +1410,18 @@ export function App({
                   <button
                     type="button"
                     className="button"
-                    onClick={() => exportReport(reportProposal, report)}
+                    onClick={(event) => {
+                      // A native click sequence identifies repeated pointer activations.
+                      if (event.detail < 2)
+                        exportReport(reportProposal, report);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.repeat &&
+                        (event.key === "Enter" || event.key === " ")
+                      )
+                        event.preventDefault();
+                    }}
                   >
                     {mark("download")} Export Markdown
                   </button>
@@ -1492,8 +1577,7 @@ export function App({
         )}
 
         <footer>
-          Built by <a href="https://github.com/ryanfer123">ryanfer123</a> and{" "}
-          <a href="https://github.com/SammyRyuga">SammyRyuga</a>
+          <TeamCredits />
         </footer>
       </main>
     </>
