@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -181,6 +181,12 @@ export function createCrossfireEngine(
     dependencies ? resolve(dependencies, "pydantic/__init__.py") : executable,
   );
   accessSync(worker);
+  const workerArgs = ["-I", "-B", worker];
+  const workerEnv = {
+    PATH: process.env.PATH,
+    PYTHON_DOTENV_DISABLED: "1",
+    TACTILE_CROSSFIRE_LIBS: dependencies,
+  };
 
   async function runRaw(
     provider: ReviewProvider,
@@ -194,13 +200,11 @@ export function createCrossfireEngine(
       (() => {
         throw new Error("The configured provider cannot run Crossfire.");
       });
-    const child = spawn(executable, ["-I", "-B", worker], {
+    const requests = new AbortController();
+    const requestSignal = AbortSignal.any([signal, requests.signal]);
+    const child = spawn(executable, workerArgs, {
       stdio: ["pipe", "pipe", "ignore"],
-      env: {
-        PATH: process.env.PATH,
-        PYTHON_DOTENV_DISABLED: "1",
-        TACTILE_CROSSFIRE_LIBS: dependencies,
-      },
+      env: workerEnv,
     });
     const abort = () => child.kill("SIGTERM");
     signal.addEventListener("abort", abort, { once: true });
@@ -211,7 +215,11 @@ export function createCrossfireEngine(
       child.once("error", () => reject(new CrossfireRuntimeError()));
       child.once("close", (code) => {
         if (code === 0) resolve();
-        else reject(providerFailure ?? new CrossfireRuntimeError());
+        else
+          reject(
+            providerFailure ??
+              (signal.aborted ? signal.reason : new CrossfireRuntimeError()),
+          );
       });
     });
     completion.catch(() => {});
@@ -221,31 +229,33 @@ export function createCrossfireEngine(
         child.stdin.write(JSON.stringify(value) + "\n");
     }
     async function reply(message: z.infer<typeof envelope>) {
-      if (providerFailure) return;
+      if (requestSignal.aborted) return;
       const { id, instructions, messages, schema, url, query } = message;
       try {
         let value;
         if (message.operation === "generate" && instructions && messages)
-          value = await generate(instructions, messages, schema, signal);
+          value = await generate(instructions, messages, schema, requestSignal);
         else if (message.operation === "fetch" && url)
-          value = (await sourceReader(url, signal))?.text ?? "";
+          value = (await sourceReader(url, requestSignal))?.text ?? "";
         else if (message.operation === "search" && query)
           value = (
             await provider.research(
               "Search for public sources matching the given query. Cite each sourced sentence with its original URL and copy a short verbatim passage where available. Use only public technology terms in any search.",
               { query },
-              signal,
+              requestSignal,
               { maxToolCalls: 1 },
             )
           ).citations;
         else throw new Error("Unknown Crossfire gateway operation.");
-        write({ id, value });
+        if (!requestSignal.aborted) write({ id, value });
       } catch (error) {
+        if (requestSignal.aborted) return;
         if (
           error instanceof ProviderResponseError ||
           (error instanceof Error && error.name === "TimeoutError")
         ) {
           providerFailure ??= error;
+          requests.abort();
           abort();
           return;
         }
@@ -268,6 +278,7 @@ export function createCrossfireEngine(
       if (result === undefined) throw new CrossfireRuntimeError();
       return result;
     } finally {
+      requests.abort();
       signal.removeEventListener("abort", abort);
       lines.close();
       child.stdin.end();
@@ -280,6 +291,22 @@ export function createCrossfireEngine(
   }
 
   return {
+    checkRuntime() {
+      const result = spawnSync(executable, workerArgs, {
+        input: JSON.stringify({ operation: "health" }) + "\n",
+        encoding: "utf8",
+        env: workerEnv,
+        stdio: ["pipe", "pipe", "ignore"],
+        timeout: 5000,
+        maxBuffer: 16 * 1024,
+      });
+      if (
+        result.error ||
+        result.status !== 0 ||
+        result.stdout.trim() !== '{"kind": "ready"}'
+      )
+        throw new CrossfireRuntimeError();
+    },
     async ingest(kind: AttachmentKind, data: Buffer, signal: AbortSignal) {
       const child = spawn(
         executable,

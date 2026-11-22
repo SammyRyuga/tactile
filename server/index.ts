@@ -37,7 +37,9 @@ const proxyRanges = (process.env.TRUSTED_PROXY_RANGES ?? "")
 let crossfire: ReturnType<typeof createCrossfireEngine> | undefined;
 if (auth) {
   try {
-    crossfire = createCrossfireEngine(process.env.TACTILE_PYTHON, hosted);
+    const engine = createCrossfireEngine(process.env.TACTILE_PYTHON, hosted);
+    engine.checkRuntime();
+    crossfire = engine;
   } catch {
     console.error(JSON.stringify({ event: "crossfire_runtime_unavailable" }));
   }

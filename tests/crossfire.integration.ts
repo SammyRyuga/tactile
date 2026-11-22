@@ -165,6 +165,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
   const accessed = new Set<string>();
   let searches = 0;
   let quota = false;
+  let failSynthesis = false;
   const token =
     "fixture." +
     Buffer.from(
@@ -180,6 +181,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
       return { text: passage };
     },
   );
+  mockEngine.checkRuntime();
   const app = createApp(undefined, {
     auth: { url: "https://auth.example.invalid", publishableKey: "fixture" },
     crossfire: mockEngine,
@@ -231,6 +233,11 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
       assert.equal(format.type, "json_schema");
       assert.equal(format.strict, false);
       const title = format.schema.title;
+      if (failSynthesis && title === "CaseVerdictOutput")
+        return new Response(key, {
+          status: 429,
+          headers: { "Retry-After": "17" },
+        });
       if (title === "ResearcherAssessment")
         return emit(
           JSON.stringify({
@@ -274,6 +281,12 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
     });
   }
   try {
+    const anonymous = await fetch(base + "/api/status");
+    assert.deepEqual(await anonymous.json(), { live: false });
+    const status = await fetch(base + "/api/status", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    assert.deepEqual(await status.json(), { live: false, workerReady: true });
     for (const [index, model] of selected.entries()) {
       quota = false;
       const save = await post(
@@ -336,6 +349,27 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
           .includes(`- [Fixture queue documentation](<${source}>)`),
       );
       assert.doesNotMatch(memo, /synthetic-crossfire-fixture/);
+      if (index === 0) {
+        failSynthesis = true;
+        const failed = await post("/api/reviews", input);
+        assert.equal(failed.status, 200);
+        const stream = await failed.text();
+        assert.doesNotMatch(stream, /synthetic-crossfire-fixture/);
+        const errorEvents = stream
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as ReviewEvent);
+        assert.ok(errorEvents.some(({ type }) => type === "progress"));
+        assert.deepEqual(errorEvents.at(-1), {
+          type: "error",
+          code: "provider_rate_limit",
+          message:
+            "The provider reached a usage or billing limit. Wait before trying again and check provider usage if it persists.",
+          retryAfter: "17",
+          upstreamStatus: 429,
+        });
+        failSynthesis = false;
+      }
     }
     assert.deepEqual([...accessed], [...selected]);
     assert.ok(searches > 0);
@@ -502,6 +536,7 @@ test("SEC-02 · Crossfire stops on provider quota and preserves the retry delay"
 
 test("Crossfire subprocess exit is distinguishable from a provider failure", async () => {
   const brokenEngine = createCrossfireEngine(process.execPath);
+  assert.throws(() => brokenEngine.checkRuntime(), CrossfireRuntimeError);
   const provider = createProvider(
     "synthetic-key",
     "fixture",
@@ -514,4 +549,37 @@ test("Crossfire subprocess exit is distinguishable from a provider failure", asy
     () => brokenEngine.extract(provider, proposal, AbortSignal.timeout(8_000)),
     CrossfireRuntimeError,
   );
+});
+
+test("canceling Crossfire aborts the provider request already in flight", async () => {
+  const controller = new AbortController();
+  let canceled = false;
+  const provider = createProvider(
+    "synthetic-key",
+    "muse-spark-1.3",
+    async (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const sent = init?.signal;
+        assert.ok(sent);
+        sent.addEventListener(
+          "abort",
+          () => {
+            canceled = true;
+            reject(sent.reason);
+          },
+          { once: true },
+        );
+        controller.abort(new Error("Canceled fixture review"));
+      }),
+    "meta",
+  );
+  await assert.rejects(
+    engine.extract(
+      provider,
+      proposal,
+      AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+    ),
+    /Canceled fixture review/,
+  );
+  assert.equal(canceled, true);
 });

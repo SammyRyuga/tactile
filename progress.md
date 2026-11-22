@@ -225,3 +225,10 @@
 
 - When Meta's metadata lookup rejects a Settings save, offer an explicit short generation test of the selected model.
 - Keep ordinary saves free of generation calls. Save after a model test only when Meta completes generation for the requested model and returns text.
+
+## Emergency Meta backend verification
+
+- Reproduced the original model error on `38b6d30` from both a valid catalog lacking the selected ID and a catalog endpoint 404. Production serves Ryan’s combined fixes at `0f5c852`. The original request’s upstream response remains unavailable.
+- Preserved Ryan’s exact-model lookup. Explicit generation now requires inconclusive metadata, stops on a confirmed denial, and reports incomplete output without retrying Meta. Added a startup worker handshake and propagated cancellation and safe provider status through the Crossfire stream.
+- The pinned upstream Crossfire protocol and evidence checks remain in place. Passed the repository check, 68 Node tests, 50 Chromium tests, seven Crossfire integration tests, fixture evaluation, production build, and both npm audits. A compiled Express run with mocked Supabase and Meta verified a complete live review and a missing-worker run preserved the public demo.
+- [The owner smoke procedure](docs/meta-live-verification.md) defines a single manual attempt after approval. Real Meta calls, credits, and the production account’s model access remain unverified.
