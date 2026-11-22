@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { once } from "node:events";
+import { createApp } from "../server/app.ts";
+import { toMarkdown } from "../shared/review.ts";
+import { reviewModelSchema } from "../shared/models.ts";
 import test from "node:test";
 import {
   createCrossfireEngine,
   CrossfireClarification,
+  CrossfireRuntimeError,
 } from "../server/crossfire-engine.ts";
 import type { ReviewProvider } from "../server/provider.ts";
 import { createProvider, ProviderResponseError } from "../server/provider.ts";
@@ -150,6 +157,188 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
         event.claimId === claims[0].id,
     ),
   );
+
+  const source = "https://docs.example.invalid/queue";
+  const passage =
+    "The invoice queue preserves ordering within each partition. Workers can finish at different times across partitions.";
+  const selected = reviewModelSchema.options;
+  const accessed = new Set<string>();
+  let searches = 0;
+  let quota = false;
+  const token =
+    "fixture." +
+    Buffer.from(
+      JSON.stringify({ session_id: "717a78cf-627d-4df6-9cbf-2cecafaa8052" }),
+    ).toString("base64url") +
+    ".fixture";
+  const key = "synthetic-crossfire-fixture";
+  const mockEngine = createCrossfireEngine(
+    process.env.TACTILE_PYTHON,
+    process.env.RENDER === "true",
+    async (url) => {
+      assert.equal(url, source);
+      return { text: passage };
+    },
+  );
+  const app = createApp(undefined, {
+    auth: { url: "https://auth.example.invalid", publishableKey: "fixture" },
+    crossfire: mockEngine,
+    verifySession: async (value) => (value === token ? "test-account" : null),
+    reserveUsage: async () => quota,
+    metaRequest: async (url, init) => {
+      assert.equal(
+        new Headers(init?.headers).get("Authorization"),
+        "Bearer " + key,
+      );
+      if (url === "https://api.meta.ai/v1/models") {
+        assert.equal(init?.method, "GET");
+        assert.equal(init?.body, undefined);
+        return Response.json({
+          object: "list",
+          data: selected.map((id) => ({ id })),
+        });
+      }
+      assert.equal(url, "https://api.meta.ai/v1/responses");
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.store, false);
+      assert.ok(selected.includes(request.model));
+      accessed.add(request.model);
+      const emit = (text: string, annotations: object[] = []) =>
+        Response.json({
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [{ type: "output_text", text, annotations }],
+            },
+          ],
+        });
+      if (request.tools) {
+        assert.equal(request.tools[0].type, "web_search");
+        assert.equal(request.max_tool_calls, 1);
+        searches++;
+        return emit(passage, [
+          {
+            type: "url_citation",
+            url: source,
+            title: "Fixture queue documentation",
+            start_index: 0,
+            end_index: 51,
+          },
+        ]);
+      }
+      const format = request.text.format;
+      assert.equal(format.type, "json_schema");
+      assert.equal(format.strict, false);
+      const title = format.schema.title;
+      if (title === "ResearcherAssessment")
+        return emit(
+          JSON.stringify({
+            result: "The fixture documents ordering per partition",
+            reasoning: passage,
+            confidence: 0,
+            contradiction: null,
+            cited: [{ source_url: source, stance: "supports", tier: 1 }],
+          }),
+        );
+      const messages = request.input.map(
+        ({
+          role,
+          content,
+        }: {
+          role: "user" | "assistant";
+          content: { text: string }[];
+        }) => ({ role, content: content[0].text }),
+      );
+      return emit(
+        await provider.crossfireGenerate!(
+          request.instructions,
+          messages,
+          format.schema,
+          AbortSignal.timeout(1000),
+        ),
+      );
+    },
+  });
+  const server = createServer(app).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
+  async function post(route: string, data: object) {
+    return fetch(base + route, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+    });
+  }
+  try {
+    for (const [index, model] of selected.entries()) {
+      quota = false;
+      const save = await post(
+        "/api/settings/provider",
+        index === 0 ? { key, model } : { model },
+      );
+      assert.equal(
+        save.status,
+        index === 0 ? 201 : 200,
+        await save.clone().text(),
+      );
+      assert.doesNotMatch(await save.text(), /synthetic-crossfire-fixture/);
+      assert.equal((await post("/api/claims", { proposal })).status, 429);
+      quota = true;
+      const extraction = await post("/api/claims", {
+        proposal,
+        projectEvidence: [
+          { id: "bench", title: "Benchmark", text: attachedText },
+        ],
+      });
+      assert.equal(extraction.status, 200, await extraction.clone().text());
+      const {
+        claims: [claim],
+      } = await extraction.json();
+      const input = {
+        proposal,
+        claims: [
+          {
+            ...claim,
+            text: "The invoice queue documentation says ordering is preserved within each partition.",
+            risk: "evidence",
+          },
+        ],
+        reviewers: ["builder", "researcher"],
+      };
+      const review = await post("/api/reviews", input);
+      assert.equal(review.status, 200);
+      const events = (await review.text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as ReviewEvent);
+      assert.ok(events.some((event) => event.type === "progress"));
+      const finish = events.at(-1);
+      assert.ok(finish?.type === "report", JSON.stringify(finish));
+      assert.equal(finish.report.model, model);
+      assert.deepEqual(finish.report.crossfireReviewers, [
+        "builder",
+        "researcher",
+      ]);
+      assert.ok(
+        finish.report.sources.some(
+          (item) => item.url === source && item.passage,
+        ),
+        JSON.stringify(finish.report.findings),
+      );
+      const memo = toMarkdown(proposal, finish.report);
+      assert.ok(memo.includes(source));
+      assert.doesNotMatch(memo, /synthetic-crossfire-fixture/);
+    }
+    assert.deepEqual([...accessed], [...selected]);
+    assert.ok(searches > 0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test("the input gate returns Crossfire’s clarification wording", async () => {
@@ -305,4 +494,20 @@ test("SEC-02 · Crossfire stops on provider quota and preserves the retry delay"
       error.retryAfter === "17",
   );
   assert.equal(calls, 1);
+});
+
+test("Crossfire subprocess exit is distinguishable from a provider failure", async () => {
+  const brokenEngine = createCrossfireEngine(process.execPath);
+  const provider = createProvider(
+    "synthetic-key",
+    "fixture",
+    async () => {
+      throw new Error("Unexpected provider call");
+    },
+    "meta",
+  );
+  await assert.rejects(
+    () => brokenEngine.extract(provider, proposal, AbortSignal.timeout(8_000)),
+    CrossfireRuntimeError,
+  );
 });

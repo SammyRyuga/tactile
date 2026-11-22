@@ -191,7 +191,7 @@ test("SEC-02 · a provider 429 has its own message and Retry-After without autom
       assert.equal(key.status, 429);
       assert.equal(key.headers.get("Retry-After"), "23");
       const error = await key.text();
-      assert.match(error, /Meta could not run the validation/);
+      assert.match(error, /provider_rate_limit/);
       assert.doesNotMatch(error, /synthetic-test-key|key validation response/);
       const settings = await fetch(url + "/api/settings/provider", {
         headers: { Authorization: "Bearer " + session },

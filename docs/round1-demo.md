@@ -2,7 +2,7 @@
 
 ## Rehearse on the hosted app
 
-Once the independent staging service is live, open `/demo?example=flag` on its origin before judging to give Render time to wake up. Use a fresh browser window and verify that **Public demo** opens directly. The bundled run and Markdown export need no account or API key. Use the local run below while staging is being set up. [Independent staging setup](DUAL_DEPLOYMENT.md)
+On the approved release or an authorized staging service, open `/demo?example=flag` on its origin before judging to give Render time to wake up. Use a fresh browser window and verify that **Public demo** opens directly. The bundled run and Markdown export need no account or API key. If the current host redirects to sign-in, its deployed revision does not yet serve the combined release. Use the local run below while staging is being set up. [Independent staging setup](DUAL_DEPLOYMENT.md)
 
 ## Run it locally
 
@@ -21,4 +21,4 @@ Say “This is a bundled scenario with recorded evidence.” If a judge asks to 
 
 ## Live follow-up
 
-Use a test account and approved sample proposal. Configure Supabase and the quota migration per the [README](../README.md), sign in, and validate an authorized Meta Model API key in **Settings**. Use **Workspace** to find and choose claims, then review the live trail. Live search and provider availability can affect the report. Keep the local rollout example open for the judges while a live request runs.
+Use a test account and approved sample proposal. Follow the [live Meta verification procedure](meta-live-verification.md) in an authorized environment. This path requires Supabase, both quota migrations and a personal Meta Model API key. Use **Workspace** to find and choose claims, then review the live trail. Live search and provider availability can affect the report. Keep the local rollout example open for the judges while a live request runs.

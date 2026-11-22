@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import {
+  createProviderSettings,
+  validateMetaKey,
+} from "../server/provider-settings.ts";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
@@ -1029,7 +1033,10 @@ test("separate sign-in sessions can validate concurrently and token refresh pres
       metaRequest: async () => {
         if (++entered === 5) markEntered();
         await validationGate;
-        return Response.json({ status: "completed" });
+        return Response.json({
+          object: "list",
+          data: [{ id: "muse-spark-1.3" }],
+        });
       },
     }),
     async (url) => {
@@ -1068,13 +1075,28 @@ test("separate sign-in sessions can validate concurrently and token refresh pres
 test("personal keys require authentication, stay scoped to the sign-in session, and are never echoed", async () => {
   const token = keySessionToken(1);
   const otherSession = keySessionToken(2);
+  const otherAccount = keySessionToken(1, 3);
   const key = "synthetic-test-key-value";
   const extractionModels: string[] = [];
   await withServer(
     createApp(undefined, {
       metaRequest: async (url, init) => {
-        assert.equal(url, "https://api.meta.ai/v1/responses");
         const submitted = new Headers(init?.headers).get("Authorization");
+        if (url === "https://api.meta.ai/v1/models") {
+          assert.equal(init?.method, "GET");
+          assert.equal(init?.body, undefined);
+          if (submitted === "Bearer validation-request-error")
+            return new Response(null, { status: 400 });
+          if (submitted === "Bearer no-permission-fixture")
+            return new Response(null, { status: 403 });
+          if (submitted !== `Bearer ${key}`)
+            return new Response(null, { status: 401 });
+          return Response.json({
+            object: "list",
+            data: [{ id: "muse-spark-1.3" }, { id: "muse-ember-1.0" }],
+          });
+        }
+        assert.equal(url, "https://api.meta.ai/v1/responses");
         const body = JSON.parse(String(init?.body));
         if (body.text) {
           extractionModels.push(body.model);
@@ -1092,19 +1114,14 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
             }),
           );
         }
-        assert.equal(body.store, false);
-        assert.deepEqual(body.reasoning, { effort: "low" });
-        if (body.model === "muse-wonder-1.0")
-          return new Response(null, { status: 403 });
-        if (submitted === "Bearer validation-request-error") {
-          return new Response(null, { status: 400 });
-        }
-        return submitted === `Bearer ${key}`
-          ? Response.json({ status: "completed" })
-          : new Response(null, { status: 401 });
+        throw new Error("Unexpected generation request.");
       },
       verifySession: async (value) =>
-        [token, otherSession].includes(value) ? "test-account" : null,
+        value === otherAccount
+          ? "other-account"
+          : [token, otherSession].includes(value)
+            ? "test-account"
+            : null,
     }),
     async (url) => {
       const endpoint = url + "/api/settings/provider";
@@ -1129,7 +1146,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
         });
       const rejected = await invalidKey();
       assert.equal(rejected.status, 422);
-      assert.doesNotMatch(await rejected.text(), /invalid-test-key-value/);
+      assert.match(await rejected.text(), /provider_key/);
       assert.deepEqual(await (await fetch(endpoint, { headers })).json(), {
         saved: false,
         model: "muse-spark-1.3",
@@ -1164,7 +1181,15 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
           body: JSON.stringify({ model }),
         });
       assert.equal((await select("unknown-model")).status, 400);
-      assert.equal((await select("muse-wonder-1.0")).status, 422);
+      const unsupportedModel = await select("muse-wonder-1.0");
+      assert.equal(unsupportedModel.status, 422);
+      assert.equal((await unsupportedModel.json()).code, "provider_model");
+      const forbidden = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: "no-permission-fixture" }),
+      });
+      assert.equal((await forbidden.json()).code, "provider_permission");
       assert.equal(
         (await (await fetch(endpoint, { headers })).json()).model,
         "muse-spark-1.3",
@@ -1213,6 +1238,10 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
         ).json(),
         { saved: false, model: "muse-spark-1.3" },
       );
+      const isolated = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${otherAccount}` },
+      });
+      assert.equal((await isolated.json()).saved, false);
       assert.equal(
         (await fetch(endpoint, { method: "DELETE", headers })).status,
         200,
@@ -1386,22 +1415,23 @@ test("Crossfire provider messages preserve roles and use Meta Responses content 
   );
 });
 
-test("authenticated deployments redirect public example URLs into the protected workspace", async () => {
+test("auth configuration leaves public demo routing alone and protects provider settings", async () => {
   await withServer(
     createApp(undefined, {
       auth: { url: "https://project.example", publishableKey: "fixture" },
+      verifySession: async () => null,
     }),
     async (url) => {
       const example = await fetch(url + "/demo?example=replica", {
         redirect: "manual",
       });
-      assert.equal(example.status, 302);
-      assert.equal(example.headers.get("Location"), "/review?example=replica");
-      const unknown = await fetch(
-        url + "/demo?example=https://example.invalid",
-        { redirect: "manual" },
+      assert.equal(example.headers.get("Location"), null);
+      assert.equal(
+        example.status,
+        404,
+        "The app router leaves this URL to the HTML fallback in server/index.ts",
       );
-      assert.equal(unknown.headers.get("Location"), "/review?example=flag");
+      assert.equal((await fetch(url + "/api/settings/provider")).status, 401);
     },
   );
 });
@@ -1444,4 +1474,91 @@ test("proposal URL import requires sign-in and returns bounded text without a mo
     assert.equal((await send(headers, "https://example.org/plan")).status, 429);
     assert.equal(fetches, 1);
   });
+});
+
+test("Meta validation distinguishes billing, rate limits, upstream failure and network errors", async () => {
+  const key = "synthetic-private-validation-key";
+  const cases = [
+    { upstream: 402, status: 429, code: "provider_billing" },
+    { upstream: 429, status: 429, code: "provider_rate_limit" },
+    { upstream: 503, status: 503, code: "provider_unavailable" },
+    { upstream: 0, status: 503, code: "provider_network" },
+  ];
+  let upstream = 0;
+  let calls = 0;
+  const token = keySessionToken(10);
+  await withServer(
+    createApp(undefined, {
+      verifySession: async (value) => (value === token ? "account" : null),
+      metaRequest: async () => {
+        calls++;
+        if (!upstream) throw new Error(key);
+        return new Response(key, {
+          status: upstream,
+          headers: { "Retry-After": "19" },
+        });
+      },
+    }),
+    async (url) => {
+      const send = (session: string) =>
+        fetch(url + "/api/settings/provider", {
+          method: "POST",
+          body: JSON.stringify({ key }),
+          headers: {
+            Authorization: "Bearer " + session,
+            "Content-Type": "application/json",
+          },
+        });
+      assert.equal((await send("expired-session")).status, 401);
+      assert.equal(calls, 0);
+      for (const expected of cases) {
+        upstream = expected.upstream;
+        const result = await send(token);
+        assert.equal(result.status, expected.status);
+        assert.equal(result.headers.get("Retry-After"), upstream ? "19" : null);
+        assert.match(
+          result.headers.get("X-Request-Id") ?? "",
+          /^[0-9a-f-]{36}$/,
+        );
+        const body = await result.text();
+        assert.equal(JSON.parse(body).code, expected.code);
+        assert.ok(!body.includes(key));
+      }
+      assert.equal(calls, cases.length);
+    },
+  );
+});
+
+test("canceled or timed-out Meta lookups never validate and provider sessions expire", async (t) => {
+  const controller = new AbortController();
+  const validation = validateMetaKey(
+    "synthetic-key",
+    "muse-spark-1.3",
+    controller.signal,
+    async (_, init) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      }),
+  );
+  controller.abort(new DOMException("fixture deadline", "TimeoutError"));
+  await assert.rejects(validation, { name: "TimeoutError" });
+  t.mock.timers.enable({ apis: ["Date"], now: 1_700_000_000_000 });
+  const settings = createProviderSettings();
+  const session = keySessionToken(12);
+  assert.ok(
+    settings.save(
+      "account",
+      session,
+      "synthetic-key",
+      "muse-spark-1.3",
+      Date.now() + 1000,
+    ),
+  );
+  assert.ok(settings.get("account", session));
+  t.mock.timers.tick(1000);
+  assert.equal(settings.get("account", session), undefined);
 });

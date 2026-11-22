@@ -434,10 +434,7 @@ function AccountSite() {
           notice={notice}
         />
       ) : (
-        <Home
-          signedIn={Boolean(session)}
-          publicExamples={!loading && !client && !authUnavailable}
-        />
+        <Home signedIn={Boolean(session)} />
       )}
     </>
   );

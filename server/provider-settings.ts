@@ -3,11 +3,11 @@ import type { Claim } from "../shared/review.ts";
 import { z } from "zod";
 import {
   createProvider,
-  metaStructuredEffort,
+  providerFetch,
   providerRetryAfter,
+  ProviderResponseError,
 } from "./provider.ts";
-
-import { defaultReviewModel, reviewModelSchema } from "../shared/models.ts";
+import { reviewModelSchema } from "../shared/models.ts";
 import type { ReviewModel } from "../shared/models.ts";
 const maxSessions = 500;
 const lifetime = 8 * 60 * 60 * 1000;
@@ -23,39 +23,41 @@ export const personalKeySchema = z.object({
   model: reviewModelSchema.optional(),
 });
 
+const metaModelList = z.object({
+  object: z.literal("list"),
+  data: z.array(z.object({ id: z.string() })),
+});
+
 export async function validateMetaKey(
   key: string,
+  model: ReviewModel,
   signal: AbortSignal,
   request = fetch,
-  model: ReviewModel = defaultReviewModel,
 ) {
-  const response = await request("https://api.meta.ai/v1/responses", {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
+  const response = await providerFetch(
+    request,
+    "https://api.meta.ai/v1/models",
+    {
+      method: "GET",
+      redirect: "error",
+      headers: { Authorization: "Bearer " + key },
+      signal,
     },
-    signal,
-    body: JSON.stringify({
-      model,
-      input: "Reply with OK.",
-      store: false,
-      max_output_tokens: 64,
-      reasoning: { effort: metaStructuredEffort },
-    }),
-  });
+  );
   if (!response.ok) {
     await response.body?.cancel();
-    return {
-      status: response.status,
-      retryAfter: providerRetryAfter(response),
-    };
+    throw new ProviderResponseError(
+      response.status,
+      providerRetryAfter(response),
+    );
   }
-  const result = z
-    .object({ status: z.enum(["completed", "incomplete"]) })
-    .safeParse(await response.json());
-  return { status: result.success ? 200 : 502 };
+  const parsed = metaModelList.safeParse(
+    await response.json().catch(() => null),
+  );
+  signal.throwIfAborted();
+  if (!parsed.success) throw new ProviderResponseError(502);
+  if (!parsed.data.data.some(({ id }) => id === model))
+    throw new ProviderResponseError(404);
 }
 
 export function providerSessionId(
@@ -111,10 +113,7 @@ function createClaimCache() {
 
 export type ClaimCache = ReturnType<typeof createClaimCache>;
 
-export function createProviderSettings(
-  metaVerifierModel?: string,
-  request = fetch,
-) {
+export function createProviderSettings(request = fetch) {
   const keys = new Map<
     string,
     {
@@ -193,7 +192,6 @@ export function createProviderSettings(
       const entry = get(account, token);
       return entry
         ? createProvider(entry.key, entry.model, request, "meta", {
-            verifierModel: metaVerifierModel,
             onUsage,
           })
         : undefined;

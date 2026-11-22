@@ -24,8 +24,7 @@ import type {
 } from "../shared/review.ts";
 import { ProposalScopeError } from "./pipeline.ts";
 import type { ReviewProvider } from "./provider.ts";
-import { isProviderLimit } from "./provider.ts";
-import type { ProviderResponseError } from "./provider.ts";
+import { ProviderResponseError } from "./provider.ts";
 import { readSource } from "./source-reader.ts";
 import { reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
@@ -145,6 +144,13 @@ function evaluatorStage(name: unknown) {
     : undefined;
 }
 
+export class CrossfireRuntimeError extends Error {
+  constructor() {
+    super("Crossfire worker did not complete.");
+    this.name = "CrossfireRuntimeError";
+  }
+}
+
 export class CrossfireClarification extends ProposalScopeError {
   readonly details: z.infer<typeof clarificationSchema>;
 
@@ -161,7 +167,11 @@ function projectContext(entries: ProposalIntake["projectEvidence"]) {
   );
 }
 
-export function createCrossfireEngine(pythonPath?: string, hosted = false) {
+export function createCrossfireEngine(
+  pythonPath?: string,
+  hosted = false,
+  sourceReader = readSource,
+) {
   const dependencies =
     hosted && !pythonPath ? resolve(".crossfire-python") : undefined;
   const executable =
@@ -196,37 +206,29 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
     signal.addEventListener("abort", abort, { once: true });
     const lines = createInterface({ input: child.stdout });
     let result: unknown;
-    let transportError: unknown;
-    let providerLimit: ProviderResponseError | undefined;
+    let providerFailure: Error | undefined;
     const completion = new Promise<void>((resolve, reject) => {
-      child.once("error", reject);
+      child.once("error", () => reject(new CrossfireRuntimeError()));
       child.once("close", (code) => {
         if (code === 0) resolve();
-        else
-          reject(
-            providerLimit ??
-              transportError ??
-              new Error("Crossfire worker did not complete."),
-          );
+        else reject(providerFailure ?? new CrossfireRuntimeError());
       });
     });
     completion.catch(() => {});
-    child.stdin.on("error", (error) => {
-      transportError = error;
-    });
+    child.stdin.on("error", () => {});
     function write(value: unknown) {
       if (child.stdin.writable && !child.stdin.destroyed)
         child.stdin.write(JSON.stringify(value) + "\n");
     }
     async function reply(message: z.infer<typeof envelope>) {
-      if (providerLimit) return;
+      if (providerFailure) return;
       const { id, instructions, messages, schema, url, query } = message;
       try {
         let value;
         if (message.operation === "generate" && instructions && messages)
           value = await generate(instructions, messages, schema, signal);
         else if (message.operation === "fetch" && url)
-          value = (await readSource(url, signal))?.text ?? "";
+          value = (await sourceReader(url, signal))?.text ?? "";
         else if (message.operation === "search" && query)
           value = (
             await provider.research(
@@ -239,8 +241,11 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
         else throw new Error("Unknown Crossfire gateway operation.");
         write({ id, value });
       } catch (error) {
-        if (isProviderLimit(error)) {
-          providerLimit ??= error;
+        if (
+          error instanceof ProviderResponseError ||
+          (error instanceof Error && error.name === "TimeoutError")
+        ) {
+          providerFailure ??= error;
           abort();
           return;
         }
@@ -258,10 +263,9 @@ export function createCrossfireEngine(pythonPath?: string, hosted = false) {
           onEvent?.(message.event, message.data);
       }
       await completion;
-      if (providerLimit) throw providerLimit;
+      if (providerFailure) throw providerFailure;
       signal.throwIfAborted();
-      if (result === undefined)
-        throw new Error("Crossfire returned no result.");
+      if (result === undefined) throw new CrossfireRuntimeError();
       return result;
     } finally {
       signal.removeEventListener("abort", abort);

@@ -366,13 +366,16 @@ test("settings require sign-in and store the appearance preference across reload
     .fill("rejected-fixture-key");
   await page.getByRole("button", { name: "Save key" }).click();
   await expect(page.getByRole("alert")).toHaveText("Meta rejected this key.");
+  await expect(page.getByLabel("API key", { exact: true })).toHaveValue(
+    "rejected-fixture-key",
+  );
   await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
   await page
     .getByLabel("API key", { exact: true })
     .fill("synthetic-fixture-key");
   await page.getByRole("button", { name: "Save key" }).click();
   await expect(page.getByRole("status")).toHaveText(
-    "Key validated and saved for this session.",
+    "Key saved for this session. Meta lists the selected model for this key.",
   );
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.getByRole("radio", { name: /Muse Ember/ }).check();
@@ -389,4 +392,43 @@ test("settings require sign-in and store the appearance preference across reload
   await expect(page.getByText("Key saved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Remove key" }).click();
   await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
+});
+
+test("a Supabase-configured site keeps the public demo separate from protected routes", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await mockAuthentication(page);
+  const operations: string[] = [];
+  page.on("request", (request) => {
+    if (
+      new URL(request.url()).pathname.startsWith("/api/") &&
+      new URL(page.url()).pathname === "/demo"
+    )
+      operations.push(new URL(request.url()).pathname);
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("link", { name: "Try the public demo" }),
+  ).toHaveAttribute("href", "/demo");
+  await page.getByRole("button", { name: "Data consistency" }).click();
+  const example = page.getByRole("link", { name: "Try this example" });
+  await expect(example).toHaveAttribute("href", "/demo?example=replica");
+  await example.click();
+  await page.getByRole("button", { name: "Review example" }).click();
+  await page.getByRole("button", { name: "Run checks" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review results" }),
+  ).toBeVisible();
+  expect(operations).toEqual([]);
+  await page.goto("/review");
+  await expect(page).toHaveURL(/\/login\?next=%2Freview/);
+  await page.goto("/settings");
+  await expect(page).toHaveURL(/\/login\?next=%2Fsettings/);
+  expect(
+    (
+      await context.request.get(new URL("/api/settings/provider", baseURL).href)
+    ).status(),
+  ).toBe(401);
 });

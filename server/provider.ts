@@ -95,6 +95,19 @@ export class ProviderResponseError extends Error {
   }
 }
 
+export async function providerFetch(
+  request: typeof fetch,
+  url: string,
+  init: RequestInit,
+) {
+  try {
+    return await request(url, init);
+  } catch {
+    init.signal?.throwIfAborted();
+    throw new ProviderResponseError(0);
+  }
+}
+
 export function isProviderLimit(
   error: unknown,
 ): error is ProviderResponseError {
@@ -155,7 +168,7 @@ export function createProvider(
           ? "https://api.meta.ai/v1/responses"
           : "https://api.openai.com/v1/responses";
       config.onRequest?.();
-      const response = await request(endpoint, {
+      const response = await providerFetch(request, endpoint, {
         method: "POST",
         redirect: "error",
         headers: {
@@ -192,7 +205,10 @@ export function createProvider(
           ...options,
         }),
       });
-      const payload: unknown = response.ok ? await response.json() : undefined;
+      const payload: unknown = response.ok
+        ? await response.json().catch(() => null)
+        : undefined;
+      callSignal.throwIfAborted();
       const usage = usageSchema.safeParse(payload);
       config.onUsage?.({
         inputTokens: usage.success ? usage.data.usage.input_tokens : null,
@@ -221,15 +237,16 @@ export function createProvider(
       .safeParse(first).success;
     const payload =
       exhausted && options.max_tool_calls !== 1 ? await send(8500) : first;
-    const { output } = responseSchema.parse(payload);
+    const parsed = responseSchema.safeParse(payload);
+    if (!parsed.success) throw new ProviderResponseError(502);
+    const { output } = parsed.data;
     const outputText = output
       .flatMap(({ content }) => content ?? [])
       .flatMap((item) => {
         const parsed = textSchema.safeParse(item);
         return parsed.success ? [parsed.data] : [];
       });
-    if (!outputText.length)
-      throw new Error("Provider returned no completed text.");
+    if (!outputText.length) throw new ProviderResponseError(502);
     return outputText;
   }
 
@@ -263,15 +280,27 @@ export function createProvider(
     },
 
     async crossfireGenerate(instructions, messages, schema, signal) {
+      const structured = vendor === "meta" && schema;
       const output = await respond(
-        schema
-          ? `${instructions}
-
-Return one valid JSON value matching this schema. ${JSON.stringify(schema)}`
+        schema && !structured
+          ? instructions +
+              "\n\nReturn one valid JSON value matching this schema. " +
+              JSON.stringify(schema)
           : instructions,
         null,
         signal,
-        {},
+        structured
+          ? {
+              text: {
+                format: {
+                  type: "json_schema",
+                  name: "crossfire_result",
+                  strict: false,
+                  schema,
+                },
+              },
+            }
+          : {},
         messages,
       );
       return output.map(({ text }) => text).join("");

@@ -8,6 +8,7 @@ import {
 } from "../shared/models.ts";
 import type { ReviewModel } from "../shared/models.ts";
 import { ThemeToggle } from "./Theme.tsx";
+import { requestReference } from "./api.ts";
 
 const stateSchema = z.object({
   saved: z.boolean(),
@@ -24,7 +25,7 @@ async function updateKey(
 ) {
   const response = await fetch("/api/settings/provider", {
     method,
-    signal,
+    signal: signal ?? AbortSignal.timeout(20_000),
     headers: {
       Authorization: `Bearer ${token}`,
       ...(input ? { "Content-Type": "application/json" } : {}),
@@ -35,10 +36,17 @@ async function updateKey(
   if (!response.ok) {
     const error = z.object({ message: z.string() }).safeParse(result);
     throw new Error(
-      error.success ? error.data.message : "Could not update the provider key.",
+      error.success
+        ? error.data.message + requestReference(response)
+        : "Could not update the provider key." + requestReference(response),
     );
   }
-  return stateSchema.parse(result);
+  const parsed = stateSchema.safeParse(result);
+  if (!parsed.success)
+    throw new Error(
+      "Tactile returned an unexpected settings response. Refresh and try again.",
+    );
+  return parsed.data;
 }
 
 export function Settings({
@@ -89,8 +97,6 @@ export function Settings({
       setError("Enter your Meta Model API key.");
       return;
     }
-    form.reset();
-    setKeyEntered(false);
     setBusy(true);
     setError("");
     setMessage("");
@@ -99,16 +105,24 @@ export function Settings({
         key: key || undefined,
         model,
       });
+      form.reset();
+      setKeyEntered(false);
       setKeyState(saved);
       setModel(saved.model);
       setMessage(
         key
-          ? "Key validated and saved for this session."
+          ? "Key saved for this session. Meta lists the selected model for this key."
           : `Review model saved. New reviews will use ${reviewModels[saved.model].name}.`,
       );
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Could not save the key.",
+        cause instanceof Error && cause.name === "TimeoutError"
+          ? "Settings did not respond in time. Try saving again."
+          : cause instanceof TypeError
+            ? "Tactile could not be reached. Check your connection and try again."
+            : cause instanceof Error
+              ? cause.message
+              : "Could not save the key.",
       );
     } finally {
       setBusy(false);
