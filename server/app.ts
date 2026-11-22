@@ -1,4 +1,3 @@
-import { demoExamples } from "../shared/demo.ts";
 import { defaultReviewModel } from "../shared/models.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
@@ -14,7 +13,10 @@ import {
 } from "../shared/review.ts";
 import type { ReviewEvent } from "../shared/review.ts";
 import { extractClaims, ProposalScopeError, runReview } from "./pipeline.ts";
-import { CrossfireClarification } from "./crossfire-engine.ts";
+import {
+  CrossfireClarification,
+  CrossfireRuntimeError,
+} from "./crossfire-engine.ts";
 import type { createCrossfireEngine } from "./crossfire-engine.ts";
 import { readSource } from "./source-reader.ts";
 import { z } from "zod";
@@ -29,32 +31,96 @@ import type { ClaimCache } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
 import { ProviderResponseError } from "./provider.ts";
 
-function providerFailure(error: unknown, timedOut: boolean) {
+function providerFailure(
+  error: unknown,
+  timedOut: boolean,
+  validation = false,
+) {
   if (timedOut || (error instanceof Error && error.name === "TimeoutError"))
     return {
       status: 504,
+      code: "provider_timeout",
+      message: validation
+        ? "Meta did not respond in time. Try saving again."
+        : "The provider request timed out. Your inputs are ready to retry.",
+    };
+  if (error instanceof CrossfireRuntimeError)
+    return {
+      status: 503,
+      code: "review_engine",
       message:
-        "The provider request timed out. Your inputs are ready to retry.",
+        "The live review engine could not complete the request. Your inputs are ready to retry.",
     };
   if (error instanceof ProviderResponseError) {
-    if ([402, 429].includes(error.status))
-      return {
-        status: 429,
-        message:
-          "The provider reached a usage or billing limit. Check provider usage and try again.",
-        retryAfter: error.retryAfter,
-      };
-    if ([401, 403].includes(error.status))
-      return {
-        status: 502,
-        message:
-          "The provider rejected the configured key or model access. Check Settings and try again.",
-      };
+    const retryAfter = error.retryAfter;
+    switch (error.status) {
+      case 0:
+        return {
+          status: 503,
+          code: "provider_network",
+          message:
+            "Tactile could not connect to the provider. Try again shortly.",
+        };
+      case 400:
+        return {
+          status: 502,
+          code: "provider_request",
+          message: validation
+            ? "Meta declined the validation request. Share the request ID if this continues."
+            : "The provider declined the review request. Share the request ID so the integration can be checked.",
+        };
+      case 401:
+        return {
+          status: validation ? 422 : 502,
+          code: "provider_key",
+          message:
+            "The provider did not accept this key. Check that it was copied from the Model API dashboard and has not been revoked.",
+        };
+      case 403:
+        return {
+          status: validation ? 422 : 502,
+          code: "provider_permission",
+          message:
+            "The provider denied permission. Check the key’s team permissions or select another model in Settings.",
+        };
+      case 404:
+        return {
+          status: validation ? 422 : 502,
+          code: "provider_model",
+          message:
+            "The selected model is unavailable to this key. Choose another model or check access in the provider dashboard.",
+        };
+      case 402:
+        return {
+          status: 429,
+          code: "provider_billing",
+          retryAfter,
+          message:
+            "The provider reached a usage or billing limit. Check billing in the provider dashboard.",
+        };
+      case 429:
+        return {
+          status: 429,
+          code: "provider_rate_limit",
+          retryAfter,
+          message:
+            "The provider reached a usage or billing limit. Wait before trying again and check provider usage if it persists.",
+        };
+      default:
+        return {
+          status: 503,
+          code: "provider_unavailable",
+          retryAfter,
+          message:
+            "The provider returned an unavailable or unexpected response. Try again shortly.",
+        };
+    }
   }
   return {
     status: 503,
+    code: "review_unavailable",
     message:
-      "The live provider is temporarily unavailable. Try again shortly. Your inputs are ready to retry.",
+      "The live review is temporarily unavailable. Try again shortly. Your inputs are ready to retry.",
   };
 }
 
@@ -69,10 +135,10 @@ export function createApp(
     allowDevAssets?: boolean;
     trustProxy?: boolean | ((address: string, hop: number) => boolean);
     verifierModel?: string;
-    metaVerifierModel?: string;
     metaRequest?: typeof fetch;
     sourceReader?: NonNullable<Parameters<typeof runReview>[4]>["sourceReader"];
     crossfire?: ReturnType<typeof createCrossfireEngine>;
+    crossfireUnavailable?: boolean;
   } = {},
 ) {
   const app = express();
@@ -81,10 +147,7 @@ export function createApp(
   let importing = false;
   const validatingKeys = new Map<string, AbortController>();
   const maxConcurrentKeyValidations = 32;
-  const settings = createProviderSettings(
-    options.metaVerifierModel,
-    options.metaRequest,
-  );
+  const settings = createProviderSettings(options.metaRequest);
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
   const preAuthUsage = new Map<string, number>();
@@ -134,14 +197,6 @@ export function createApp(
     response.setHeader("X-Request-Id", randomUUID());
     next();
   });
-  if (options.auth) {
-    app.get("/demo", (request, response) => {
-      const example = demoExamples.find(
-        ({ id }) => id === request.query.example,
-      );
-      response.redirect(302, `/review?example=${example?.id ?? "flag"}`);
-    });
-  }
   app.get("/api/auth-config", (_request, response) =>
     response.json({ auth: options.auth ?? null }),
   );
@@ -321,55 +376,44 @@ export function createApp(
       const stop = () => controller.abort();
       response.once("close", stop);
       validatingKeys.set(id, controller);
-      let status: number;
-      let retryAfter: string | undefined;
+      const deadline = AbortSignal.timeout(15_000);
       try {
-        ({ status, retryAfter } = await validateMetaKey(
+        await validateMetaKey(
           key,
-          AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-          options.metaRequest,
           model,
-        ));
-      } catch {
-        status = 503;
+          AbortSignal.any([controller.signal, deadline]),
+          options.metaRequest,
+        );
+      } catch (error) {
+        if (response.destroyed) return;
+        if (controller.signal.aborted) {
+          response
+            .status(409)
+            .json({ message: "The key validation was canceled." });
+          return;
+        }
+        const { status, code, message, retryAfter } = providerFailure(
+          error,
+          deadline.aborted,
+          true,
+        );
+        console.info(
+          JSON.stringify({
+            event: "meta_key_validation_failed",
+            requestId: response.getHeader("X-Request-Id"),
+            code,
+            upstreamStatus:
+              error instanceof ProviderResponseError ? error.status : undefined,
+          }),
+        );
+        if (retryAfter) response.set("Retry-After", retryAfter);
+        response.status(status).json({ code, message });
+        return;
       } finally {
         validatingKeys.delete(id);
         response.off("close", stop);
       }
-      if (response.destroyed) return;
-      if (controller.signal.aborted) {
-        response
-          .status(409)
-          .json({ message: "The key validation was canceled." });
-        return;
-      }
-      if (status === 400) {
-        console.info(
-          JSON.stringify({
-            event: "meta_key_validation_request_rejected",
-            requestId: response.getHeader("X-Request-Id"),
-            upstreamStatus: status,
-          }),
-        );
-        response.status(502).json({
-          message:
-            "Meta declined the validation request. Your key could not be checked. Try again shortly.",
-        });
-        return;
-      }
-      if (status !== 200) {
-        const rejected = [401, 403, 404].includes(status);
-        const quota = [402, 429].includes(status);
-        if (quota && retryAfter) response.set("Retry-After", retryAfter);
-        response.status(rejected ? 422 : quota ? 429 : 503).json({
-          message: rejected
-            ? "Meta rejected the key or your account cannot use this model. Check your key or choose another model."
-            : quota
-              ? "Meta could not run the validation. Check your usage limits or billing and try again."
-              : "Meta key validation is temporarily unavailable. Try again shortly.",
-        });
-        return;
-      }
+      if (response.destroyed || controller.signal.aborted) return;
       const expiresAt = settings.save(
         session.account,
         session.token,
@@ -527,6 +571,14 @@ export function createApp(
       });
       return;
     }
+    if (options.crossfireUnavailable) {
+      response.status(503).json({
+        code: "review_engine",
+        message:
+          "The live review engine is unavailable on this deployment. Contact the deployment owner.",
+      });
+      return;
+    }
     if (active >= 2) {
       response
         .status(429)
@@ -574,24 +626,25 @@ export function createApp(
         response.status(422).json({ message: error.message });
         return;
       }
+      const { status, code, message, retryAfter } = providerFailure(
+        error,
+        signal.aborted,
+      );
       console.info(
         JSON.stringify({
           event: "review_request_failed",
           requestId: response.getHeader("X-Request-Id"),
-          errorType: error instanceof Error ? error.name : "unknown",
-          timeout: signal.aborted,
+          code,
+          upstreamStatus:
+            error instanceof ProviderResponseError ? error.status : undefined,
         }),
       );
-      const { status, message, retryAfter } = providerFailure(
-        error,
-        signal.aborted,
-      );
       if (response.headersSent) {
-        const event: ReviewEvent = { type: "error", message, retryAfter };
+        const event: ReviewEvent = { type: "error", message, retryAfter, code };
         response.end(JSON.stringify(event) + "\n");
       } else {
         if (retryAfter) response.set("Retry-After", retryAfter);
-        response.status(status).json({ message });
+        response.status(status).json({ code, message });
       }
     } finally {
       active--;

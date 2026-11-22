@@ -13,6 +13,11 @@ import type {
   ReviewInput,
 } from "../shared/review.ts";
 
+export function requestReference(response: Response) {
+  const requestId = z.uuid().safeParse(response.headers.get("X-Request-Id"));
+  return requestId.success ? ` Request ID ${requestId.data}.` : "";
+}
+
 export async function liveAvailable(
   signal: AbortSignal,
   token?: string,
@@ -54,8 +59,9 @@ async function post(
     throw new IntakeClarification(clarification.data.clarification);
   throw new Error(
     parsed.success
-      ? parsed.data.message
-      : "The server could not complete that request.",
+      ? parsed.data.message + requestReference(response)
+      : "The server could not complete that request." +
+          requestReference(response),
   );
 }
 
@@ -122,7 +128,8 @@ export async function runLive(
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = reviewEventSchema.parse(JSON.parse(line));
-        if (event.type === "error") throw new Error(event.message);
+        if (event.type === "error")
+          throw new Error(event.message + requestReference(response));
         emit(event);
         if (event.type === "report") receivedReport = true;
       }

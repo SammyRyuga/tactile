@@ -197,3 +197,10 @@
 - Added Ryan Fernandes, Samanyu Pattanayak and Aritra Ghosh to the site footers and README. Fixed accessible zero-selection guidance, public demo browser history and duplicate Markdown downloads.
 - Added rate limits to the routes flagged by CodeQL, kept the existing 12/hour default in an owner-configurable Supabase quota migration, and preserved provider Retry-After metadata. The local PostgreSQL test verified quota adjustment and permissions. Hosted databases and provider accounts were outside the run.
 - The [black-box rerun](qa/blackbox/RUN_REPORT.md#follow-up-repair-verification) recorded 156 passed and three blocked executions out of 159. The authenticated evidence URL editor is still unavailable to anonymous testers.
+
+## Public demo and Meta integration candidate · November 22, 2026
+
+- Kept all recorded examples public when Supabase is configured and left the workspace, provider settings, and live APIs protected.
+- Replaced the paid generation probe for saving a Meta key with the authenticated model list. Settings preserves unsaved input through failures and distinguishes access, request format, billing, rate limit, network and upstream errors with a safe request ID.
+- Verified all three selected model IDs through the mocked HTTP-to-Crossfire flow, including structured generation, selected reviewers, fixture evidence, streamed progress, and Markdown export. Local checks passed 65 Node tests, 48 Chromium tests, six Python Crossfire tests, fixture evaluation and both dependency audits. A separate Supabase-configured local deployment passed all eight public smoke tests.
+- The [live Meta checklist](docs/meta-live-verification.md) records what the mocks prove and how an authorized user can verify real provider access. Ryan’s original failure remains unconfirmed. Real provider calls, authenticated hosted verification and release approval remain pending.

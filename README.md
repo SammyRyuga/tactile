@@ -69,7 +69,6 @@ To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTR
 | `OPENAI_API_KEY`           | Optional OpenAI key for local reviews. Keep it out of source control.       |
 | `OPENAI_MODEL`             | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.    |
 | `OPENAI_VERIFIER_MODEL`    | Optional model for OpenAI passage verification. Defaults to the main model. |
-| `META_VERIFIER_MODEL`      | Optional model for Meta passage verification. Defaults to Muse Spark.       |
 | `PORT`                     | HTTP port. Defaults to `5173` locally.                                      |
 | `ALLOWED_HOSTS`            | Comma-separated API hostnames for additional domains.                       |
 

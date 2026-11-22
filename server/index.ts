@@ -34,11 +34,18 @@ const proxyRanges = (process.env.TRUSTED_PROXY_RANGES ?? "")
   .map((range) => range.trim())
   .filter(Boolean)
   .map((range) => ipaddr.parseCIDR(range));
+let crossfire: ReturnType<typeof createCrossfireEngine> | undefined;
+if (auth) {
+  try {
+    crossfire = createCrossfireEngine(process.env.TACTILE_PYTHON, hosted);
+  } catch {
+    console.error(JSON.stringify({ event: "crossfire_runtime_unavailable" }));
+  }
+}
 const app = createApp(provider, {
   auth,
-  crossfire: auth
-    ? createCrossfireEngine(process.env.TACTILE_PYTHON, hosted)
-    : undefined,
+  crossfire,
+  crossfireUnavailable: Boolean(auth && !crossfire),
   verifySession: auth ? createSessionVerifier(auth) : undefined,
   reserveUsage: auth ? (token) => reserveReview(auth, token) : undefined,
   revision: hosted ? process.env.RENDER_GIT_COMMIT : undefined,
@@ -54,7 +61,6 @@ const app = createApp(provider, {
           "proxy"
     : hosted,
   verifierModel: process.env.OPENAI_VERIFIER_MODEL?.trim() || undefined,
-  metaVerifierModel: process.env.META_VERIFIER_MODEL?.trim() || undefined,
 });
 app.get("/demo-evidence.html", (_request, response) =>
   response.redirect(301, "/example-evidence.html"),

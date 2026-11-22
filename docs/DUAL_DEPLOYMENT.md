@@ -1,6 +1,6 @@
 # Independent Tactile deployments
 
-Both developers can run the React frontend and Express API from the same GitHub repository. Each deployment owner controls their own service, settings, and releases. The existing Tactile site and the independent staging site use separate origins.
+Both developers can run the React frontend and Express API from the same GitHub repository. Each deployment owner controls their own service, settings, and releases. The same current build serves the anonymous demo and, when Supabase is configured, the protected workspace. Independent staging stays useful for owner-controlled rehearsals and release testing.
 
 | Mode                                 | Requirements                                                               | Behavior                                                                                                                                                      |
 | ------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,7 +53,7 @@ Render supports service previews for Git-connected pull requests. A preview uses
 
 ## Optional authenticated testing
 
-Use an authorized staging-only Supabase project for isolated accounts and quota counters. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the new service, enable email/password auth, and register the exact staging HTTPS `/login` redirect in that project's allowlist. Apply the [quota migration](../supabase/migrations/20261121000000_review_quota.sql) before exercising live review. When Supabase is configured, the Render build prepares the Crossfire runtime and example links open the signed-in workspace. Keep AI keys unset during zero-key staging.
+Use an authorized staging-only Supabase project for isolated accounts and quota counters. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` on the new service, enable email/password auth, and register the exact staging HTTPS `/login` redirect in that project's allowlist. Apply both [quota migrations](../supabase/migrations) in order before exercising live review. When Supabase is configured, the Render build prepares the Crossfire runtime. The public demo remains at `/demo` and private operations remain under `/review` and `/settings`. Keep AI keys unset during zero-key staging.
 
 If both owners deliberately share a Supabase project, add the new redirect only with the project owner's approval and keep the existing Site URL. Accounts and database-backed per-account quotas are shared in that configuration. Sign-ins and session storage are scoped to each origin and tab. Review drafts and reports stay in their tab, outcome tracking stays in account-scoped browser storage, and provider settings live in the serving process for the sign-in session. Sign in separately on each origin.
 
