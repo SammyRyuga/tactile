@@ -281,6 +281,7 @@ export const reviewEventSchema = z.discriminatedUnion("type", [
     type: z.literal("error"),
     message: z.string(),
     retryAfter: z.string().optional(),
+    upstreamStatus: z.number().int().min(100).max(599).optional(),
     code: z.string().optional(),
   }),
 ]);

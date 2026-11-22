@@ -95,11 +95,55 @@ export class ProviderResponseError extends Error {
   }
 }
 
+export class ProviderOutputError extends ProviderResponseError {
+  readonly outcome: "incomplete" | "malformed";
+
+  constructor(outcome: "incomplete" | "malformed") {
+    super(200);
+    this.outcome = outcome;
+  }
+}
+
+export class MetaResponsesNotFound extends ProviderResponseError {
+  constructor() {
+    super(404);
+  }
+}
+
+export async function isMetaModelNotFound(
+  response: Response,
+  signal: AbortSignal,
+) {
+  const parsed = z
+    .object({ error: z.object({ code: z.literal("model_not_found") }) })
+    .safeParse(await response.json().catch(() => null));
+  signal.throwIfAborted();
+  return parsed.success;
+}
+
+export async function metaResponsesError(
+  response: Response,
+  signal: AbortSignal,
+) {
+  if (response.status === 404) {
+    if (!(await isMetaModelNotFound(response, signal)))
+      return new MetaResponsesNotFound();
+  } else {
+    await response.body?.cancel();
+  }
+  signal.throwIfAborted();
+  return new ProviderResponseError(
+    response.status,
+    providerRetryAfter(response),
+  );
+}
+
 export async function providerFetch(
   request: typeof fetch,
   url: string,
   init: RequestInit,
 ) {
+  init.signal?.throwIfAborted();
   try {
     return await request(url, init);
   } catch {
@@ -218,6 +262,8 @@ export function createProvider(
           : null,
       });
       if (!response.ok) {
+        if (vendor === "meta")
+          throw await metaResponsesError(response, callSignal);
         await response.body?.cancel();
         throw new ProviderResponseError(
           response.status,
@@ -227,6 +273,11 @@ export function createProvider(
       return payload;
     }
     const first = await send(5500);
+    if (
+      vendor === "meta" &&
+      z.object({ status: z.literal("incomplete") }).safeParse(first).success
+    )
+      throw new ProviderOutputError("incomplete");
     const exhausted = z
       .object({
         status: z.literal("incomplete"),
@@ -236,17 +287,19 @@ export function createProvider(
       })
       .safeParse(first).success;
     const payload =
-      exhausted && options.max_tool_calls !== 1 ? await send(8500) : first;
+      vendor === "openai" && exhausted && options.max_tool_calls !== 1
+        ? await send(8500)
+        : first;
     const parsed = responseSchema.safeParse(payload);
-    if (!parsed.success) throw new ProviderResponseError(502);
+    if (!parsed.success) throw new ProviderOutputError("malformed");
     const { output } = parsed.data;
     const outputText = output
       .flatMap(({ content }) => content ?? [])
       .flatMap((item) => {
         const parsed = textSchema.safeParse(item);
-        return parsed.success ? [parsed.data] : [];
+        return parsed.success && parsed.data.text.trim() ? [parsed.data] : [];
       });
-    if (!outputText.length) throw new ProviderResponseError(502);
+    if (!outputText.length) throw new ProviderOutputError("malformed");
     return outputText;
   }
 

@@ -1315,6 +1315,33 @@ test("a Meta blocker probe stays within one web call even when output is exhaust
   assert.equal(requests, 1);
 });
 
+test("Meta structured generation reports incomplete output after one POST", async () => {
+  let requests = 0;
+  const provider = createProvider(
+    "synthetic-test-key",
+    "muse-spark-1.3",
+    async (_url, init) => {
+      assert.equal(init?.method, "POST");
+      requests++;
+      return Response.json({
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+      });
+    },
+    "meta",
+  );
+  await assert.rejects(
+    provider.crossfireGenerate!(
+      "Return a decision.",
+      [],
+      { type: "object" },
+      signal,
+    ),
+    { outcome: "incomplete", status: 200 },
+  );
+  assert.equal(requests, 1);
+});
+
 test("Meta verification uses its own override and strict structured output", async () => {
   const provider = createProvider(
     "synthetic-test-key",
@@ -1529,6 +1556,7 @@ test("Meta validation distinguishes billing, rate limits, upstream failure and n
         );
         const body = await result.text();
         assert.equal(JSON.parse(body).code, expected.code);
+        assert.equal(JSON.parse(body).upstreamStatus, upstream || undefined);
         assert.ok(!body.includes(key));
       }
       assert.equal(calls, cases.length);
@@ -1593,9 +1621,11 @@ test("Meta key validation can verify one model when the catalog disagrees", asyn
           return new Response("Catalog route unavailable", { status: 404 });
         }
         assert.equal(address, catalogUrl + "/" + selectedModel);
-        return header === "Bearer fixture-both-routes-missing"
-          ? new Response("Temporary endpoint miss", { status: 404 })
-          : Response.json({ object: "model", id: selectedModel });
+        if (header === "Bearer fixture-both-routes-missing")
+          return new Response("Temporary endpoint miss", { status: 404 });
+        if (header === "Bearer fixture-malformed-detail")
+          return Response.json({ object: "model", id: "muse-ember-1.0" });
+        return Response.json({ object: "model", id: selectedModel });
       },
     }),
     async (url) => {
@@ -1612,7 +1642,12 @@ test("Meta key validation can verify one model when the catalog disagrees", asyn
         });
       const unavailable = await save("fixture-both-routes-missing");
       assert.equal(unavailable.status, 503);
-      assert.equal((await unavailable.json()).code, "provider_catalog");
+      assert.equal((await unavailable.json()).upstreamStatus, 404);
+      const malformed = await save("fixture-malformed-detail");
+      assert.equal(malformed.status, 503);
+      const malformedBody = await malformed.json();
+      assert.equal(malformedBody.code, "provider_catalog");
+      assert.equal(malformedBody.upstreamStatus, 200);
       assert.equal(
         (await (await fetch(endpoint, { headers })).json()).saved,
         false,
@@ -1621,7 +1656,7 @@ test("Meta key validation can verify one model when the catalog disagrees", asyn
       assert.equal((await save("fixture-catalog-route-missing")).status, 201);
       assert.deepEqual(
         requests,
-        Array.from({ length: 3 }, () => [
+        Array.from({ length: 4 }, () => [
           catalogUrl,
           catalogUrl + "/" + selectedModel,
         ]).flat(),
@@ -1630,7 +1665,7 @@ test("Meta key validation can verify one model when the catalog disagrees", asyn
   );
 });
 
-test("explicit Meta generation verification saves a key only after a completed response", async () => {
+test("explicit model tests recheck metadata and only generate when access is inconclusive", async () => {
   const token = keySessionToken(1);
   const model = "muse-spark-1.3";
   let generated = 0;
@@ -1638,13 +1673,24 @@ test("explicit Meta generation verification saves a key only after a completed r
     createApp(undefined, {
       verifySession: async (value) => (value === token ? "test-account" : null),
       metaRequest: async (url, init) => {
-        if (url === "https://api.meta.ai/v1/models")
+        const key = new Headers(init?.headers).get("authorization");
+        if (url === "https://api.meta.ai/v1/models") {
+          if (key === "Bearer recovered-metadata-key")
+            return Response.json({ object: "list", data: [{ id: model }] });
+          if (key === "Bearer invalid-generation-key")
+            return Response.json(
+              { error: { code: "invalid_api_key" } },
+              { status: 401 },
+            );
           return Response.json({ object: "list", data: [] });
+        }
         if (url === "https://api.meta.ai/v1/models/" + model)
-          return Response.json(
-            { error: { code: "model_not_found" } },
-            { status: 404 },
-          );
+          return key === "Bearer inaccessible-model-key"
+            ? Response.json(
+                { error: { code: "model_not_found" } },
+                { status: 404 },
+              )
+            : new Response("inconclusive metadata", { status: 404 });
         assert.equal(url, "https://api.meta.ai/v1/responses");
         assert.equal(init?.method, "POST");
         assert.equal(init?.redirect, "error");
@@ -1654,13 +1700,25 @@ test("explicit Meta generation verification saves a key only after a completed r
         assert.equal(body.store, false);
         assert.equal(body.tools, undefined);
         generated++;
-        const key = new Headers(init?.headers).get("authorization");
+        if (key === "Bearer missing-generation-endpoint-key")
+          return new Response("unrecognized generation endpoint", {
+            status: 404,
+          });
         return key === "Bearer incomplete-generation-key"
           ? Response.json({ status: "incomplete", model, output: [] })
           : Response.json({
               status: "completed",
-              model,
-              output: [{ content: [{ type: "output_text", text: "OK" }] }],
+              model:
+                key === "Bearer mismatched-generation-key"
+                  ? "muse-ember-1.0"
+                  : model,
+              output: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "OK" }],
+                },
+              ],
             });
       },
     }),
@@ -1677,11 +1735,32 @@ test("explicit Meta generation verification saves a key only after a completed r
           body: JSON.stringify({ key, model, verification }),
         });
       const metadata = await save("synthetic-generation-key");
-      assert.equal(metadata.status, 422);
-      assert.equal((await metadata.json()).code, "provider_model");
+      assert.equal(metadata.status, 503);
+      assert.equal((await metadata.json()).code, "provider_catalog");
+      const denied = await save("inaccessible-model-key", "generation");
+      assert.equal(denied.status, 422);
+      assert.equal((await denied.json()).code, "provider_model");
+      const invalid = await save("invalid-generation-key", "generation");
+      assert.equal(invalid.status, 422);
+      assert.equal((await invalid.json()).upstreamStatus, 401);
       assert.equal(generated, 0);
+      const routeMissing = await save(
+        "missing-generation-endpoint-key",
+        "generation",
+      );
+      assert.equal(routeMissing.status, 502);
+      assert.deepEqual(await routeMissing.json(), {
+        code: "provider_endpoint",
+        message:
+          "Meta’s generation endpoint could not complete the request. Share the request ID if this continues.",
+        upstreamStatus: 404,
+      });
       const incomplete = await save("incomplete-generation-key", "generation");
-      assert.equal(incomplete.status, 503);
+      assert.equal(incomplete.status, 502);
+      assert.equal((await incomplete.json()).code, "provider_incomplete");
+      const mismatched = await save("mismatched-generation-key", "generation");
+      assert.equal(mismatched.status, 502);
+      assert.equal((await mismatched.json()).code, "provider_response");
       assert.equal(
         (await (await fetch(endpoint, { headers })).json()).saved,
         false,
@@ -1691,7 +1770,11 @@ test("explicit Meta generation verification saves a key only after a completed r
       const state = await accepted.json();
       assert.equal(state.model, model);
       assert.equal(state.saved, true);
-      assert.equal(generated, 2);
+      assert.equal(state.verification, "generation");
+      const recovered = await save("recovered-metadata-key", "generation");
+      assert.equal(recovered.status, 201);
+      assert.equal((await recovered.json()).verification, undefined);
+      assert.equal(generated, 4);
       assert.doesNotMatch(JSON.stringify(state), /synthetic-generation-key/);
     },
   );

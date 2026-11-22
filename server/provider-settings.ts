@@ -3,6 +3,9 @@ import type { Claim } from "../shared/review.ts";
 import { z } from "zod";
 import {
   createProvider,
+  isMetaModelNotFound,
+  metaResponsesError,
+  ProviderOutputError,
   providerFetch,
   providerRetryAfter,
   ProviderResponseError,
@@ -34,9 +37,6 @@ const metaModel = z.object({
   object: z.literal("model"),
   id: z.string(),
 });
-const metaModelNotFound = z.object({
-  error: z.object({ code: z.literal("model_not_found") }),
-});
 type CatalogOutcome =
   | "endpoint_not_found"
   | "invalid_catalog"
@@ -44,16 +44,16 @@ type CatalogOutcome =
 
 export class MetaModelLookupError extends ProviderResponseError {
   readonly catalogOutcome: CatalogOutcome;
-  readonly detailStatus: number;
+  readonly confirmedMissing: boolean;
 
   constructor(
     confirmedMissing: boolean,
     catalogOutcome: CatalogOutcome,
     detailStatus: number,
   ) {
-    super(confirmedMissing ? 404 : 503);
+    super(detailStatus);
+    this.confirmedMissing = confirmedMissing;
     this.catalogOutcome = catalogOutcome;
-    this.detailStatus = detailStatus;
   }
 }
 
@@ -102,10 +102,7 @@ export async function validateMetaKey(
     throw new MetaModelLookupError(false, catalogOutcome, detail.status);
   }
   if (detail.status === 404) {
-    const confirmedMissing = metaModelNotFound.safeParse(
-      await detail.json().catch(() => null),
-    ).success;
-    signal.throwIfAborted();
+    const confirmedMissing = await isMetaModelNotFound(detail, signal);
     throw new MetaModelLookupError(
       confirmedMissing,
       catalogOutcome,
@@ -119,7 +116,13 @@ export async function validateMetaKey(
 const metaTestResult = z.object({
   status: z.literal("completed"),
   model: z.string(),
-  output: z.array(z.object({ content: z.array(z.unknown()).optional() })),
+  output: z.array(
+    z.object({
+      type: z.string(),
+      role: z.string().optional(),
+      content: z.array(z.unknown()).optional(),
+    }),
+  ),
 });
 const metaTestText = z.object({
   type: z.literal("output_text"),
@@ -152,25 +155,23 @@ export async function testMetaGeneration(
       signal,
     },
   );
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new ProviderResponseError(
-      response.status,
-      providerRetryAfter(response),
-    );
-  }
-  const parsed = metaTestResult.safeParse(
-    await response.json().catch(() => null),
-  );
+  if (!response.ok) throw await metaResponsesError(response, signal);
+  const output: unknown = await response.json().catch(() => null);
   signal.throwIfAborted();
+  if (z.object({ status: z.literal("incomplete") }).safeParse(output).success)
+    throw new ProviderOutputError("incomplete");
+  const parsed = metaTestResult.safeParse(output);
   if (
     !parsed.success ||
     parsed.data.model !== model ||
-    !parsed.data.output.some(({ content }) =>
-      content?.some((part) => metaTestText.safeParse(part).success),
+    !parsed.data.output.some(
+      ({ type, role, content }) =>
+        type === "message" &&
+        role === "assistant" &&
+        content?.some((part) => metaTestText.safeParse(part).success),
     )
   )
-    throw new ProviderResponseError(502);
+    throw new ProviderOutputError("malformed");
 }
 
 export function providerSessionId(

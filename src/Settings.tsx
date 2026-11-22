@@ -14,6 +14,7 @@ const stateSchema = z.object({
   saved: z.boolean(),
   expiresAt: z.number().optional(),
   model: reviewModelSchema.default(defaultReviewModel),
+  verification: z.enum(["metadata", "generation"]).optional(),
 });
 type KeyState = z.infer<typeof stateSchema>;
 
@@ -130,17 +131,16 @@ export function Settings({
       setKeyState(saved);
       setModel(saved.model);
       setMessage(
-        key
-          ? testGeneration
-            ? "Model test passed. Key saved for this session."
-            : "Key saved for this session. Meta verified the selected model."
-          : `Review model saved. New reviews will use ${reviewModels[saved.model].name}.`,
+        saved.verification === "generation"
+          ? "Model test passed. Key saved for this session."
+          : key
+            ? "Key saved for this session. Meta confirmed the model’s metadata."
+            : `Review model saved. New reviews will use ${reviewModels[saved.model].name}.`,
       );
     } catch (cause) {
       setCanTestModel(
         cause instanceof SettingsRequestError &&
-          (cause.code === "provider_model" ||
-            cause.code === "provider_catalog"),
+          cause.code === "provider_catalog",
       );
       setError(
         cause instanceof Error && cause.name === "TimeoutError"
@@ -225,7 +225,10 @@ export function Settings({
                     name="review-model"
                     value={id}
                     checked={model === id}
-                    onChange={() => setModel(id)}
+                    onChange={() => {
+                      setModel(id);
+                      setCanTestModel(false);
+                    }}
                   />
                   <span>
                     <strong>{reviewModels[id].name}</strong>
@@ -253,7 +256,10 @@ export function Settings({
               maxLength={512}
               required={!keyState?.saved}
               disabled={busy}
-              onChange={(event) => setKeyEntered(event.target.value.length > 0)}
+              onChange={(event) => {
+                setKeyEntered(event.target.value.length > 0);
+                setCanTestModel(false);
+              }}
               placeholder={
                 keyState?.saved
                   ? "Enter a replacement key"
@@ -320,8 +326,8 @@ export function Settings({
               Test model and save
             </button>
             <p className="field-note" id="meta-test-note">
-              Sends one short prompt to Meta using your key and may use a small
-              amount of your API quota.
+              Rechecks model access first. If it remains inconclusive, sends one
+              short prompt using your key and may incur a Meta charge.
             </p>
           </div>
         )}

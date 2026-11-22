@@ -375,7 +375,7 @@ test("settings require sign-in and store the appearance preference across reload
     .fill("synthetic-fixture-key");
   await page.getByRole("button", { name: "Save key" }).click();
   await expect(page.getByRole("status")).toHaveText(
-    "Key saved for this session. Meta verified the selected model.",
+    "Key saved for this session. Meta confirmed the model’s metadata.",
   );
   await expect(page.getByLabel("API key", { exact: true })).toHaveValue("");
   await page.getByRole("radio", { name: /Muse Ember/ }).check();
@@ -443,16 +443,24 @@ test("settings offers an explicit model test after a metadata failure", async ({
       return route.fulfill({ json: { saved: false, model: "muse-spark-1.3" } });
     const input = route.request().postDataJSON() as (typeof submitted)[number];
     submitted.push(input);
+    if (submitted.length === 1)
+      return route.fulfill({
+        status: 422,
+        json: {
+          code: "provider_model",
+          message: "The selected model is unavailable to this key.",
+        },
+      });
     return input.verification === "generation"
       ? route.fulfill({
           status: 201,
-          json: { saved: true, model: input.model },
+          json: { saved: true, model: input.model, verification: "generation" },
         })
       : route.fulfill({
-          status: 422,
+          status: 503,
           json: {
-            code: "provider_model",
-            message: "The selected model is unavailable to this key.",
+            code: "provider_catalog",
+            message: "Meta’s model information was inconclusive.",
           },
         });
   });
@@ -464,14 +472,22 @@ test("settings offers an explicit model test after a metadata failure", async ({
   const testModel = page.getByRole("button", { name: "Test model and save" });
   await expect(testModel).toHaveCount(0);
   await page.getByRole("button", { name: "Save key" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "unavailable to this key",
+  );
+  await expect(testModel).toHaveCount(0);
+  await page.getByRole("button", { name: "Save key" }).click();
   await expect(testModel).toBeVisible();
-  expect(submitted[0].verification).toBeUndefined();
+  expect(submitted.slice(0, 2).map((input) => input.verification)).toEqual([
+    undefined,
+    undefined,
+  ]);
   await expect(key).toHaveValue("synthetic-model-test-key");
   await testModel.click();
   await expect(
     page.getByText("Model test passed. Key saved for this session."),
   ).toBeVisible();
-  expect(submitted[1]).toEqual({
+  expect(submitted[2]).toEqual({
     key: "synthetic-model-test-key",
     model: "muse-spark-1.3",
     verification: "generation",

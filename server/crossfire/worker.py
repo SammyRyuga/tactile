@@ -92,6 +92,10 @@ async def run(command):
     from evidence import fetch, search, verify
     from core.evaluators import researcher
 
+    if command["operation"] == "health":
+        send("ready")
+        return
+
     async def read_public_page(url, timeout=5.0):
         if fetch.is_serp_url(url):
             return ""

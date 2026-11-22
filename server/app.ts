@@ -31,7 +31,11 @@ import {
 } from "./provider-settings.ts";
 import type { ClaimCache } from "./provider-settings.ts";
 import type { ReviewProvider } from "./provider.ts";
-import { ProviderResponseError } from "./provider.ts";
+import {
+  MetaResponsesNotFound,
+  ProviderOutputError,
+  ProviderResponseError,
+} from "./provider.ts";
 
 function providerFailure(
   error: unknown,
@@ -56,13 +60,32 @@ function providerFailure(
   if (
     validation &&
     error instanceof MetaModelLookupError &&
-    error.status !== 404
+    !error.confirmedMissing
   )
     return {
       status: 503,
       code: "provider_catalog",
       message:
-        "Tactile could not verify the selected model with Meta. Try saving again shortly.",
+        "Meta’s model information was inconclusive. You can retry the save or explicitly test the selected model.",
+    };
+  if (error instanceof MetaResponsesNotFound)
+    return {
+      status: 502,
+      code: "provider_endpoint",
+      message:
+        "Meta’s generation endpoint could not complete the request. Share the request ID if this continues.",
+    };
+  if (error instanceof ProviderOutputError)
+    return {
+      status: 502,
+      code:
+        error.outcome === "incomplete"
+          ? "provider_incomplete"
+          : "provider_response",
+      message:
+        error.outcome === "incomplete"
+          ? "The provider did not finish generating a response. Your inputs are ready to try again."
+          : "The provider returned an unexpected response. Share the request ID if this continues.",
     };
   if (error instanceof ProviderResponseError) {
     const retryAfter = error.retryAfter;
@@ -327,6 +350,7 @@ export function createApp(
     if (!session) return;
     response.json({
       live: Boolean(settings.get(session.account, session.token) || provider),
+      ...(options.auth ? { workerReady: Boolean(options.crossfire) } : {}),
     });
   });
   app.get(
@@ -373,6 +397,15 @@ export function createApp(
       }
       const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
       const testGeneration = parsed.data.verification === "generation";
+      if (testGeneration && options.crossfireUnavailable) {
+        response.status(503).json({
+          code: "review_engine",
+          message:
+            "The live review engine is unavailable on this deployment. Contact the deployment owner.",
+        });
+        return;
+      }
+      let verification: "metadata" | "generation" = "metadata";
       if (validatingKeys.has(id)) {
         response.status(429).json({
           message:
@@ -393,32 +426,36 @@ export function createApp(
       const deadline = AbortSignal.timeout(15_000);
       try {
         const signal = AbortSignal.any([controller.signal, deadline]);
-        if (testGeneration) {
-          await testMetaGeneration(key, model, signal, options.metaRequest);
-          console.info(
-            JSON.stringify({
-              event: "meta_key_generation_verified",
-              requestId: response.getHeader("X-Request-Id"),
-              model,
-            }),
-          );
-        } else {
-          const catalogFallback = await validateMetaKey(
+        let catalogFallback: Awaited<ReturnType<typeof validateMetaKey>>;
+        try {
+          catalogFallback = await validateMetaKey(
             key,
             model,
             signal,
             options.metaRequest,
           );
-          if (catalogFallback)
-            console.info(
-              JSON.stringify({
-                event: "meta_key_validation_model_lookup",
-                requestId: response.getHeader("X-Request-Id"),
-                model,
-                catalogOutcome: catalogFallback,
-              }),
-            );
+        } catch (error) {
+          if (
+            !testGeneration ||
+            !(error instanceof MetaModelLookupError) ||
+            error.confirmedMissing
+          )
+            throw error;
+          signal.throwIfAborted();
+          verification = "generation";
+          await testMetaGeneration(key, model, signal, options.metaRequest);
+          catalogFallback = error.catalogOutcome;
         }
+        if (catalogFallback)
+          console.info(
+            JSON.stringify({
+              event: "meta_key_validation_model_lookup",
+              requestId: response.getHeader("X-Request-Id"),
+              model,
+              catalogOutcome: catalogFallback,
+              verification,
+            }),
+          );
       } catch (error) {
         if (response.destroyed) return;
         if (controller.signal.aborted) {
@@ -432,35 +469,26 @@ export function createApp(
           deadline.aborted,
           true,
         );
+        const upstreamStatus =
+          error instanceof ProviderResponseError && error.status > 0
+            ? error.status
+            : undefined;
         console.info(
           JSON.stringify({
             event: "meta_key_validation_failed",
             requestId: response.getHeader("X-Request-Id"),
             code,
             model,
-            verification: testGeneration ? "generation" : "metadata",
+            verification,
             catalogOutcome:
               error instanceof MetaModelLookupError
                 ? error.catalogOutcome
                 : undefined,
-            upstreamStatus:
-              error instanceof MetaModelLookupError
-                ? error.detailStatus
-                : error instanceof ProviderResponseError
-                  ? error.status
-                  : undefined,
+            upstreamStatus,
           }),
         );
         if (retryAfter) response.set("Retry-After", retryAfter);
-        response.status(status).json(
-          testGeneration && code === "provider_model"
-            ? {
-                code: "provider_model_test",
-                message:
-                  "Meta rejected the generation test for the selected model. Re-enter your key or choose another model.",
-              }
-            : { code, message },
-        );
+        response.status(status).json({ code, message, upstreamStatus });
         return;
       } finally {
         validatingKeys.delete(id);
@@ -480,9 +508,12 @@ export function createApp(
           .json({ message: "The key could not be saved for this session." });
         return;
       }
-      response
-        .status(parsed.data.key ? 201 : 200)
-        .json({ saved: true, expiresAt, model });
+      response.status(parsed.data.key ? 201 : 200).json({
+        saved: true,
+        expiresAt,
+        model,
+        ...(verification === "generation" ? { verification } : {}),
+      });
     },
   );
   app.delete(
@@ -683,21 +714,30 @@ export function createApp(
         error,
         signal.aborted,
       );
+      const upstreamStatus =
+        error instanceof ProviderResponseError && error.status > 0
+          ? error.status
+          : undefined;
       console.info(
         JSON.stringify({
           event: "review_request_failed",
           requestId: response.getHeader("X-Request-Id"),
           code,
-          upstreamStatus:
-            error instanceof ProviderResponseError ? error.status : undefined,
+          upstreamStatus,
         }),
       );
       if (response.headersSent) {
-        const event: ReviewEvent = { type: "error", message, retryAfter, code };
+        const event: ReviewEvent = {
+          type: "error",
+          message,
+          retryAfter,
+          code,
+          upstreamStatus,
+        };
         response.end(JSON.stringify(event) + "\n");
       } else {
         if (retryAfter) response.set("Retry-After", retryAfter);
-        response.status(status).json({ code, message });
+        response.status(status).json({ code, message, upstreamStatus });
       }
     } finally {
       active--;
