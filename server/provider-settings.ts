@@ -28,36 +28,90 @@ const metaModelList = z.object({
   data: z.array(z.object({ id: z.string() })),
 });
 
+const metaModel = z.object({
+  object: z.literal("model"),
+  id: z.string(),
+});
+const metaModelNotFound = z.object({
+  error: z.object({ code: z.literal("model_not_found") }),
+});
+type CatalogOutcome =
+  | "endpoint_not_found"
+  | "invalid_catalog"
+  | "model_not_listed";
+
+export class MetaModelLookupError extends ProviderResponseError {
+  readonly catalogOutcome: CatalogOutcome;
+  readonly detailStatus: number;
+
+  constructor(
+    confirmedMissing: boolean,
+    catalogOutcome: CatalogOutcome,
+    detailStatus: number,
+  ) {
+    super(confirmedMissing ? 404 : 503);
+    this.catalogOutcome = catalogOutcome;
+    this.detailStatus = detailStatus;
+  }
+}
+
 export async function validateMetaKey(
   key: string,
   model: ReviewModel,
   signal: AbortSignal,
   request = fetch,
 ) {
-  const response = await providerFetch(
+  const catalogUrl = "https://api.meta.ai/v1/models";
+  const options = {
+    method: "GET",
+    redirect: "error",
+    headers: { Authorization: "Bearer " + key },
+    signal,
+  } as const;
+  const catalog = await providerFetch(request, catalogUrl, options);
+  let catalogOutcome: CatalogOutcome;
+  if (catalog.ok) {
+    const parsed = metaModelList.safeParse(
+      await catalog.json().catch(() => null),
+    );
+    signal.throwIfAborted();
+    if (parsed.success && parsed.data.data.some(({ id }) => id === model))
+      return;
+    catalogOutcome = parsed.success ? "model_not_listed" : "invalid_catalog";
+  } else {
+    await catalog.body?.cancel();
+    if (catalog.status !== 404)
+      throw new ProviderResponseError(
+        catalog.status,
+        providerRetryAfter(catalog),
+      );
+    catalogOutcome = "endpoint_not_found";
+  }
+
+  const detail = await providerFetch(
     request,
-    "https://api.meta.ai/v1/models",
-    {
-      method: "GET",
-      redirect: "error",
-      headers: { Authorization: "Bearer " + key },
-      signal,
-    },
+    `${catalogUrl}/${encodeURIComponent(model)}`,
+    options,
   );
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new ProviderResponseError(
-      response.status,
-      providerRetryAfter(response),
+  if (detail.ok) {
+    const parsed = metaModel.safeParse(await detail.json().catch(() => null));
+    signal.throwIfAborted();
+    if (parsed.success && parsed.data.id === model) return catalogOutcome;
+    throw new MetaModelLookupError(false, catalogOutcome, detail.status);
+  }
+  if (detail.status === 404) {
+    const confirmedMissing = metaModelNotFound.safeParse(
+      await detail.json().catch(() => null),
+    ).success;
+    signal.throwIfAborted();
+    throw new MetaModelLookupError(
+      confirmedMissing,
+      catalogOutcome,
+      detail.status,
     );
   }
-  const parsed = metaModelList.safeParse(
-    await response.json().catch(() => null),
-  );
-  signal.throwIfAborted();
-  if (!parsed.success) throw new ProviderResponseError(502);
-  if (!parsed.data.data.some(({ id }) => id === model))
-    throw new ProviderResponseError(404);
+  await detail.body?.cancel();
+  throw new ProviderResponseError(detail.status, providerRetryAfter(detail));
 }
 
 export function providerSessionId(
