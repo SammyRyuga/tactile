@@ -232,3 +232,9 @@
 - Preserved Ryan’s exact-model lookup. Explicit generation now requires inconclusive metadata, stops on a confirmed denial, and reports incomplete output without retrying Meta. Added a startup worker handshake and propagated cancellation and safe provider status through the Crossfire stream.
 - The pinned upstream Crossfire protocol and evidence checks remain in place. Passed the repository check, 68 Node tests, 50 Chromium tests, seven Crossfire integration tests, fixture evaluation, production build, and both npm audits. A compiled Express run with mocked Supabase and Meta verified a complete live review and a missing-worker run preserved the public demo.
 - [The owner smoke procedure](docs/meta-live-verification.md) defines a single manual attempt after approval. Real Meta calls, credits, and the production account’s model access remain unverified.
+
+## Render Crossfire startup repair
+
+- Production revision `9369462` served the public app while emitting the generic worker error. The screenshot was consistent with a slow initialization. A clean Linux build with the pinned dependency target completed its normal handshake. With a controlled startup delay, the original probe failed after 5.01 seconds and the patched worker became ready after 6.26 seconds. The original Render log did not identify the exact failure category.
+- Shared interpreter and dependency selection between build and runtime, verified the full worker handshake and native imports during the authenticated Render build, and moved runtime probing off the HTTP startup path with a bounded 20-second budget and sanitized diagnostics. No files under `server/crossfire/` changed.
+- Passed 68 Node tests, 52 Chromium tests, eight Crossfire integration tests, fixture evaluation, the production build, and both npm audits. The hosted-mode Linux smoke used fixture auth and verified public routes during initialization plus authenticated readiness afterward. No live provider was used.

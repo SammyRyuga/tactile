@@ -47,6 +47,14 @@ In PowerShell use `$env:TACTILE_SMOKE_URL = 'https://your-staging-service.onrend
 
 The smoke suite replays all three cases in Chromium, checks that the demo avoids API and external requests, opens the evidence timeline, exports the memo, and checks anonymous access to the settings read endpoint. Review the new service's **Events** and **Logs** for deploy or runtime errors. See the [Round 1 walkthrough](round1-demo.md) for a manual rehearsal.
 
+### Verify Crossfire startup on Render
+
+For an approved authenticated deploy, check the build log for `crossfire_build_ready`. It reports the Python version, the dependency mode, and the time taken by the full worker handshake. The default uses `python3` and installs the pinned requirements in `.crossfire-python`. A deliberate `TACTILE_PYTHON` override must name an executable available during both build and startup with the required packages already installed.
+
+Then check the service log for `crossfire_runtime_ready` and sign in to confirm that `GET /api/status` returns `workerReady: true`. The worker can take up to 20 seconds to initialize while the public demo and `/health` remain available. No provider key is needed for this check.
+
+If startup reports `crossfire_runtime_unavailable`, use its `reason` and elapsed time. For `python_not_found`, verify the selected interpreter is available at runtime. For `dependency_target_missing`, `missing_module`, or `import_failed`, verify the deployed build contains the dependency target and uses a Python version compatible with its native wheels. For `timeout`, compare the build and runtime durations. For `nonzero_exit` or `invalid_handshake`, share the revision and sanitized reason.
+
 ## Development and previews
 
 Develop on a feature branch and open a PR. Verify CI and CodeQL for the PR and for the merged commit. The independent service's CI-gated auto-deploy picks up eligible pushes to `main`. Coordinate shared-branch rollout timing with both owners if both services have auto-deploy enabled. [Render deploys](https://render.com/docs/deploys)

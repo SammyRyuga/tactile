@@ -1,5 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
-import { accessSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { z } from "zod";
@@ -28,6 +27,10 @@ import { ProviderResponseError } from "./provider.ts";
 import { readSource } from "./source-reader.ts";
 import { reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
+import {
+  crossfireRuntime,
+  verifyCrossfireRuntime,
+} from "./crossfire-runtime.ts";
 
 const envelope = z.object({
   kind: z.enum(["case", "request", "event", "error"]),
@@ -172,21 +175,9 @@ export function createCrossfireEngine(
   hosted = false,
   sourceReader = readSource,
 ) {
-  const dependencies =
-    hosted && !pythonPath ? resolve(".crossfire-python") : undefined;
-  const executable =
-    pythonPath ?? (dependencies ? "python3" : resolve(".venv/bin/python"));
-  const worker = resolve("server/crossfire/worker.py");
-  accessSync(
-    dependencies ? resolve(dependencies, "pydantic/__init__.py") : executable,
-  );
-  accessSync(worker);
+  const runtime = crossfireRuntime(pythonPath, hosted);
+  const { executable, dependencies, worker, env: workerEnv } = runtime;
   const workerArgs = ["-I", "-B", worker];
-  const workerEnv = {
-    PATH: process.env.PATH,
-    PYTHON_DOTENV_DISABLED: "1",
-    TACTILE_CROSSFIRE_LIBS: dependencies,
-  };
 
   async function runRaw(
     provider: ReviewProvider,
@@ -292,20 +283,7 @@ export function createCrossfireEngine(
 
   return {
     checkRuntime() {
-      const result = spawnSync(executable, workerArgs, {
-        input: JSON.stringify({ operation: "health" }) + "\n",
-        encoding: "utf8",
-        env: workerEnv,
-        stdio: ["pipe", "pipe", "ignore"],
-        timeout: 5000,
-        maxBuffer: 16 * 1024,
-      });
-      if (
-        result.error ||
-        result.status !== 0 ||
-        result.stdout.trim() !== '{"kind": "ready"}'
-      )
-        throw new CrossfireRuntimeError();
+      return verifyCrossfireRuntime(runtime);
     },
     async ingest(kind: AttachmentKind, data: Buffer, signal: AbortSignal) {
       const child = spawn(
