@@ -16,7 +16,7 @@
 
 ![Tactile homepage with lime, graphite, and blue assembly artwork and a sign-in link](docs/screenshots/home.webp)
 
-Tactile turns a proposed change into testable claims. It routes those claims to the checks that matter, records the evidence behind each verdict, and produces a Markdown decision memo for a design review or pull request. Built for **Compute 50 · Domain 9 · Developer Productivity and Intelligent Automation**.
+Tactile turns a proposed change into testable claims. It routes those claims to the checks that matter, records the evidence behind each verdict, and produces a Markdown decision memo for a design review or pull request.
 
 ## Try a review
 
