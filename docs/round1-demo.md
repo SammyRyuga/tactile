@@ -2,23 +2,20 @@
 
 ## Rehearse on the hosted app
 
-Once the independent staging service is live, open `/demo?example=flag` on its origin before judging to give Render time to wake up. Use a fresh browser window and verify that **Public demo** opens directly. The bundled run and Markdown export need no account or API key. Use the local run below while staging is being set up. [Independent staging setup](DUAL_DEPLOYMENT.md)
+Open `/demo?example=flag` on the authorized no-key origin before judging, then start a fresh browser session and verify that **Public demo** opens directly. The existing production site uses sign-in. Use the local rehearsal below until a separate public demo origin is available. [Deployment and smoke-check instructions](DUAL_DEPLOYMENT.md)
 
 ## Run it locally
 
-Use Node 22.19+ within the 22.x line or Node 24+. Run `npm ci`, `npm run build`, and `npm start`, then open [the rollout example](http://127.0.0.1:5173/demo?example=flag). The public route also works with `npm run dev`.
+Use Node 22.19+ within the 22.x line or Node 24+. From a checkout without provider or Supabase settings, run `npm ci --include=dev`, `npm run build`, and `npm start`, then open [the rollout example](http://127.0.0.1:5173/demo?example=flag). The public route also works with `npm run dev`.
 
 ## 90-second walkthrough
 
-1. **Decision.** “We’ll ship an in-place record writer behind a feature flag. If the rollout goes wrong, turning the flag off should restore the previous records.”
-2. **Assumption.** Select **Review example**. In **Review assumptions**, read the first statement marked **Critical assumption**. Explain that the reviewer can edit the wording and select which assumptions to check.
-3. **Challenge.** Select **Run checks**. In the first finding, open **Review trail** and read **Feasibility**. The flag is checked before future writes, while an earlier mutation is already persisted.
-4. **Evidence.** Open **Bundled flag timeline**. Show the write and then the flag switch. The stored record stays changed after the flag turns off.
-5. **Verdict.** Point to **Contradicted** for reversing stored records, then **Supported** for preventing new writes in this fixture. The claims make different promises.
-6. **Action.** Keep the flag as a kill switch and retain the old representation or rehearse a repair job. Select **Export Markdown** to show the decision, both verdicts, and the recorded timeline excerpt in the memo.
+1. **Plan · 0–20 seconds.** Show the rollout proposal. The team wants to disable a feature flag if the new in-place record writer fails and expects that to restore earlier records. Say that this demo replays bundled evidence.
+2. **Assumptions · 20–40 seconds.** Select **Review example**. Point out the **Critical assumption** about restoring stored records and the separate assumption about preventing future writes. Select **Run checks**.
+3. **Results · 40–90 seconds.** Open the first **Review trail** and its **Bundled flag timeline**. Show why restoration is **Contradicted** and preventing future flagged writes is **Supported** in this fixture. Read the recommended repair or reversible write strategy, then select **Export Markdown** to show the evidence excerpt and provenance.
 
-Say “This is a bundled scenario with recorded evidence.” If a judge asks to try an edit, change the first claim to a materially different one and rerun. The edited claim is **Unresolved** and its finding explains what evidence to collect. **Claim coverage** lists the original critical assumption as unchecked. Select **Choose another example** to replay CI coverage or replica consistency.
+If a judge asks to try an edit, change the first claim to a materially different one and rerun. The edited claim is **Unresolved** and its finding explains what evidence to collect. **Claim coverage** lists the original critical assumption as unchecked. Select **Choose another example** to replay CI coverage or replica consistency.
 
 ## Live follow-up
 
-Use a test account and approved sample proposal. Configure Supabase and the quota migration per the [README](../README.md), sign in, and validate an authorized Meta Model API key in **Settings**. Use **Workspace** to find and choose claims, then review the live trail. Live search and provider availability can affect the report. Keep the local rollout example open for the judges while a live request runs.
+Live Meta reviews remain unverified for this release. Rehearse them separately with an authorized test account, Supabase, both quota migrations, and an approved personal Meta key. Use a synthetic proposal and verify extraction, selected claims, and the live evidence trail before presenting that path. Keep the 90-second walkthrough on the recorded demo.

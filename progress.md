@@ -197,3 +197,9 @@
 - Added Ryan Fernandes, Samanyu Pattanayak and Aritra Ghosh to the site footers and README. Fixed accessible zero-selection guidance, public demo browser history and duplicate Markdown downloads.
 - Added rate limits to the routes flagged by CodeQL, kept the existing 12/hour default in an owner-configurable Supabase quota migration, and preserved provider Retry-After metadata. The local PostgreSQL test verified quota adjustment and permissions. Hosted databases and provider accounts were outside the run.
 - The [black-box rerun](qa/blackbox/RUN_REPORT.md#follow-up-repair-verification) recorded 156 passed and three blocked executions out of 159. The authenticated evidence URL editor is still unavailable to anonymous testers.
+
+## Merged release verification · November 22, 2026
+
+- Verified that PR #31 merged as `224efa8e7f559041a37a20bcc7fc7a97a30a37d9` and that CI and CodeQL passed on that exact revision. A clean Node 24 checkout passed the repository check, 46 Chromium tests, fixture evaluation, five Crossfire integration tests, and both npm audits.
+- The published site's health endpoint reported the same SHA. Desktop and mobile browser checks confirmed the refreshed homepage and three-person credits. All hosted example routes led to sign-in, while the local production build completed the three recorded reviews and exported their memos without credentials.
+- The connected Render workspace had no services. An authorized no-key public host is still needed. The [Round 1 walkthrough](docs/round1-demo.md) retains the local rehearsal path, with live Meta verification pending separate authorized configuration.
