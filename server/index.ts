@@ -1,6 +1,6 @@
 import { createCrossfireEngine } from "./crossfire-engine.ts";
 import { CrossfireStartupError } from "./crossfire-runtime.ts";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import express from "express";
@@ -86,6 +86,43 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 if (dev) {
+  if (!hosted) {
+    const model = resolve("build/control-room-assets/control-room.glb");
+    app.get("/control-room-assets/control-room.glb", (request, response) => {
+      const original = statSync(model, { throwIfNoEntry: false });
+      if (!original?.isFile()) {
+        response.sendStatus(404);
+        return;
+      }
+      response.vary("Accept-Encoding");
+      response.set("Cross-Origin-Resource-Policy", "same-origin");
+      response.set("Cache-Control", "private, no-cache");
+      response.type("model/gltf-binary");
+      const variants = new Map([["identity", model]]);
+      if (!request.headers.range) {
+        for (const [encoding, suffix] of [
+          ["gzip", ".gz"],
+          ["br", ".br"],
+        ]) {
+          const path = model + suffix;
+          const variant = statSync(path, { throwIfNoEntry: false });
+          if (variant?.isFile() && variant.mtimeMs >= original.mtimeMs)
+            variants.set(encoding, path);
+        }
+      }
+      const encoding = request.acceptsEncodings(
+        ["br", "gzip", "identity"].filter((option) => variants.has(option)),
+      );
+      if (!encoding) {
+        response.sendStatus(406);
+        return;
+      }
+      if (encoding !== "identity") response.set("Content-Encoding", encoding);
+      response.sendFile(variants.get(encoding)!, {
+        acceptRanges: encoding === "identity",
+      });
+    });
+  }
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true, hmr: { server } },

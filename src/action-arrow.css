@@ -1,0 +1,79 @@
+.action-arrow {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  overflow: visible;
+  vertical-align: -0.15em;
+}
+
+.action-arrow[data-direction="up"] {
+  rotate: -90deg;
+}
+
+.action-arrow[data-direction="down"] {
+  rotate: 90deg;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .arrow-curve {
+    stroke-dasharray: 1 1;
+  }
+
+  .arrow-tip {
+    transform-origin: 20px 8px;
+  }
+
+  :where(a, button):not(:disabled):is(:hover, :focus-visible) .arrow-curve {
+    animation: arrow-trace 1.45s infinite;
+  }
+
+  :where(a, button):not(:disabled):is(:hover, :focus-visible) .arrow-tip {
+    animation: arrow-tip 1.45s infinite;
+  }
+
+  @keyframes arrow-trace {
+    0% {
+      stroke-dashoffset: 0;
+      animation-timing-function: cubic-bezier(0.55, 0, 0.75, 0.5);
+    }
+    36% {
+      stroke-dashoffset: -1;
+      opacity: 1;
+    }
+    39% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+    40% {
+      stroke-dashoffset: 1;
+      opacity: 0;
+    }
+    43% {
+      stroke-dashoffset: 1;
+      opacity: 1;
+      animation-timing-function: cubic-bezier(0.2, 0.45, 0.55, 1);
+    }
+    73%,
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes arrow-tip {
+    0%,
+    29% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    42%,
+    62% {
+      transform: scale(0.08);
+      opacity: 0;
+    }
+    80%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+}

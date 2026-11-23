@@ -12,3 +12,8 @@ playwright-report/
 .venv/
 __pycache__/
 .crossfire-python/
+
+# Blender sources and preview exports are local artifacts.
+/*.blend
+/*.blend1
+/*_preview.png

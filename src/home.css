@@ -414,8 +414,8 @@ body {
   gap: 0.45rem;
 }
 .faq-list details {
-  background: var(--paper-ground);
   border-radius: 1rem;
+  background: #e9eae1;
 }
 .faq-list summary {
   cursor: pointer;
@@ -426,23 +426,80 @@ body {
   gap: 0.8rem;
   justify-content: space-between;
   list-style: none;
+  border-radius: inherit;
 }
 .faq-list summary::-webkit-details-marker {
   display: none;
 }
-.faq-list summary::after {
-  content: "+";
-  font-size: 1.3rem;
-  line-height: 1;
-  font-weight: 600;
+.faq-indicator {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
-.faq-list details[open] summary::after {
-  content: "−";
+
+.faq-indicator::before,
+.faq-indicator::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 0.69rem;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.faq-indicator::after {
+  transform: rotate(90deg);
+}
+
+.faq-list summary:is(:hover, :focus-visible) .faq-indicator,
+.faq-list details[open] .faq-indicator {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.faq-list details[open] .faq-indicator::after {
+  transform: rotate(0deg);
 }
 .faq-list details p {
+  margin: 0;
   padding: 0 1.2rem 1.15rem;
   font-size: 1rem;
   max-width: 65ch;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .faq-indicator {
+    transition: background-color 160ms ease;
+  }
+
+  .faq-indicator::after {
+    transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @supports (interpolate-size: allow-keywords) and selector(::details-content) {
+    .faq-list details {
+      interpolate-size: allow-keywords;
+    }
+
+    .faq-list details::details-content {
+      block-size: 0;
+      opacity: 0;
+      overflow: clip;
+      transition:
+        block-size 340ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 230ms ease,
+        content-visibility 340ms allow-discrete;
+    }
+
+    .faq-list details[open]::details-content {
+      block-size: auto;
+      opacity: 1;
+    }
+  }
 }
 .home-faq {
   padding: clamp(4rem, 9vw, 8rem) 0;
@@ -452,9 +509,6 @@ body {
 }
 .home-faq h2 {
   text-wrap: initial;
-}
-.faq-list details {
-  background: #e9eae1;
 }
 .home-close {
   background: var(--lime);

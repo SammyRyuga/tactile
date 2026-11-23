@@ -1,0 +1,55 @@
+.operator-room {
+  margin-block: 1rem;
+}
+
+.operator-stations {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: 0.5rem;
+}
+
+.operator-stations li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.65rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+
+.operator-preview {
+  margin-top: 0.8rem;
+}
+.operator-viewer {
+  position: relative;
+  height: clamp(22rem, 65vh, 50rem);
+  overflow: hidden;
+  border-radius: 0.65rem;
+  background: #10151e;
+}
+.operator-viewer canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.operator-viewer .room-flow {
+  position: absolute;
+  inset: 0.75rem auto auto 0.75rem;
+  padding: 0.65rem;
+  border-radius: 0.4rem;
+  background: #0b131e;
+  color: #eefaff;
+  pointer-events: none;
+}
+.operator-viewer [data-room-stations] {
+  list-style: none;
+  margin: 0.35rem 0;
+  padding: 0;
+}
+@media (max-width: 768px) {
+  .operator-preview {
+    display: none;
+  }
+}

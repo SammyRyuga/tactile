@@ -8,6 +8,7 @@ import "./styles.css";
 import "./home.css";
 import "./workspace-theme.css";
 import "./theme.css";
+import "./action-arrow.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root.");
