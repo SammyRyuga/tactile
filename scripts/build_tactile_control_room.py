@@ -611,6 +611,7 @@ def main():
     args.add_argument("--draft", action="store_true", help="Render at half resolution.")
     args.add_argument("--skip-render", action="store_true", help="Save the scene without a still render.")
     args.add_argument("--output-dir", type=Path, default=ROOT)
+    args.add_argument("--models-dir", type=Path, help="Directory containing the three original actor assets.")
     opts = args.parse_args(sys.argv[sys.argv.index("--")+1:] if "--" in sys.argv else [])
     output = opts.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -627,8 +628,17 @@ def main():
     build_platform()
     consoles = build_consoles()
     placements = {role: (*details["position"], details["yaw"]) for role, details in consoles.items()}
-    actors = stage_actors(placements)
-    handoffs = build_workers()
+    if opts.models_dir:
+        models = opts.models_dir.resolve()
+        actors = stage_actors(
+            placements,
+            models_dir=models,
+            hoverbot_archive=models / "Maintenance Hoverbot - rigged animated.zip",
+        )
+        handoffs = build_workers(worker_blend=models / "Worker robot.blend")
+    else:
+        actors = stage_actors(placements)
+        handoffs = build_workers()
     aim_reviewer_hands(actors, consoles, handoffs)
     animate_review_work(consoles)
     build_suspension(actors["slump"])

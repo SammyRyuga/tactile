@@ -6,6 +6,9 @@ consoles, and lighting are built from Blender geometry and procedural materials.
 It uses Maintenance Hoverbot by ClayOgre for the four reviewers and
 SafetyBotBust by masterxeon1001 for Slump, both under CC BY 3.0.
 
+See the [original scene handoff](operator-room-handoff.md) for the packed
+files, checksums, and instructions to re-export from the editable master.
+
 ```powershell
 & 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --factory-startup --python-exit-code 1 --python scripts/build_tactile_control_room.py
 ```

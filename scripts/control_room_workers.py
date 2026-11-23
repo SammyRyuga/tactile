@@ -62,10 +62,10 @@ def _visible_bounds(objects):
     return low, high
 
 
-def _import_worker(collection, label):
-    if not WORKER_BLEND.is_file():
-        raise FileNotFoundError(f"Worker robot model not found: {WORKER_BLEND}")
-    with bpy.data.libraries.load(str(WORKER_BLEND), link=False) as (source, target):
+def _import_worker(collection, label, worker_blend):
+    if not worker_blend.is_file():
+        raise FileNotFoundError(f"Worker robot model not found: {worker_blend}")
+    with bpy.data.libraries.load(str(worker_blend), link=False) as (source, target):
         target.objects = [name for name in source.objects if name not in {"Camera", "Camera.001"}]
     objects = [obj for obj in target.objects
                if obj is not None and obj.type not in {"CAMERA", "LIGHT"}]
@@ -126,8 +126,8 @@ def _dim_indicators(objects, worker_id, wake, parked, relays):
             slot.material = indicators[key]
 
 
-def _make_worker(collection, label, worker_id, route, jobs, wake):
-    objects = _import_worker(collection, label)
+def _make_worker(collection, label, worker_id, route, jobs, wake, worker_blend):
+    objects = _import_worker(collection, label, worker_blend)
     parked = route[-1][0]
     relays = {}
     for position, (index, begin, _) in enumerate(jobs):
@@ -186,7 +186,7 @@ def _make_worker(collection, label, worker_id, route, jobs, wake):
             anchor[f"worker_handoff_{role}_frames"] = (begin - 21, end + 21)
     for role, frames in relays.items():
         anchor[f"worker_relay_{role}_frames"] = frames
-    anchor["source_model"] = WORKER_BLEND.name
+    anchor["source_model"] = worker_blend.name
     anchor["source_visible_height"] = source_height
     anchor["target_height"] = TARGET_HEIGHT
     anchor["itinerary"] = "four cabinet spurs and one center aisle console visit"
@@ -400,7 +400,7 @@ def _service_equipment(collection, label, angle, radius, jobs, alloy, dark, sign
         indicator.keyframe_insert(data_path="scale", frame=frame)
 
 
-def build_workers():
+def build_workers(*, worker_blend=WORKER_BLEND):
     """Animate patrols and return measured worker handoff contact points."""
     scene = bpy.context.scene
     collection = bpy.data.collections.new(COLLECTION_NAME)
@@ -415,7 +415,7 @@ def build_workers():
         _park_at_cabinet(route, jobs, bearing, cabinet)
         _depart_cabinet(route, bearing, wake)
         exterior_owners.update((index, worker_id) for index in assignments if index < 4)
-        _make_worker(collection, name, worker_id, route, jobs, wake)
+        _make_worker(collection, name, worker_id, route, jobs, wake, worker_blend)
         rig = bpy.data.objects[f"{name} | Bot rig"]
         for index, begin, end in jobs:
             role = SERVICE_STOPS[index][-1]

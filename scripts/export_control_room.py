@@ -1,5 +1,6 @@
 """Bake the saved Blender scene into a browser-ready glTF asset."""
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -39,7 +40,10 @@ def prepare_actor_materials():
 
 
 ROOT = Path(__file__).resolve().parents[1]
-output = ROOT / "build" / "control-room-assets" / "control-room.glb"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--output-dir", type=Path, default=ROOT / "build" / "control-room-assets")
+args = parser.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
+output = args.output_dir.resolve() / "control-room.glb"
 output.parent.mkdir(parents=True, exist_ok=True)
 working = output.with_name("control-room.tmp.glb")
 scene = bpy.context.scene

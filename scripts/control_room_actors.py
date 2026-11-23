@@ -356,6 +356,7 @@ def stage_actors(
     placements: Mapping[str, Sequence[float]],
     *,
     models_dir: str | Path = MODELS_DIR,
+    hoverbot_archive: str | Path = reviewers.DEFAULT_ARCHIVE,
 ) -> dict[str, bpy.types.Object]:
     """Add actors to the current room and return role/head motion anchors.
 
@@ -377,6 +378,7 @@ def stage_actors(
     if positions:
         staged.update(reviewers.append_reviewer_bots(
             {role: coords for role, (coords, _) in positions.items()},
+            source_archive=hoverbot_archive,
             target_collection=collection,
             target_height=REVIEWER_HEIGHT,
             hover_amplitude=0.025,
