@@ -308,7 +308,10 @@ export function Home({ signedIn }: { signedIn: boolean }) {
         <div className="faq-list">
           {answers.map(([question, answer]) => (
             <details key={question}>
-              <summary>{question}</summary>
+              <summary>
+                {question}
+                <span className="faq-indicator" aria-hidden="true" />
+              </summary>
               <p>{answer}</p>
             </details>
           ))}

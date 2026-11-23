@@ -1,80 +1,14 @@
-.arrow-button {
-  position: relative;
-  isolation: isolate;
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 3.5rem;
-  height: 3.1rem;
-  min-width: 44px;
-  min-height: 44px;
-  color: #120c08;
-  vertical-align: middle;
-}
-
-.arrow-button::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: #ff6200;
-  clip-path: polygon(
-    0 0,
-    calc(100% - 10px) 0,
-    100% 10px,
-    100% 100%,
-    10px 100%,
-    0 calc(100% - 10px)
-  );
-}
-
-.arrow-button svg {
-  width: 1.5rem;
-  height: 1.5rem;
+.action-arrow {
   overflow: visible;
+  vertical-align: -0.15em;
 }
 
-.arrow-button[data-direction="up"] svg {
+.action-arrow[data-direction="up"] {
   rotate: -90deg;
 }
 
-.arrow-button[data-direction="down"] svg {
+.action-arrow[data-direction="down"] {
   rotate: 90deg;
-}
-
-:where(a, button):not(:disabled):is(:hover, :focus-visible)
-  .arrow-button::before {
-  background: #ff7a1a;
-}
-
-:where(a, button):not(:disabled):active .arrow-button::before {
-  background: #ff6200;
-}
-
-button:disabled .arrow-button {
-  opacity: 0.5;
-}
-
-.home-button:has(> .arrow-button) {
-  padding-block: 0.2rem;
-  padding-inline-end: 0.2rem;
-}
-
-.review-workspace .button:has(> .arrow-button),
-.review-topbar nav a:has(> .arrow-button) {
-  padding-block: 0.2rem;
-  padding-inline-end: 0.2rem;
-}
-
-@media (max-width: 36rem) {
-  .review-topbar .topbar-body {
-    flex-wrap: wrap;
-  }
-
-  .review-topbar .arrow-button {
-    width: 44px;
-    height: 44px;
-  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

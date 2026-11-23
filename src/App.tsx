@@ -1447,7 +1447,7 @@ export function App({
                         event.preventDefault();
                     }}
                   >
-                    Export Markdown <ActionArrow direction="down" />
+                    <ActionArrow direction="down" /> Export Markdown
                   </button>
                 </div>
                 <span className="field-note report-copy-status" role="status">
