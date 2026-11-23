@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import {
   useEffect,
   useLayoutEffect,
@@ -31,6 +33,7 @@ import {
 import type { Reviewer } from "../shared/reviewers.ts";
 import { ReviewTrail } from "./ReviewTrail.tsx";
 import { LiveReviewRoom, RecordedReviewRoom } from "./ReviewRoom.tsx";
+import { startControlRoomFeed } from "./controlRoomFeed.ts";
 import type { FormEvent } from "react";
 import {
   demoClaims,
@@ -360,6 +363,7 @@ export function App({
     },
   );
   const { page } = state;
+  const [operatorSession, setOperatorSession] = useState<string>();
   const report = page === "report" ? state.report : undefined;
   const uncheckedCriticalClaims = report?.uncheckedCriticalClaims ?? [];
   const memoSections = decisionMemoSections(report?.crossfireMemo);
@@ -667,8 +671,16 @@ export function App({
     setError("");
     setCopyStatus("");
     dispatch({ type: "start", claims: input.data.claims });
+    const roomFeed = import.meta.env.DEV
+      ? startControlRoomFeed(
+          mode === "live" ? reviewPanel : reviewerIds,
+          mode === "live" ? "live" : "recorded",
+        )
+      : undefined;
+    setOperatorSession(roomFeed?.id);
     const emit = (event: ReviewEvent) => {
       if (controller.signal.aborted || event.type === "error") return;
+      roomFeed?.event(event);
       if (event.type === "report" && !publicDemo) {
         const record = {
           id: crypto.randomUUID(),
@@ -698,6 +710,7 @@ export function App({
         dispatch({ type: "claims" });
       }
     } finally {
+      roomFeed?.finish();
       if (request.current === controller) request.current = null;
     }
   }
@@ -710,6 +723,7 @@ export function App({
   }
 
   function reopen(entry: Recent) {
+    setOperatorSession(undefined);
     setCopyStatus("");
     setError("");
     dispatch({
@@ -1380,6 +1394,20 @@ export function App({
               Cancel review
             </button>
           </motion.section>
+        )}
+
+        {operatorSession && (page === "running" || page === "report") && (
+          <section
+            key={operatorSession}
+            className="operator-room-panel"
+            aria-labelledby="operator-room-title"
+          >
+            <h2 id="operator-room-title">Operator room</h2>
+            <iframe
+              title="Operator room showing review progress"
+              src={`/control-room/?review=${encodeURIComponent(operatorSession)}`}
+            />
+          </section>
         )}
 
         {page === "report" && report && (

@@ -1,6 +1,6 @@
 import { createCrossfireEngine } from "./crossfire-engine.ts";
 import { CrossfireStartupError } from "./crossfire-runtime.ts";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import express from "express";
@@ -86,6 +86,45 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 if (dev) {
+  if (!hosted) {
+    app.use("/control-room", (_request, response, next) => {
+      response.setHeader("X-Frame-Options", "SAMEORIGIN");
+      next();
+    });
+    const assets = resolve("build/control-room-assets");
+    const model = resolve(assets, "control-room.glb");
+    app.get(
+      "/control-room-assets/control-room.glb",
+      (request, response, next) => {
+        response.vary("Accept-Encoding");
+        if (request.headers.range) return next();
+        const original = statSync(model, { throwIfNoEntry: false });
+        if (!original) return next();
+        const available = new Map(
+          [
+            ["br", model + ".br"],
+            ["gzip", model + ".gz"],
+          ]
+            .filter(([, path]) => {
+              const compressed = statSync(path, { throwIfNoEntry: false });
+              return compressed && compressed.mtimeMs >= original.mtimeMs;
+            })
+            .map(([encoding, path]) => [encoding, path] as const),
+        );
+        const encoding = request.acceptsEncodings([
+          ...available.keys(),
+          "identity",
+        ]);
+        if (!encoding) return next();
+        const encodedPath = available.get(encoding);
+        if (!encodedPath) return next();
+        response.type("model/gltf-binary");
+        response.set("Content-Encoding", encoding);
+        response.sendFile(encodedPath, { acceptRanges: false });
+      },
+    );
+    app.use("/control-room-assets", express.static(assets, { index: false }));
+  }
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true, hmr: { server } },

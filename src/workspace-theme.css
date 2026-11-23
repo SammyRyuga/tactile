@@ -22,6 +22,26 @@
 .review-workspace {
   width: min(100% - 3.5rem, 78rem);
 }
+
+.operator-room-panel {
+  --operator-room-width: min(calc(100vw - 2.25rem), 112rem);
+  width: var(--operator-room-width);
+  margin-block: 1.5rem;
+  margin-inline: calc((100% - var(--operator-room-width)) / 2);
+}
+
+.operator-room-panel h2 {
+  margin-block: 0 0.65rem;
+}
+
+.operator-room-panel iframe {
+  display: block;
+  width: 100%;
+  height: clamp(24rem, 74vh, 55rem);
+  border: 1px solid #344957;
+  border-radius: 0.85rem;
+  background: #10151e;
+}
 .review-topbar .wordmark {
   font-family: var(--review-display);
   font-weight: 800;

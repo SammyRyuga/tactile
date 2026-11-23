@@ -12,3 +12,11 @@ playwright-report/
 .venv/
 __pycache__/
 .crossfire-python/
+
+# Local Blender outputs contain separately licensed source assets.
+/*.blend
+/*.blend1
+/*_preview.png
+/tactile_review_room.png
+/tactile_review_room_lit.png
+/.scene-inspect/

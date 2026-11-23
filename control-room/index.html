@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tactile Control Room</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./viewer.css" />
+  </head>
+  <body>
+    <canvas aria-label="Animated Tactile control room"></canvas>
+    <section class="room-flow" aria-label="Review process" hidden>
+      <div id="room-mode"></div>
+      <div id="room-phase" role="status"></div>
+      <ul id="room-stations" aria-label="Specialist stations"></ul>
+      <p id="room-relay" hidden></p>
+    </section>
+    <div class="room-controls" role="group" aria-label="Control room playback">
+      <button type="button" id="start-room" disabled>Start</button>
+      <button type="button" id="stop-room" disabled>Stop</button>
+      <span id="room-status" role="status">Loading room</span>
+    </div>
+    <script type="module" src="./viewer.js"></script>
+  </body>
+</html>

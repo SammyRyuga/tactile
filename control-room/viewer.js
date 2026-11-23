@@ -1,0 +1,452 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import {
+  controlRoomFeedKey,
+  controlRoomSessionKey,
+} from "../src/controlRoomFeed.ts";
+import { makePodShift } from "./pod-shift.js";
+import { makeRoomProcess, signalTrack, stationNames } from "./room-process.js";
+import { makeRecordedPlayback } from "./recorded-playback.js";
+import { makeHolograms } from "./holograms.js";
+
+const canvas = document.querySelector("canvas");
+const startButton = document.querySelector("#start-room");
+const stopButton = document.querySelector("#stop-room");
+const roomStatus = document.querySelector("#room-status");
+const flowPanel = document.querySelector(".room-flow");
+const flowMode = document.querySelector("#room-mode");
+const flowPhase = document.querySelector("#room-phase");
+const flowStations = document.querySelector("#room-stations");
+const flowRelay = document.querySelector("#room-relay");
+const roles = ["devils_advocate", "builder", "researcher", "operator"];
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const embeddedRun = new URLSearchParams(location.search).get("review");
+if (embeddedRun) document.body.classList.add("embedded");
+const relayColors = {
+  devils_advocate: new THREE.Color(0.95, 0.075, 0.055),
+  builder: new THREE.Color(1, 0.42, 0.035),
+  operator: new THREE.Color(0.12, 0.38, 1),
+  researcher: new THREE.Color(0, 0.78, 0.9),
+};
+
+function readReview() {
+  try {
+    const value = JSON.parse(
+      (embeddedRun
+        ? sessionStorage.getItem(controlRoomSessionKey)
+        : localStorage.getItem(controlRoomFeedKey)) ?? "null",
+    );
+    if (
+      value &&
+      typeof value.id === "string" &&
+      (!embeddedRun || value.id === embeddedRun) &&
+      Date.now() - value.at < 10 * 60_000 &&
+      Array.isArray(value.active)
+    ) {
+      return value;
+    }
+  } catch {
+    // The viewer can play the authored Blender cycle without storage.
+  }
+}
+
+function trackRole(track, model) {
+  const { nodeName } = THREE.PropertyBinding.parseTrackName(track.name);
+  for (let node = model.getObjectByName(nodeName); node; node = node.parent) {
+    const signal = signalTrack(node.userData);
+    if (signal) return signal;
+    if (node.userData.reviewer_id) return node.userData.reviewer_id;
+    if (node.userData.worker_id) return node.userData.worker_id;
+    if (node.userData.worker_role) return "support";
+    if (node.userData.steelman_packet) return "projection";
+    if (node.name.startsWith("Steelman") || node.name.startsWith("Slump")) {
+      return "slump";
+    }
+    const role = roles.find((id) => node.name.startsWith(id));
+    if (role) return role;
+  }
+  return "support";
+}
+
+function makeActions(asset) {
+  const mixer = new THREE.AnimationMixer(asset.scene);
+  const actions = new Map();
+  for (const clip of asset.animations) {
+    const groups = Map.groupBy(clip.tracks, (track) =>
+      trackRole(track, asset.scene),
+    );
+    for (const [role, tracks] of groups) {
+      const action = mixer.clipAction(
+        new THREE.AnimationClip(role, clip.duration, tracks),
+      );
+      action.play();
+      const group = actions.get(role) ?? [];
+      group.push(action);
+      actions.set(role, group);
+    }
+  }
+  return { mixer, actions };
+}
+
+async function showRoom() {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  renderer.shadowMap.enabled = true;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#10151e");
+  scene.add(new THREE.HemisphereLight(0xc5d5e7, 0x443748, 1.32));
+  for (const [color, intensity, position] of [
+    [0xe3e7ec, 2.12, [2, 9, 3]],
+    [0xaabed9, 0.85, [-5, 6, -4]],
+    [0xffc292, 0.58, [6, 5, -4]],
+  ]) {
+    const light = new THREE.DirectionalLight(color, intensity);
+    light.position.set(...position);
+    if (position[0] === 2) {
+      light.castShadow = true;
+      light.shadow.mapSize.set(1024, 1024);
+      Object.assign(light.shadow.camera, {
+        left: -9,
+        right: 9,
+        top: 9,
+        bottom: -9,
+        far: 22,
+      });
+      light.shadow.normalBias = 0.035;
+      light.shadow.bias = -0.0003;
+      light.shadow.radius = 3;
+    }
+    scene.add(light);
+  }
+
+  const asset = await new GLTFLoader()
+    .setMeshoptDecoder(MeshoptDecoder)
+    .loadAsync("/control-room-assets/control-room.glb");
+  scene.add(asset.scene);
+  const camera = asset.cameras.find((item) => item.name.includes("overview"));
+  if (!camera?.isPerspectiveCamera)
+    throw new Error("The Blender overview camera is missing.");
+  camera.updateWorldMatrix(true, false);
+  scene.attach(camera);
+  const authoredFov = camera.fov;
+  const authoredAspect = camera.aspect;
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.copy(
+    camera
+      .getWorldDirection(new THREE.Vector3())
+      .multiplyScalar(21)
+      .add(camera.position),
+  );
+  controls.enableDamping = true;
+  controls.enableZoom = !embeddedRun;
+  if (embeddedRun) canvas.style.touchAction = "pan-y";
+  controls.minDistance = 6;
+  controls.maxDistance = 32;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.update();
+  const podCamera = asset.cameras.find((item) => item.userData.pod_bay_camera);
+  const overviewPosition = camera.position.clone();
+  const overviewTarget = controls.target.clone();
+  let podPosition;
+  let podTarget;
+  let shotWeight = 1;
+  let manualCamera = false;
+  if (podCamera) {
+    podPosition = podCamera.getWorldPosition(new THREE.Vector3());
+    podTarget = podCamera
+      .getWorldDirection(new THREE.Vector3())
+      .multiplyScalar(podCamera.userData.look_distance)
+      .add(podPosition);
+    camera.position.copy(podPosition);
+    controls.target.copy(podTarget);
+    controls.update();
+    controls.addEventListener("start", () => {
+      manualCamera = true;
+    });
+  }
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(
+    new UnrealBloomPass(new THREE.Vector2(1, 1), 0.25, 0.32, 1.6),
+  );
+  composer.addPass(new OutputPass());
+
+  function resize() {
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    camera.aspect = width / Math.max(1, height);
+    const halfFov = THREE.MathUtils.degToRad(authoredFov) / 2;
+    camera.fov = THREE.MathUtils.radToDeg(
+      2 *
+        Math.atan(
+          Math.tan(halfFov) * Math.max(1, authoredAspect / camera.aspect),
+        ),
+    );
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height, false);
+    composer.setSize(width, height);
+  }
+  resize();
+  addEventListener("resize", resize);
+
+  const { mixer, actions } = makeActions(asset);
+  const podShift = makePodShift(asset.scene, roles);
+  const roomProcess = makeRoomProcess(asset.scene);
+  const playback = makeRecordedPlayback();
+  const updateHolograms = makeHolograms(asset.scene, scene, overviewPosition);
+  const stationRows = new Map(
+    roles.map((role) => {
+      const row = document.createElement("li");
+      row.dataset.role = role;
+      flowStations.append(row);
+      return [role, row];
+    }),
+  );
+  const signalObjects = new Map();
+  const relayDisplays = new Map();
+  let controlMode;
+  let command;
+  startButton.addEventListener("click", () => {
+    command = controlMode = "start";
+  });
+  stopButton.addEventListener("click", () => {
+    command = controlMode = "stop";
+  });
+  if (!podShift) roomStatus.textContent = "Controls unavailable";
+  const workerIndicators = new Map();
+  const projectors = new Map();
+  const lightPaths = [];
+  let decisionMemo;
+  asset.scene.traverse((object) => {
+    const { room_light_color: color, room_light_intensity: intensity } =
+      object.userData;
+    if (Array.isArray(color) && Number.isFinite(intensity)) {
+      const spill = new THREE.PointLight(
+        new THREE.Color(...color),
+        intensity,
+        12,
+      );
+      object.getWorldPosition(spill.position);
+      scene.add(spill);
+    }
+    if (object.userData.review_memo) decisionMemo = object;
+    const signal = signalTrack(object.userData);
+    if (signal) {
+      const objects = signalObjects.get(signal) ?? [];
+      objects.push(object);
+      signalObjects.set(signal, objects);
+    }
+    if (object.isMesh) {
+      const materials = Array.isArray(object.material)
+        ? object.material
+        : [object.material];
+      for (const item of materials) {
+        const relay = item?.userData.worker_relay_display;
+        if (relay && !relayDisplays.has(relay))
+          relayDisplays.set(relay, {
+            material: item,
+            idle: item.emissive.clone(),
+          });
+        const kind = item?.userData.steelman_power;
+        if (kind) {
+          projectors.set(item, { kind, power: item.emissiveIntensity });
+          if (kind === "projection") {
+            item.transparent = true;
+            lightPaths.push(object);
+          }
+        }
+        const id = /^(courier-\S+) indicator /.exec(item?.name)?.[1];
+        if (!id) continue;
+        const indicators = workerIndicators.get(id) ?? new Map();
+        indicators.set(item, item.emissiveIntensity);
+        workerIndicators.set(id, indicators);
+      }
+      object.receiveShadow = true;
+      object.castShadow =
+        /courier|hoverbot|^Slump|worktop|Steelman.*deck|mounted.cabinet/.test(
+          object.name,
+        );
+    }
+  });
+  let review = readReview();
+  if (
+    !embeddedRun &&
+    (review?.phase === "ready" || review?.phase === "stopped")
+  )
+    review = undefined;
+  let lastRun;
+  addEventListener("storage", (event) => {
+    if (
+      event.key ===
+        (embeddedRun ? controlRoomSessionKey : controlRoomFeedKey) ||
+      event.key === null
+    )
+      review = readReview();
+  });
+  let previousTime;
+  renderer.setAnimationLoop((time) => {
+    const dt = Math.min((time - (previousTime ?? time)) / 1000, 0.1);
+    previousTime = time;
+    if (
+      review &&
+      review.phase !== "ready" &&
+      review.phase !== "stopped" &&
+      Date.now() - review.at >= 10 * 60_000
+    )
+      review = undefined;
+    if (!podShift && review?.id !== lastRun) {
+      for (const group of actions.values()) {
+        for (const action of group) action.reset().play();
+      }
+      lastRun = review?.id;
+    }
+    const current = embeddedRun
+      ? playback(dt, review, reduceMotion.matches)
+      : review;
+    const shift = podShift?.(dt, current, reduceMotion.matches, command);
+    const process = roomProcess(dt, shift, reduceMotion.matches);
+    command = undefined;
+    const moving = (role) =>
+      !reduceMotion.matches &&
+      (!review ||
+        (role === "support"
+          ? review.active.length > 0
+          : review.active.includes(role)));
+    let playing;
+    if (shift) {
+      flowPanel.hidden = false;
+      if (flowMode.textContent !== process.mode)
+        flowMode.textContent = process.mode;
+      if (flowPhase.textContent !== process.label)
+        flowPhase.textContent = process.label;
+      for (const [role, state] of process.stations) {
+        const row = stationRows.get(role);
+        if (row.dataset.state === state) continue;
+        row.dataset.state = state;
+        row.textContent = `${stationNames[role]} · ${state === "inactive" ? "idle" : state}`;
+      }
+      for (const [track, objects] of signalObjects) {
+        const visible = process.signals.has(track);
+        for (const object of objects) object.visible = visible;
+      }
+      for (const [id, { material, idle }] of relayDisplays) {
+        const payload = process.cargo.get(id);
+        material.emissive.copy(payload ? relayColors[payload] : idle);
+      }
+      const payloads = [...process.cargo.values()];
+      const relayText = payloads.length
+        ? `Courier relay · ${payloads.map((role) => stationNames[role]).join(", ")}`
+        : "";
+      if (flowRelay.textContent !== relayText)
+        flowRelay.textContent = relayText;
+      flowRelay.hidden = !relayText;
+      const activeSignals = [...process.signals.keys()].join(",");
+      if (canvas.dataset.roomSignals !== activeSignals)
+        canvas.dataset.roomSignals = activeSignals;
+      const phases = roles
+        .map((role) => `${role}:${shift.get(role).phase}`)
+        .join(",");
+      if (canvas.dataset.officerPhases !== phases)
+        canvas.dataset.officerPhases = phases;
+      const workers = [];
+      for (const [id, indicators] of workerIndicators) {
+        const state = shift.get(id);
+        if (!state) continue;
+        workers.push(`${id}:${state.phase}`);
+        for (const [item, power] of indicators)
+          item.emissiveIntensity = power * state.power;
+      }
+      const workerPhases = workers.join(",");
+      if (canvas.dataset.workerPhases !== workerPhases)
+        canvas.dataset.workerPhases = workerPhases;
+      const projector = shift.get("projection");
+      if (projector) {
+        if (canvas.dataset.steelmanPower !== projector.phase)
+          canvas.dataset.steelmanPower = projector.phase;
+        for (const [item, { kind, power }] of projectors) {
+          item.emissiveIntensity = power * projector.power;
+          if (kind === "projection") item.opacity = projector.power;
+        }
+        for (const path of lightPaths) path.visible = projector.power > 0;
+      }
+      const stopped =
+        roles.every((role) => shift.get(role).phase === "sleeping") &&
+        workers.every((worker) => worker.endsWith(":sleeping")) &&
+        (!projector || projector.phase === "off");
+      const stopping =
+        controlMode === "stop" ||
+        (!controlMode &&
+          (current?.phase === "ready" || current?.phase === "stopped"));
+      const label = stopped
+        ? "Stopped"
+        : stopping
+          ? "Shutting down"
+          : "Running";
+      if (roomStatus.textContent !== label) roomStatus.textContent = label;
+      startButton.disabled = !stopped;
+      stopButton.disabled = stopped || stopping;
+      for (const [role, group] of actions) {
+        for (const action of group) {
+          action.paused = true;
+          action.time = Math.min(
+            process.signals.get(role)?.time ?? shift.get(role)?.time ?? 0,
+            action.getClip().duration,
+          );
+        }
+      }
+      mixer.update(0);
+      if (podPosition && !manualCamera) {
+        const officers = roles.map((role) => shift.get(role));
+        const atBay = officers.every(
+          ({ phase, time }) =>
+            phase === "sleeping" || (phase === "waking" && time < 6),
+        );
+        shotWeight = reduceMotion.matches
+          ? 0
+          : THREE.MathUtils.damp(shotWeight, atBay ? 1 : 0, 1.7, dt);
+        camera.position.lerpVectors(overviewPosition, podPosition, shotWeight);
+        controls.target.lerpVectors(overviewTarget, podTarget, shotWeight);
+      }
+      playing = [...shift]
+        .filter(([, state]) => state.phase === "working")
+        .map(([role]) => role);
+    } else {
+      for (const [role, group] of actions) {
+        for (const action of group) action.paused = !moving(role);
+      }
+      mixer.update(dt);
+      playing = [...actions.keys()].filter(moving);
+    }
+    playing = playing.sort().join(",");
+    if (canvas.dataset.playing !== playing) canvas.dataset.playing = playing;
+    const reviewReady = !controlMode && current?.phase === "ready";
+    const memoReady = String(reviewReady);
+    if (canvas.dataset.memoReady !== memoReady)
+      canvas.dataset.memoReady = memoReady;
+    if (decisionMemo && !signalObjects.has("result")) {
+      decisionMemo.visible =
+        controlMode === "start" || (!controlMode && (!review || reviewReady));
+      if (reviewReady) decisionMemo.scale.setScalar(1);
+    }
+    controls.update();
+    updateHolograms(camera, current, shift, process);
+    composer.render(dt);
+  });
+  canvas.dataset.ready = "true";
+  canvas.dataset.animatedRoles = [...actions.keys()].join(",");
+}
+
+showRoom().catch((error) => {
+  canvas.dataset.ready = "false";
+  roomStatus.textContent = "Room unavailable";
+  console.error("Could not start the Blender scene viewer.", error);
+});
