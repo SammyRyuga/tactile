@@ -85,10 +85,18 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error("Set PORT to an integer between 1 and 65535.");
 }
 
+const limitStaticRequests = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
 if (dev) {
   if (!hosted) {
     const model = resolve("build/control-room-assets/control-room.glb");
-    app.get("/control-room-assets/control-room.glb", (request, response) => {
+    const modelRoute = "/control-room-assets/control-room.glb";
+    app.get(modelRoute, limitStaticRequests, (request, response) => {
       const original = statSync(model, { throwIfNoEntry: false });
       if (!original?.isFile()) {
         response.sendStatus(404);
@@ -133,15 +141,9 @@ if (dev) {
   if (!existsSync(resolve(dist, "index.html")))
     throw new Error("Run npm run build before npm start.");
   app.use(express.static(dist));
-  const limitPageFallback = rateLimit({
-    windowMs: 60_000,
-    limit: 300,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-  });
   app.get(
     ["/demo", "/login", "/review", "/settings"],
-    limitPageFallback,
+    limitStaticRequests,
     (_request, response) => response.sendFile("index.html", { root: dist }),
   );
 }
