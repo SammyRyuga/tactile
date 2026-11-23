@@ -11,6 +11,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
+import { ActionArrow } from "./ActionArrow.tsx";
 import { TeamCredits } from "./TeamCredits.tsx";
 import { ProposalAttachments } from "./ProposalAttachments.tsx";
 import { ProposalRevision } from "./ProposalRevision.tsx";
@@ -161,14 +162,9 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
 }
 type ClaimDraft = Claim & { selected: boolean; checkDraft?: CheckDraft };
 
-function mark(
-  icon: "logo" | "arrow" | "external" | "download" | "plus" | "remove",
-) {
+function mark(icon: "logo" | "plus" | "remove") {
   const paths = {
     logo: "M3 18h5v-5h5V8h5V3h3",
-    arrow: "M4 12h15m-6-6 6 6-6 6",
-    external: "M14 4h6v6m0-6-9 9m7 0v6H5V6h6",
-    download: "M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3",
     plus: "M12 5v14M5 12h14",
     remove: "M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5",
   };
@@ -847,7 +843,7 @@ export function App({
             )}
             <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
-              GitHub {mark("external")}
+              GitHub <ActionArrow />
             </a>
           </nav>
         </div>
@@ -1036,7 +1032,7 @@ export function App({
                           <strong>{item.label}</strong>
                           <small>{item.title}</small>
                         </span>
-                        {mark("arrow")}
+                        <ActionArrow />
                       </a>
                     </li>
                   ))}
@@ -1085,7 +1081,7 @@ export function App({
                                     : "Bundled example"}
                                 </small>
                               </span>
-                              {mark("arrow")}
+                              <ActionArrow />
                             </button>
                             <button
                               className="history-delete"
@@ -1294,7 +1290,7 @@ export function App({
                       selectionGuidance ? "selection-guidance" : undefined
                     }
                   >
-                    Run checks {mark("arrow")}
+                    Run checks <ActionArrow />
                   </button>
                 </div>
               </div>
@@ -1451,7 +1447,7 @@ export function App({
                         event.preventDefault();
                     }}
                   >
-                    {mark("download")} Export Markdown
+                    Export Markdown <ActionArrow direction="down" />
                   </button>
                 </div>
                 <span className="field-note report-copy-status" role="status">
@@ -1553,7 +1549,7 @@ export function App({
                       ).map((source) => (
                         <li key={source.id}>
                           <a href={source.url} target="_blank" rel="noreferrer">
-                            {source.title} {mark("external")}
+                            {source.title} <ActionArrow />
                           </a>
                         </li>
                       ))}

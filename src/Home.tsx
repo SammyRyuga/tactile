@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { demoExamples } from "../shared/demo.ts";
 import { TeamCredits } from "./TeamCredits.tsx";
+import { ActionArrow } from "./ActionArrow.tsx";
 
 const steps = [
   [
@@ -127,10 +128,10 @@ export function Home({ signedIn }: { signedIn: boolean }) {
           <div className="home-actions" data-hero-copy>
             <a className="home-button filled" href="/review">
               {signedIn ? "Open workspace" : "Sign in to workspace"}{" "}
-              <span aria-hidden="true">↗</span>
+              <ActionArrow />
             </a>
             <a className="home-button plain" href="/demo">
-              Try the public demo <span aria-hidden="true">↗</span>
+              Try the public demo <ActionArrow />
             </a>
           </div>
         </div>
@@ -151,7 +152,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
               {demoExamples[0].findings[0].claim.text}
             </span>
             <span className="hero-link">
-              Explore the evidence <span aria-hidden="true">↗</span>
+              Explore the evidence <ActionArrow />
             </span>
           </a>
         </div>
@@ -200,7 +201,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
                       className="home-button filled"
                       href={`/demo?example=${item.id}`}
                     >
-                      Try this example <span aria-hidden="true">↗</span>
+                      Try this example <ActionArrow />
                     </a>
                   </div>
                   <div className="case-finding" data-ui>
@@ -234,7 +235,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
           <h2 id="method-title">How it works.</h2>
           <p>Use Tactile while there’s still time to change the rollout.</p>
           <a href="/review" className="home-text-link">
-            Open the workspace <span aria-hidden="true">↗</span>
+            Open the workspace <ActionArrow />
           </a>
         </div>
         <ol className="method-steps">
@@ -261,7 +262,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
             else can inspect it.
           </p>
           <a className="home-text-link" href="#examples">
-            Change the example <span aria-hidden="true">↑</span>
+            Change the example <ActionArrow direction="up" />
           </a>
         </div>
         <div className="trace-previews" aria-live="polite">
@@ -288,7 +289,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
                 </ol>
                 {item.sources[0] && (
                   <a href={item.sources[0].url}>
-                    Read bundled evidence <span aria-hidden="true">↗</span>
+                    Read bundled evidence <ActionArrow />
                   </a>
                 )}
               </div>
@@ -321,8 +322,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
       >
         <h2 id="close-title">What are you about to change?</h2>
         <a className="home-button dark" href={signedIn ? "/review" : "/login"}>
-          {signedIn ? "Start a review" : "Sign in"}{" "}
-          <span aria-hidden="true">↗</span>
+          {signedIn ? "Start a review" : "Sign in"} <ActionArrow />
         </a>
       </section>
 
@@ -330,7 +330,7 @@ export function Home({ signedIn }: { signedIn: boolean }) {
         <strong>Tactile</strong>
         <TeamCredits />
         <a href="https://github.com/SammyRyuga/tactile">
-          GitHub <span aria-hidden="true">↗</span>
+          GitHub <ActionArrow />
         </a>
       </footer>
     </main>
