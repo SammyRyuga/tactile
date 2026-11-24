@@ -195,7 +195,7 @@ for (const id of providerSchema.options) {
   test(`${id} preserves rate, authentication, model, response and cancellation errors without exposing bodies`, async () => {
     const key = "fixture-secret-not-for-errors";
     const signal = AbortSignal.timeout(5000);
-    for (const status of [401, 404, 429]) {
+    for (const status of [401, 404, 402, 429]) {
       const mock: typeof fetch = async () =>
         new Response(
           JSON.stringify({ error: { code: "model_not_found", message: key } }),
@@ -208,6 +208,7 @@ for (const id of providerSchema.options) {
           error instanceof ProviderResponseError &&
           error.status === status &&
           !error.message.includes(key) &&
+          (status !== 402 || error.details?.limitKind === "billing") &&
           (status !== 429 || error.retryAfter === "17"),
       );
     }
@@ -243,3 +244,229 @@ for (const id of providerSchema.options) {
     });
   });
 }
+
+test("Groq serializes generations and applies a bounded retry and output budget per stage", async () => {
+  const stages = ["ExtractedClaims", "BuilderVerdict", "CaseVerdictOutput"];
+  const calls: number[] = [];
+  const events: unknown[] = [];
+  const fixture = "arbitrary upstream content";
+  let inFlight = false;
+  const provider = createReviewProvider(
+    "groq",
+    "fixture-key",
+    models.groq,
+    async (_url, init) => {
+      assert.equal(inFlight, false);
+      inFlight = true;
+      await delay(5);
+      inFlight = false;
+      const body = JSON.parse(String(init?.body));
+      calls.push(body.max_completion_tokens);
+      assert.equal(body.reasoning_effort, "low");
+      if (calls.length === 1)
+        return Response.json(
+          {
+            error: {
+              code: "rate_limit_exceeded",
+              message: `Rate limit (TPM). Limit 8000, Used 7000, Requested 2500. ${fixture}`,
+            },
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": "0",
+              "x-ratelimit-remaining-tokens": "0",
+            },
+          },
+        );
+      return Response.json({
+        choices: [{ finish_reason: "stop", message: { content: "{}" } }],
+      });
+    },
+    { onResponse: (event) => events.push(event) },
+  );
+  const signal = AbortSignal.timeout(5000);
+  assert.deepEqual(
+    await Promise.all(
+      stages.map((title) =>
+        provider.crossfireGenerate!(
+          "Review",
+          [{ role: "user", content: "Preserve the evidence verbatim." }],
+          { title },
+          signal,
+        ),
+      ),
+    ),
+    ["{}", "{}", "{}"],
+  );
+  assert.deepEqual(calls, [2048, 2048, 1536, 3072]);
+  const first = events[0] as Record<string, unknown>;
+  assert.equal(first.stage, "claim_extraction");
+  assert.equal(first.upstreamCode, "rate_limit_exceeded");
+  assert.equal(first.limitKind, "tokens");
+  assert.equal(first.upstreamLimit, 8000);
+  assert.equal(first.upstreamUsed, 7000);
+  assert.equal(first.upstreamRequested, 2500);
+  assert.equal(first.retryAfter, "0");
+  assert.equal(first.requestedOutputTokens, 2048);
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /arbitrary upstream content|fixture-key|Preserve the evidence/,
+  );
+});
+
+test("Groq does not retry billing, a request exceeding the window, or a daily limit", async () => {
+  for (const [code, message, expected] of [
+    ["insufficient_quota", "Check account credits.", "billing"],
+    [
+      "rate_limit_exceeded",
+      "Rate limit (TPM). Limit 8000, Requested 9000.",
+      "request_size",
+    ],
+    [
+      "rate_limit_exceeded",
+      "Rate limit (RPD). Limit 1000, Used 1000, Requested 1.",
+      "daily",
+    ],
+  ]) {
+    let calls = 0;
+    const provider = createReviewProvider(
+      "groq",
+      "fixture-key",
+      models.groq,
+      async () => {
+        calls++;
+        return Response.json(
+          { error: { code, message } },
+          { status: 429, headers: { "Retry-After": "0" } },
+        );
+      },
+    );
+    await assert.rejects(
+      provider.structured("Review", {}, answer, AbortSignal.timeout(5000)),
+      (error) =>
+        error instanceof ProviderResponseError &&
+        error.details?.limitKind === expected,
+    );
+    assert.equal(calls, 1, expected);
+  }
+});
+
+test("Groq does not send another request when successful headers show the daily quota is exhausted", async () => {
+  let calls = 0;
+  const provider = createReviewProvider(
+    "groq",
+    "fixture-key",
+    models.groq,
+    async () => {
+      calls++;
+      return Response.json(
+        {
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: JSON.stringify({ decision: "hold" }) },
+            },
+          ],
+        },
+        {
+          headers: {
+            "x-ratelimit-remaining-requests": "0",
+            "x-ratelimit-reset-requests": "1h",
+          },
+        },
+      );
+    },
+  );
+  const signal = AbortSignal.timeout(5000);
+  assert.deepEqual(await provider.structured("Review", {}, answer, signal), {
+    decision: "hold",
+  });
+  await assert.rejects(
+    provider.structured("Review", {}, answer, signal),
+    (error) =>
+      error instanceof ProviderResponseError &&
+      error.details?.limitKind === "daily" &&
+      Number(error.retryAfter) > 10,
+  );
+  assert.equal(calls, 1);
+});
+
+test("cancelling during a Groq cooldown prevents the retry and a queued request", async () => {
+  let calls = 0;
+  let limited!: () => void;
+  const responseSeen = new Promise<void>((resolve) => {
+    limited = resolve;
+  });
+  const provider = createReviewProvider(
+    "groq",
+    "fixture-key",
+    models.groq,
+    async () => {
+      calls++;
+      return Response.json(
+        { error: { code: "rate_limit_exceeded" } },
+        {
+          status: 429,
+          headers: { "Retry-After": "1" },
+        },
+      );
+    },
+    { onResponse: limited },
+  );
+  const controller = new AbortController();
+  const makeRequest = () =>
+    provider.structured("Review", {}, answer, controller.signal);
+  const running = assert.rejects(makeRequest(), { name: "AbortError" });
+  const queued = assert.rejects(makeRequest(), { name: "AbortError" });
+  await responseSeen;
+  await delay(10);
+  controller.abort();
+  await Promise.all([running, queued]);
+  assert.equal(calls, 1);
+});
+
+test("Gemini accepts RPC retry hints but does not retry a daily quota failure", async () => {
+  for (const daily of [false, true]) {
+    let calls = 0;
+    const provider = createReviewProvider(
+      "gemini",
+      "fixture-key",
+      models.gemini,
+      async () => {
+        calls++;
+        return Response.json(
+          {
+            error: {
+              status: "RESOURCE_EXHAUSTED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                  violations: [
+                    {
+                      quotaId: daily
+                        ? "GenerateRequestsPerDay"
+                        : "GenerateRequestsPerMinute",
+                    },
+                  ],
+                },
+                {
+                  "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                  retryDelay: "0.001s",
+                },
+              ],
+            },
+          },
+          { status: 429 },
+        );
+      },
+    );
+    await assert.rejects(
+      provider.structured("Review", {}, answer, AbortSignal.timeout(5000)),
+      (error) =>
+        error instanceof ProviderResponseError &&
+        error.details?.limitKind === (daily ? "daily" : "requests"),
+    );
+    assert.equal(calls, daily ? 1 : 2);
+  }
+});

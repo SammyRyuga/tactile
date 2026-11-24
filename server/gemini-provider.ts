@@ -3,6 +3,7 @@ import { convert } from "html-to-text";
 import {
   ProviderOutputError,
   providerJson,
+  providerStage,
   structuredResult,
 } from "./provider.ts";
 import type { ProviderConfig, ReviewProvider } from "./provider.ts";
@@ -60,6 +61,8 @@ export function createGeminiProvider(
     signal: AbortSignal,
     schema?: unknown,
   ) {
+    const stage = providerStage(schema);
+    const outputTokens = 8192;
     const payload = await providerJson(
       request,
       geminiBase + "/models/" + encodeURIComponent(model) + ":generateContent",
@@ -72,7 +75,7 @@ export function createGeminiProvider(
           parts: [{ text: content }],
         })),
         generationConfig: {
-          maxOutputTokens: 8192,
+          maxOutputTokens: outputTokens,
           ...(schema
             ? {
                 responseMimeType: "application/json",
@@ -83,17 +86,21 @@ export function createGeminiProvider(
       },
       config,
       geminiKeyHeader,
+      { vendor: "gemini", stage, outputTokens },
     );
     const result = resultSchema.safeParse(payload);
     const usage = result.success ? result.data.usageMetadata : undefined;
-    config.onUsage?.({
-      inputTokens: usage?.promptTokenCount ?? null,
-      outputTokens:
-        usage?.candidatesTokenCount === undefined
-          ? null
-          : usage.candidatesTokenCount + (usage.thoughtsTokenCount ?? 0),
-      cachedInputTokens: usage?.cachedContentTokenCount ?? null,
-    });
+    config.onUsage?.(
+      {
+        inputTokens: usage?.promptTokenCount ?? null,
+        outputTokens:
+          usage?.candidatesTokenCount === undefined
+            ? null
+            : usage.candidatesTokenCount + (usage.thoughtsTokenCount ?? 0),
+        cachedInputTokens: usage?.cachedContentTokenCount ?? null,
+      },
+      stage,
+    );
     const candidate = result.success ? result.data.candidates?.[0] : undefined;
     if (candidate?.finishReason === "MAX_TOKENS")
       throw new ProviderOutputError("incomplete");

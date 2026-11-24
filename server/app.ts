@@ -94,6 +94,15 @@ function providerFailure(
     };
   if (error instanceof ProviderResponseError) {
     const retryAfter = error.retryAfter;
+    const limit = error.details?.limitKind;
+    if (error.status === 402 || limit === "billing")
+      return {
+        status: 429,
+        code: "provider_billing",
+        retryAfter,
+        message:
+          "The provider reported a billing or credit limit. Check the account in the provider dashboard.",
+      };
     switch (error.status) {
       case 0:
         return {
@@ -131,21 +140,21 @@ function providerFailure(
           message:
             "The selected model is unavailable to this key. Choose another model or check access in the provider dashboard.",
         };
-      case 402:
-        return {
-          status: 429,
-          code: "provider_billing",
-          retryAfter,
-          message:
-            "The provider reached a usage or billing limit. Check billing in the provider dashboard.",
-        };
       case 429:
         return {
           status: 429,
           code: "provider_rate_limit",
           retryAfter,
           message:
-            "The provider reached a usage or billing limit. Wait before trying again and check provider usage if it persists.",
+            limit === "tokens"
+              ? "The provider reached its token rate limit. Wait for it to reset before trying again."
+              : limit === "requests"
+                ? "The provider reached its request rate limit. Wait for it to reset before trying again."
+                : limit === "daily"
+                  ? "The provider reached a daily quota. Check its dashboard for the reset time."
+                  : limit === "request_size"
+                    ? "The provider rejected this request because it exceeds its token allowance. Reduce the selected claims or attachment sizes."
+                    : "The provider returned a rate or quota limit without a clear cause. Check its usage dashboard before trying again.",
         };
       default:
         return {
@@ -705,17 +714,32 @@ export function createApp(
     const cache = entry?.claims;
     const client =
       (session &&
-        settings.provider(session.account, session.token, (usage) => {
-          if (usage.inputTokens === null) return;
-          console.info(
-            JSON.stringify({
-              event: "provider_token_usage",
-              provider: entry?.vendor,
-              requestId: response.getHeader("X-Request-Id"),
-              ...usage,
-            }),
-          );
-        })) ??
+        settings.provider(
+          session.account,
+          session.token,
+          (usage, stage) => {
+            if (usage.inputTokens === null) return;
+            console.info(
+              JSON.stringify({
+                event: "provider_token_usage",
+                provider: entry?.vendor,
+                stage,
+                requestId: response.getHeader("X-Request-Id"),
+                ...usage,
+              }),
+            );
+          },
+          (event) => {
+            console.info(
+              JSON.stringify({
+                event: "provider_response",
+                provider: entry?.vendor,
+                requestId: response.getHeader("X-Request-Id"),
+                ...event,
+              }),
+            );
+          },
+        )) ??
       provider;
     if (!client) {
       response.status(session ? 409 : 503).json({

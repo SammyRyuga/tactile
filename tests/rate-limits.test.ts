@@ -163,7 +163,7 @@ test("SEC-02 · a provider 429 has its own message and Retry-After without autom
       assert.equal(calls, 1);
       assert.match(
         await claims.text(),
-        /provider reached a usage or billing limit/,
+        /provider returned a rate or quota limit without a clear cause/,
       );
 
       const stream = await post(url + "/api/reviews", session, {
@@ -178,7 +178,7 @@ test("SEC-02 · a provider 429 has its own message and Retry-After without autom
       const events = await stream.text();
       assert.match(
         events,
-        /"type":"error","message":"The provider reached a usage or billing limit[^"]*","retryAfter":"17"/,
+        /"type":"error","message":"The provider returned a rate or quota limit[^"]*","retryAfter":"17"/,
       );
       assert.doesNotMatch(
         events,

@@ -22,6 +22,26 @@ export function requestReference(response: Response) {
   return requestId.success ? ` Request ID ${requestId.data}.` : "";
 }
 
+function retryGuidance(value: string | null | undefined) {
+  if (!value) return "";
+  const seconds = /^\d{1,15}$/.test(value)
+    ? Number(value)
+    : value.length === 29 && new Date(value).toUTCString() === value
+      ? Math.ceil((Date.parse(value) - Date.now()) / 1000)
+      : 0;
+  if (seconds <= 0) return "";
+  const [unit, interval] =
+    seconds >= 86400
+      ? (["day", 86400] as const)
+      : seconds >= 3600
+        ? (["hour", 3600] as const)
+        : seconds >= 60
+          ? (["minute", 60] as const)
+          : (["second", 1] as const);
+  const count = Math.ceil(seconds / interval);
+  return ` Try again in about ${count} ${unit}${count === 1 ? "" : "s"}.`;
+}
+
 export async function liveAvailable(
   signal: AbortSignal,
   token?: string,
@@ -71,7 +91,11 @@ async function post(
     throw new IntakeClarification(clarification.data.clarification);
   throw new Error(
     parsed.success
-      ? parsed.data.message + requestReference(response)
+      ? parsed.data.message +
+          (response.status === 429
+            ? retryGuidance(response.headers.get("Retry-After"))
+            : "") +
+          requestReference(response)
       : "The server could not complete that request." +
           requestReference(response),
   );
@@ -183,7 +207,11 @@ export async function runLive(
           throw new Error("The review response was invalid. Try again.");
         }
         if (event.type === "error")
-          throw new Error(event.message + requestReference(response));
+          throw new Error(
+            event.message +
+              retryGuidance(event.retryAfter) +
+              requestReference(response),
+          );
         if (event.type === "report") {
           if (!matchesLiveReview(event.report, input))
             throw new Error(

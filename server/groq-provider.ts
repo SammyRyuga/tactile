@@ -3,6 +3,7 @@ import {
   citationsFromAnnotations,
   ProviderOutputError,
   providerJson,
+  providerStage,
   structuredResult,
 } from "./provider.ts";
 import type { ProviderConfig, ReviewProvider } from "./provider.ts";
@@ -62,6 +63,15 @@ export function createGroqProvider(
     schema?: unknown,
     search = false,
   ) {
+    const stage = search ? "evidence_search" : providerStage(schema);
+    const outputTokens =
+      stage === "decision_memo" || stage === "revision"
+        ? 3072
+        : stage === "claim_extraction" || stage === "structured_output"
+          ? 2048
+          : stage === "assumption_ranking" || search
+            ? 1024
+            : 1536;
     const payload = await providerJson(
       request,
       groqBase + "/chat/completions",
@@ -71,7 +81,7 @@ export function createGroqProvider(
         model,
         messages: [{ role: "system", content: instruction }, ...messages],
         reasoning_effort: "low",
-        max_completion_tokens: search ? 1024 : 4096,
+        max_completion_tokens: outputTokens,
         ...(search
           ? { tools: [{ type: "browser_search" }], tool_choice: "required" }
           : {}),
@@ -85,14 +95,19 @@ export function createGroqProvider(
           : {}),
       },
       config,
+      "Authorization",
+      { vendor: "groq", stage, outputTokens },
     );
     const parsed = completion.safeParse(payload);
     const usage = parsed.success ? parsed.data.usage : undefined;
-    config.onUsage?.({
-      inputTokens: usage?.prompt_tokens ?? null,
-      outputTokens: usage?.completion_tokens ?? null,
-      cachedInputTokens: usage?.prompt_tokens_details?.cached_tokens ?? null,
-    });
+    config.onUsage?.(
+      {
+        inputTokens: usage?.prompt_tokens ?? null,
+        outputTokens: usage?.completion_tokens ?? null,
+        cachedInputTokens: usage?.prompt_tokens_details?.cached_tokens ?? null,
+      },
+      stage,
+    );
     const choice = parsed.success ? parsed.data.choices[0] : undefined;
     if (choice?.finish_reason === "length")
       throw new ProviderOutputError("incomplete");

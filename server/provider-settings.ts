@@ -14,6 +14,8 @@ import { modelIdSchema, providerSchema } from "../shared/providers.ts";
 import type { ProviderId } from "../shared/providers.ts";
 import type { ProviderConfig } from "./provider.ts";
 import { createReviewProvider } from "./provider-catalog.ts";
+import { createRateSchedule } from "./provider-rate.ts";
+import type { RateSchedule } from "./provider-rate.ts";
 const maxSessions = 500;
 const lifetime = 8 * 60 * 60 * 1000;
 
@@ -240,6 +242,7 @@ export function createProviderSettings(request = fetch) {
       expiresAt: number;
       generation: symbol;
       claims: ClaimCache;
+      schedule: RateSchedule;
     }
   >();
   function get(account: string, token: string) {
@@ -276,7 +279,8 @@ export function createProviderSettings(request = fetch) {
       if (!keys.has(id) && keys.size >= maxSessions) return undefined;
       const deadline = expiresAt ?? now + lifetime;
       if (deadline <= now) return undefined;
-      keys.get(id)?.claims.clear();
+      const previous = keys.get(id);
+      previous?.claims.clear();
       const generation = Symbol();
       keys.set(id, {
         key,
@@ -285,6 +289,12 @@ export function createProviderSettings(request = fetch) {
         generation,
         expiresAt: deadline,
         claims: createClaimCache(),
+        schedule:
+          previous?.vendor === vendor &&
+          previous.key === key &&
+          (vendor === "gemini" || previous.model === model)
+            ? previous.schedule
+            : createRateSchedule(),
       });
       setTimeout(() => {
         const current = keys.get(id);
@@ -306,11 +316,14 @@ export function createProviderSettings(request = fetch) {
       account: string,
       token: string,
       onUsage: ProviderConfig["onUsage"] = undefined,
+      onResponse: ProviderConfig["onResponse"] = undefined,
     ) {
       const entry = get(account, token);
       return entry
         ? createReviewProvider(entry.vendor, entry.key, entry.model, request, {
             onUsage,
+            onResponse,
+            schedule: entry.schedule,
           })
         : undefined;
     },

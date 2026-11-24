@@ -18,6 +18,7 @@ import {
   providerJson,
 } from "./provider.ts";
 import type { ProviderConfig } from "./provider.ts";
+import { createRateSchedule } from "./provider-rate.ts";
 
 const catalogs = {
   groq: groqBase + "/models",
@@ -157,6 +158,11 @@ export function createReviewProvider(
   request = fetch,
   config: ProviderConfig = {},
 ) {
+  config = {
+    schedule: createRateSchedule(),
+    retryBudget: { remaining: 1 },
+    ...config,
+  };
   const client =
     provider === "groq"
       ? createGroqProvider(key, model, request, config)

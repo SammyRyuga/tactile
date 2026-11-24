@@ -456,7 +456,7 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
           type: "error",
           code: "provider_rate_limit",
           message:
-            "The provider reached a usage or billing limit. Wait before trying again and check provider usage if it persists.",
+            "The provider returned a rate or quota limit without a clear cause. Check its usage dashboard before trying again.",
           retryAfter: "17",
           upstreamStatus: 429,
         });
@@ -733,6 +733,52 @@ for (const [vendor, model, host] of [
     }
   });
 }
+
+test("the worker takes the explicit Redis freshness assumption over the literal implementation plan", async () => {
+  const plan =
+    "We plan to introduce Redis caching for our product inventory API, with a cache expiration time of 10 minutes.";
+  const assumption =
+    "We assume that customers will always see the latest inventory quantity, even when the database is updated before the cached value expires.";
+  const provider: ReviewProvider = {
+    async structured() {
+      throw new Error("Expected worker extraction.");
+    },
+    async research() {
+      throw new Error("Extraction should not require web search.");
+    },
+    async crossfireGenerate(instructions, _messages, schema) {
+      const { title } = schema as { title: string };
+      if (title === "ExtractedClaims") {
+        assert.match(
+          instructions,
+          /Prioritize the author's explicit assumptions/,
+        );
+        return JSON.stringify({
+          statements: [plan],
+          agents: [{ agent: "builder", rationale: "Check the cache design." }],
+        });
+      }
+      assert.equal(title, "LoadBearingRanking");
+      return JSON.stringify({
+        ranked_indices: [1],
+        load_bearing_count: 1,
+        reasons: ["Fixture ranked the explicit plan."],
+      });
+    },
+  };
+  const claims = await engine.extract(
+    provider,
+    plan + "\n\n" + assumption,
+    AbortSignal.timeout(7000),
+  );
+  assert.deepEqual(
+    claims.map(({ text }) => text),
+    [
+      "Customers will always see the latest inventory quantity, even when the database is updated before the cached value expires.",
+    ],
+  );
+  assert.deepEqual(claims[0].crossfire?.agents, ["devils_advocate", "builder"]);
+});
 
 test("the input gate returns Crossfire’s clarification wording", async () => {
   const prompt =

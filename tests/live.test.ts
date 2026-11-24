@@ -928,7 +928,7 @@ test("a provider rate limit returns a retryable message without its response bod
     });
     assert.equal(response.status, 429);
     const body = await response.text();
-    assert.match(body, /usage or billing limit/);
+    assert.match(body, /rate or quota limit without a clear cause/);
     assert.doesNotMatch(body, /Private upstream details/);
   });
 });

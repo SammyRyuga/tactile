@@ -449,6 +449,33 @@ test("settings require sign-in and store the appearance preference across reload
   await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
 });
 
+test("Settings exposes the five provider choices and their key links", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  await page.route("**/api/settings/provider", (route) =>
+    route.fulfill({ json: { saved: false } }),
+  );
+  await page.goto("/settings");
+  await signIn(page);
+  for (const [name, domain] of [
+    ["GroqCloud", "console.groq.com"],
+    ["Meta", "dev.meta.ai"],
+    ["Google Gemini", "aistudio.google.com"],
+    ["OpenAI", "platform.openai.com"],
+    ["xAI Grok", "console.x.ai"],
+  ]) {
+    const option = page.getByRole("radio", { name, exact: true });
+    await option.check();
+    await expect(option).toBeChecked();
+    await expect(page.getByLabel("API key", { exact: true })).toBeVisible();
+    const link = page.getByRole("link", { name: `Get your ${name} API key` });
+    const url = new URL((await link.getAttribute("href")) ?? "");
+    expect(url.hostname).toBe(domain);
+    expect(url.protocol).toBe("https:");
+  }
+});
+
 test("Groq discovery validates the chosen model without persisting the key in the browser", async ({
   page,
 }) => {

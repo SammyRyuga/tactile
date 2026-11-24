@@ -16,6 +16,10 @@ import type {
 } from "../shared/review.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
 import { checkArithmetic } from "./arithmetic.ts";
+import {
+  assumptionGuidance,
+  prioritizeStatedAssumptions,
+} from "./stated-assumptions.ts";
 import type { SourceRead } from "./source-reader.ts";
 import { readSource, sourceExcerpt } from "./source-reader.ts";
 import type { ReviewProvider } from "./provider.ts";
@@ -103,7 +107,7 @@ export async function extractClaims(
   signal: AbortSignal,
 ): Promise<Claim[]> {
   const result = await provider.structured(
-    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Preserve any explicit numeric equation verbatim in the corresponding quantitative claim. Each claim is at most 240 characters. Use short sentences and plain language while preserving exact terms, numbers, and units that affect the decision. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing.`,
+    `${boundary} Identify one to six falsifiable assumptions required by this engineering proposal, ranked by impact if false. If the decision primarily asks for medical, legal, financial, or personal advice, use out of scope and return no claims. If no engineering proposal can be identified, use needs clarification. Preserve any explicit numeric equation verbatim in the corresponding quantitative claim. Each claim is at most 240 characters. Use short sentences and plain language while preserving exact terms, numbers, and units that affect the decision. Classify its main risk and mark the few claims whose failure changes the decision as load-bearing. ${assumptionGuidance}`,
     { proposal },
     extractionSchema,
     signal,
@@ -124,11 +128,12 @@ export async function extractClaims(
     claims.push({ ...claim, id: `claim-${claims.length + 1}`, text });
     if (claims.length === limits.claims) break;
   }
-  if (!claims.length)
+  const prioritized = prioritizeStatedAssumptions(proposal, claims);
+  if (!prioritized.length)
     throw new ProposalScopeError(
       "Add a testable engineering assumption before starting the review.",
     );
-  return capLoadBearing(claims);
+  return capLoadBearing(prioritized);
 }
 
 function capLoadBearing(claims: Claim[]) {

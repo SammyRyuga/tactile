@@ -24,6 +24,10 @@ import type {
 import { ProposalScopeError } from "./pipeline.ts";
 import type { ReviewProvider } from "./provider.ts";
 import { ProviderResponseError } from "./provider.ts";
+import {
+  assumptionGuidance,
+  prioritizeStatedAssumptions,
+} from "./stated-assumptions.ts";
 import { readSource } from "./source-reader.ts";
 import { reviewerByStage, reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
@@ -224,9 +228,14 @@ export function createCrossfireEngine(
       const { id, instructions, messages, schema, url, query } = message;
       try {
         let value;
-        if (message.operation === "generate" && instructions && messages)
-          value = await generate(instructions, messages, schema, requestSignal);
-        else if (message.operation === "fetch" && url)
+        if (message.operation === "generate" && instructions && messages) {
+          const title = z.object({ title: z.string() }).safeParse(schema);
+          const task =
+            title.success && title.data.title === "ExtractedClaims"
+              ? instructions + "\n\n" + assumptionGuidance
+              : instructions;
+          value = await generate(task, messages, schema, requestSignal);
+        } else if (message.operation === "fetch" && url)
           value = (await sourceReader(url, requestSignal))?.text ?? "";
         else if (message.operation === "search" && query)
           value = (
@@ -348,10 +357,11 @@ export function createCrossfireEngine(
             }))
             .filter(({ text }) => Boolean(text)),
         });
-      return result.claims.slice(0, limits.claims).map((claim) =>
+      const claims = result.claims.slice(0, limits.claims).map((claim) =>
         claimSchema.parse({
           id: claim.id,
           text: claim.statement.slice(0, limits.claim),
+          loadBearing: claim.load_bearing ?? undefined,
           crossfire: {
             agents: result.selected_agents,
             deadline: result.deadline,
@@ -368,6 +378,7 @@ export function createCrossfireEngine(
           },
         }),
       );
+      return prioritizeStatedAssumptions(proposal, claims);
     },
 
     async revise(
