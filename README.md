@@ -43,7 +43,7 @@ The example library covers changed-package tests, replica consistency, and featu
 
 Open **Settings** after signing in. Use the header theme button to switch between light and dark. Tactile remembers your theme in that browser. The claim editor and other animated surfaces respect the system’s reduced-motion preference.
 
-To configure live reviews, paste your **Meta Model API key** in Settings. Choose Muse Spark, Ember, or Wonder for live reviews. Tactile checks that the selected model appears in the model list returned for your key before saving. Follow the [live verification procedure](docs/meta-live-verification.md) to confirm that generation and review complete. Your Meta account determines model access. Tactile keeps the key in server memory for the current sign-in session for up to eight hours. Signing out or restarting the server clears it. Settings never displays the saved value. Use **Remove key** to clear it before the session expires. Meta bills usage to the key’s account. The hosted app requires each user to add their own key for live reviews. [Meta Model API documentation](https://dev.meta.ai/docs/overview)
+To configure a hosted live review, paste your **Meta Model API key** in Settings and choose Muse Spark, Ember, or Wonder. **Save key** checks model metadata. If that check is inconclusive, **Test model and save** can send one short generation request. Meta controls access and bills requests to the key’s account. Tactile stores the key in server memory for the sign-in session for up to eight hours. Use **Remove key** to clear it sooner. Signing out or restarting the server also clears it. Live model access for the team’s account remains unverified. [Live verification procedure](docs/meta-live-verification.md) · [Meta Model API documentation](https://dev.meta.ai/docs/overview)
 
 ![Tactile Settings in dark mode with an empty provider key field](docs/screenshots/settings.webp)
 
@@ -60,13 +60,20 @@ npm run dev
 
 Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
-To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Then copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and restart Tactile. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [Supabase quota migrations](supabase/migrations) in order before running a live review. In Supabase Auth, allow `http://127.0.0.1:5173/login` as a redirect.
+To use the authenticated workspace, install Python 3.13 and create the local worker environment. On macOS or Linux, run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. On Windows, run the following from the repository root.
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r server/crossfire/requirements.txt
+```
+
+Set `TACTILE_PYTHON` to the absolute path of the virtual environment’s Python executable if you install it outside `.venv`. Copy `.env.example` to `.env`, configure a Supabase project with email/password sign-in, and set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`. Apply the [Supabase quota migrations](supabase/migrations) in order. Allow `http://127.0.0.1:5173/login` in Supabase Auth and restart Tactile.
 
 | Variable                   | Purpose                                                                     |
 | -------------------------- | --------------------------------------------------------------------------- |
 | `SUPABASE_URL`             | Supabase project URL.                                                       |
 | `SUPABASE_PUBLISHABLE_KEY` | Public key for browser authentication and authenticated quota calls.        |
-| `OPENAI_API_KEY`           | Optional OpenAI key for local reviews. Keep it out of source control.       |
+| `OPENAI_API_KEY`           | Optional developer-only key for local reviews. Hosted reviews use Meta.     |
 | `OPENAI_MODEL`             | Model for live extraction, review, and search. Defaults to `gpt-5-mini`.    |
 | `OPENAI_VERIFIER_MODEL`    | Optional model for OpenAI passage verification. Defaults to the main model. |
 | `PORT`                     | HTTP port. Defaults to `5173` locally.                                      |
@@ -81,6 +88,12 @@ To use the authenticated workspace, install Python 3.13 and run `TACTILE_BOOTSTR
 Tactile runs the pinned [Crossfire Python engine](server/crossfire/upstream/README.md) for authenticated live reviews. Tactile supplies the selected model, web search, and its bounded public-page fetcher. The browser uses the existing interface and report storage. Bundled examples retain their recorded results.
 
 The browser keeps drafts and completed reports in the tab’s session storage. Refreshing during a review restores the confirmed claims so you can retry. `POST /api/claims` extracts claims and `POST /api/reviews` streams update events as NDJSON. Both require a verified session.
+
+## Operator Room
+
+Expand **Operator Room** to see the selected reviewers and their status. Recorded examples replay saved activity. Live reviews show events as they arrive. The memo and Markdown export are available independently of the room.
+
+Desktop localhost can also show the original 3D scene. Place the authorized GLB at `build/control-room-assets/control-room.glb`, run `npm run dev`, and select **Load local 3D preview** in the room. Production builds include the text-based room. The 3D viewer and GLB stay local while Worker robot distribution rights and broader device performance are pending. [Local preview](docs/blender-scene.md) · [Blender asset and tool handoff](docs/operator-room-handoff.md)
 
 ## Deploy to Render
 

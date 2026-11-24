@@ -277,3 +277,9 @@
 - Verified the real 60- and 135-second deadlines, storage errors, pending extraction reload, synthesis cancellation/reload, interrupted model retry and native Chrome zoom. Windows UI Automation exposed the expected controls. Spoken screen-reader output and external session behavior were not verified.
 - The final suite passed 81 Node, 9 Crossfire and 75 Chromium cases with two existing viewport skips. Builds, fixture evaluation, dependency audits and local compiled parity passed. Twenty rendered open-and-close cycles released 20 WebGL contexts and 160 decoded image bitmaps.
 - The local recorded demonstration passes. Public authored 3D still needs rights and broader device qualification. Live Meta still needs entitlement and separate verification approval.
+
+## Operator Room release and handoff
+
+- Merged audited candidate `63f647653d7ad93976e7e8227fb59d88fc3eabc6` in [PR #39](https://github.com/SammyRyuga/tactile/pull/39). The merge commit is `3cd9c5a65fd2e39a50d8a04e1189194d41115054`. CI and CodeQL passed on the merge. The owner confirmed production Auto-Deploy is disabled.
+- Consolidated the original room's generator, exporter, inspector and packer into an independent development package. The Python syntax checks, synthetic export through the Python wrapper, Meshopt decode, WebP pixel comparison, gzip and Brotli round trips, and tool dependency audit passed. Blender and the editable master were unavailable for a fresh export on this workstation.
+- Preserved the original `operator_room` branch, recovery checkpoint and asset handoff. Production builds exclude the local viewer and GLB. The optional tool package stays outside the application dependency tree.
