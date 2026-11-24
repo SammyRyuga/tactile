@@ -9,6 +9,6 @@ export type PreviewFailure =
 export function mountControlRoom(
   root: HTMLElement,
   readReview: () => ControlRoomActivity,
-  onReady: () => void,
+  onReady: (resetCamera: () => void) => void,
   onFailure: (reason: PreviewFailure) => void,
 ): () => void;

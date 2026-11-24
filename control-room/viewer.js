@@ -12,6 +12,16 @@ import { makeRecordedPlayback } from "./recorded-playback.js";
 import { makeHolograms } from "./holograms.js";
 
 const roles = ["devils_advocate", "builder", "researcher", "operator"];
+const statusLabels = {
+  inactive: "Not selected",
+  queued: "Queued",
+  working: "In progress",
+  done: "Complete",
+  unavailable: "Unavailable",
+  skipped: "Skipped",
+  unrecorded: "Not recorded",
+  unreported: "No update",
+};
 const relayColors = {
   devils_advocate: new THREE.Color(0.95, 0.075, 0.055),
   builder: new THREE.Color(1, 0.42, 0.035),
@@ -70,8 +80,8 @@ export function mountControlRoom(root, readReview, onReady, onFailure) {
     onFailure(reason);
   };
   void showRoom(root, readReview, controller.signal, cleanups, fail)
-    .then(() => {
-      if (!controller.signal.aborted) onReady();
+    .then((resetCamera) => {
+      if (!controller.signal.aborted) onReady(resetCamera);
     })
     .catch(() => fail("loadFailed"));
   return close;
@@ -79,16 +89,22 @@ export function mountControlRoom(root, readReview, onReady, onFailure) {
 
 function disposeScene(scene) {
   const resources = new Set();
+  const bitmaps = new Set();
   scene.traverse((object) => {
     if (object.geometry) resources.add(object.geometry);
+    if (object.isSkinnedMesh) resources.add(object.skeleton);
     for (const material of [object.material].flat().filter(Boolean)) {
       resources.add(material);
       for (const value of Object.values(material)) {
-        if (value?.isTexture) resources.add(value);
+        if (value?.isTexture) {
+          resources.add(value);
+          if (value.image instanceof ImageBitmap) bitmaps.add(value.image);
+        }
       }
     }
   });
   for (const resource of resources) resource.dispose();
+  for (const bitmap of bitmaps) bitmap.close();
 }
 
 async function showRoom(root, readReview, signal, cleanups, fail) {
@@ -146,7 +162,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   }
 
   const response = await fetch("/control-room-assets/control-room.glb", {
-    signal,
+    signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
     redirect: "error",
   });
   if (response.status === 404) {
@@ -195,6 +211,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   controls.maxDistance = 32;
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.update();
+  controls.saveState();
   const podCamera = asset.cameras.find((item) => item.userData.pod_bay_camera);
   const overviewPosition = camera.position.clone();
   const overviewTarget = controls.target.clone();
@@ -202,6 +219,11 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   let podTarget;
   let shotWeight = 1;
   let manualCamera = false;
+  const resetCamera = () => {
+    controls.reset();
+    manualCamera = false;
+    shotWeight = 0;
+  };
   if (podCamera) {
     podPosition = podCamera.getWorldPosition(new THREE.Vector3());
     podTarget = podCamera
@@ -247,6 +269,10 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   cleanups.push(() => layout.disconnect());
 
   const { mixer, actions } = makeActions(asset);
+  cleanups.push(() => {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(asset.scene);
+  });
   const podShift = makePodShift(asset.scene, roles);
   const roomProcess = makeRoomProcess(asset.scene);
   const playback = makeRecordedPlayback();
@@ -350,7 +376,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
         const row = stationRows.get(role);
         if (row.dataset.state === state) continue;
         row.dataset.state = state;
-        row.textContent = `${stationNames[role]} · ${state === "inactive" ? "idle" : state}`;
+        row.textContent = `${stationNames[role]} · ${statusLabels[state]}`;
       }
       for (const [track, objects] of signalObjects) {
         const visible = process.signals.has(track);
@@ -451,4 +477,5 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   });
   canvas.dataset.ready = "true";
   canvas.dataset.animatedRoles = [...actions.keys()].join(",");
+  return resetCamera;
 }

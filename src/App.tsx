@@ -221,7 +221,10 @@ const savedDraftSchema = z
             .optional(),
         }),
       )
-      .max(limits.claims),
+      .max(limits.claims)
+      .refine(
+        (claims) => new Set(claims.map(({ id }) => id)).size === claims.length,
+      ),
     projectEvidence: z
       .array(
         projectEvidenceSchema.extend({
@@ -724,6 +727,12 @@ export function App({
     dispatch({ type: "claims" });
   }
 
+  function leaveWorkspace() {
+    if (page === "running") cancelReview();
+    else request.current?.abort();
+    void signOut?.();
+  }
+
   function reopen(entry: Recent) {
     roomId.current = undefined;
     setRoomActivity(undefined);
@@ -873,7 +882,7 @@ export function App({
             <button
               type="button"
               className="text-button"
-              onClick={() => void signOut?.()}
+              onClick={leaveWorkspace}
             >
               Sign out
             </button>

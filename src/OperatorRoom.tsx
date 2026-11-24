@@ -68,6 +68,7 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
   );
   const [preview, setPreview] = useState<Preview>("closed");
   const root = useRef<HTMLDivElement>(null);
+  const resetCamera = useRef<(() => void) | null>(null);
   const current = useRef(activity);
   const showing = preview === "loading" || preview === "ready";
 
@@ -107,8 +108,10 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
         unmount = mountControlRoom(
           target,
           () => current.current,
-          () => {
-            if (active) setPreview("ready");
+          (reset) => {
+            if (!active) return;
+            resetCamera.current = reset;
+            setPreview("ready");
           },
           (failure) => {
             if (!active) return;
@@ -122,6 +125,7 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
       });
     return () => {
       active = false;
+      resetCamera.current = null;
       unmount?.();
     };
   }, [desktop, showing]);
@@ -132,7 +136,9 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
       ? previewMessages[availability]
       : preview === "ready"
         ? activity.source === "recorded"
-          ? "Recorded animation"
+          ? activity.phase === "ready"
+            ? "Report ready. The animation replays the recorded checks."
+            : "Recorded animation"
           : "Live station activity"
         : preview === "closed"
           ? ""
@@ -140,13 +146,24 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
   return (
     <div className="operator-preview">
       {availability === "available" && preview !== "missing" && (
-        <button
-          type="button"
-          className="button"
-          onClick={() => setPreview(showing ? "closed" : "loading")}
-        >
-          {showing ? "Close 3D preview" : "Load local 3D preview"}
-        </button>
+        <div className="actions">
+          <button
+            type="button"
+            className="button"
+            onClick={() => setPreview(showing ? "closed" : "loading")}
+          >
+            {showing ? "Close 3D preview" : "Load local 3D preview"}
+          </button>
+          {preview === "ready" && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => resetCamera.current?.()}
+            >
+              Reset camera
+            </button>
+          )}
+        </div>
       )}
       <p role="status" className="field-note">
         {message}

@@ -3,6 +3,9 @@ export function makeRecordedPlayback() {
   let runId;
   let index = 0;
   let elapsed = 0;
+  let snapshot;
+  let displayedIndex;
+  let displayed;
 
   return function advance(dt, review, reduced) {
     if (
@@ -35,6 +38,20 @@ export function makeRecordedPlayback() {
       elapsed -= hold;
       index++;
     }
-    return { ...review, ...review.steps[index] };
+    if (review !== snapshot || index !== displayedIndex) {
+      const step = review.steps[index];
+      const stations = { ...step.stations };
+      if (review.phase === "ready") {
+        for (const [role, station] of Object.entries(review.stations)) {
+          if (station.state === "queued") {
+            stations[role] = { ...station, state: "unrecorded" };
+          }
+        }
+      }
+      displayed = { ...review, ...step, stations };
+      snapshot = review;
+      displayedIndex = index;
+    }
+    return displayed;
   };
 }

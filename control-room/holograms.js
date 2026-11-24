@@ -15,7 +15,8 @@ function stationStatus(role, review, shift, process) {
   if (shift?.has(`handoff:${role}`)) return "Courier handoff";
   if (motion === "waking") return "Deploying";
   if (motion === "returning") return "Returning to pod";
-  if (motion === "working") return state?.stages[0] ?? "Reviewing";
+  if (motion === "working" && state?.state === "working")
+    return state.stages[0] ?? "Reviewing";
   if (
     state?.state === "queued" &&
     review.phase !== "ready" &&
@@ -27,6 +28,9 @@ function stationStatus(role, review, shift, process) {
       done: "Check complete",
       unavailable: "Check unavailable",
       skipped: "Check skipped",
+      inactive: "Not selected",
+      unrecorded: "Not recorded",
+      queued: "No update",
     }[state?.state] ?? "Docked"
   );
 }
@@ -66,7 +70,7 @@ export function makeHolograms(model, scene, overview) {
         toneMapped: false,
       }),
     );
-    sprite.scale.set(2.36, 0.37, 1);
+    sprite.scale.set(role === "slump" ? 1.95 : 2.36, 0.37, 1);
     scene.add(sprite);
     displays.push({ role, anchor: object, context, texture, sprite });
   });
@@ -79,6 +83,7 @@ export function makeHolograms(model, scene, overview) {
     }
     for (const display of displays) {
       display.sprite.position.copy(display.anchor.getWorldPosition(point));
+      if (display.role === "slump") display.sprite.position.y -= 0.27;
       const label = stationStatus(display.role, review, shift, process);
       if (label === display.label) continue;
       display.label = label;

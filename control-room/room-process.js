@@ -144,10 +144,15 @@ export function makeRoomProcess(model) {
         review.active.includes("researcher")
       )
         label = "Evidence follow-up";
-      else
-        label = review.active.length
-          ? "Parallel specialist checks"
-          : "Waiting for review activity";
+      else {
+        const specialists = review.active.filter((role) => role !== "slump");
+        label =
+          specialists.length > 1
+            ? "Parallel specialist checks"
+            : specialists.length === 1
+              ? "Specialist check"
+              : "Waiting for review activity";
+      }
     } else if (time < workStart) label = "Claim intake · stations waking";
     else if (time < followUp) label = "Parallel specialist checks";
     else if (time < finalIntake) label = "Evidence follow-up";
@@ -168,14 +173,14 @@ export function makeRoomProcess(model) {
               : "inactive";
       return [
         role,
-        live && terminal && state === "queued" ? "inactive" : state,
+        live && terminal && state === "queued" ? "unreported" : state,
       ];
     });
     return {
       mode: live
         ? review.source === "recorded"
           ? "Recorded review · visual replay"
-          : "Live review · visual replay"
+          : "Live review · station activity"
         : "Guided demo",
       label,
       signals,

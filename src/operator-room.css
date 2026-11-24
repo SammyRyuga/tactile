@@ -124,14 +124,17 @@
 .operator-viewer .room-flow {
   position: absolute;
   inset: 0.75rem auto auto 0.75rem;
-  padding: 0.65rem;
+  max-inline-size: min(16rem, 45%);
+  padding: 0.45rem 0.6rem;
   border-radius: 0.4rem;
   background: #0b131e;
   color: #eefaff;
+  font-size: 0.875rem;
+  line-height: 1.35;
   pointer-events: none;
 }
 .operator-viewer [data-room-stations] {
   list-style: none;
-  margin: 0.35rem 0;
+  margin: 0.2rem 0;
   padding: 0;
 }

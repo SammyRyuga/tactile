@@ -103,6 +103,12 @@ test("available model loads on demand and context loss preserves the memo", asyn
   await load.press("Enter");
   const canvas = page.locator('canvas[data-ready="true"]');
   await expect(canvas).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("Report ready. The animation replays the recorded checks."),
+  ).toBeVisible();
+  expect(methods).toEqual(["HEAD", "GET"]);
+  await page.getByRole("button", { name: "Reset camera" }).press("Enter");
+  await expect(canvas).toBeVisible();
   expect(methods).toEqual(["HEAD", "GET"]);
   await canvas.evaluate((element: HTMLCanvasElement) => {
     const extension = element
@@ -163,5 +169,35 @@ test("loading failure after a valid HEAD keeps the text view usable", async ({
   await expect(
     page.getByText("Could not load the local 3D scene."),
   ).toBeVisible();
+  await exportMarkdown(page);
+});
+
+test("a corrupt model can be retried and shrinking the viewport closes the viewer", async ({
+  page,
+}) => {
+  let downloads = 0;
+  await page.route(modelRoute, (route) => {
+    if (route.request().method() === "HEAD")
+      return route.fulfill({ contentType: modelType });
+    downloads++;
+    return route.fulfill({
+      contentType: modelType,
+      body:
+        downloads === 1 ? Buffer.from("corrupt local fixture") : fixtureModel(),
+    });
+  });
+  const summary = await completeReview(page);
+  await summary.press("Enter");
+  const open = page.getByRole("button", { name: "Load local 3D preview" });
+  await open.click();
+  await expect(
+    page.getByText("Could not load the local 3D scene."),
+  ).toBeVisible();
+  await open.click();
+  const canvas = page.locator('canvas[data-ready="true"]');
+  await expect(canvas).toBeVisible();
+  await page.setViewportSize({ width: 768, height: 600 });
+  await expect(canvas).toHaveCount(0);
+  await expect(open).toHaveCount(0);
   await exportMarkdown(page);
 });

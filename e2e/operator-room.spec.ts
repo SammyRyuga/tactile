@@ -131,7 +131,16 @@ test("mocked live stations track concurrent work and cancel without a report", a
                     type: "report",
                     report: {
                       mode: "live",
-                      findings: [],
+                      findings: payload.claims.map(
+                        (claim: { id: string; text: string }) => ({
+                          claim,
+                          verdict: "Unresolved",
+                          rationale:
+                            "The fixture has no production measurements.",
+                          nextStep: "Measure queue ordering under load.",
+                          sourceIds: [],
+                        }),
+                      ),
                       sources: [],
                       recommendation: "Keep the ordering test.",
                     },

@@ -450,7 +450,11 @@ export function createCrossfireEngine(
             )
           )
             return;
-          const status = active ? "running" : "done";
+          const status = active
+            ? "running"
+            : finding?.result === "System Error / Timeout"
+              ? "unavailable"
+              : "done";
           const global = reviewEventSchema.safeParse({
             type: "progress",
             stage,
@@ -480,8 +484,22 @@ export function createCrossfireEngine(
       );
       if (caseData.status !== "done" || !caseData.case_verdict)
         throw new Error("Crossfire could not finish this review.");
-      for (const item of stages.values())
-        emit({ ...item, type: "progress", status: "done" });
+      for (const item of stages.values()) {
+        const checks = caseData.findings.filter(
+          (finding) =>
+            finding.claim_id === item.claimId &&
+            evaluatorStage(finding.evaluator) === item.stage,
+        );
+        emit({
+          ...item,
+          type: "progress",
+          status:
+            checks.length &&
+            checks.every(({ result }) => result !== "System Error / Timeout")
+              ? "done"
+              : "unavailable",
+        });
+      }
 
       const sources: Source[] = [];
       const findings = caseData.claims.map((result) => {

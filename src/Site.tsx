@@ -1,5 +1,5 @@
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { z } from "zod";
 import { App } from "./App.tsx";
@@ -238,9 +238,11 @@ function AccountSite() {
   const [loading, setLoading] = useState(true);
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const [notice, setNotice] = useState("");
-  const path = window.location.pathname;
+  const signingOut = useRef(false);
+  const path = window.location.pathname.replace(/\/$/, "").toLowerCase() || "/";
   const params = new URLSearchParams(window.location.search);
   const protectedRoute = path === "/review" || path === "/settings";
+  const verifyStoredSession = protectedRoute || path === "/login";
   const exampleId =
     params.get("example") ?? (params.get("demo") === "1" ? "ci" : null);
   const example =
@@ -290,7 +292,7 @@ function AccountSite() {
         const { data } = await supabase.auth.getSession();
         if (controller.signal.aborted) return;
         if (data.session) {
-          const user = protectedRoute
+          const user = verifyStoredSession
             ? await supabase.auth.getUser(data.session.access_token)
             : { data: { user: data.session.user } };
           if (
@@ -331,17 +333,34 @@ function AccountSite() {
       controller.abort();
       unsubscribe?.();
     };
-  }, [protectedRoute]);
+  }, [verifyStoredSession]);
 
   useEffect(() => {
-    if (protectedRoute && !loading && !session && !authUnavailable) {
+    if (
+      protectedRoute &&
+      !loading &&
+      !session &&
+      !authUnavailable &&
+      !signingOut.current
+    ) {
       window.location.replace(
         `/login?${new URLSearchParams({ next: requested })}`,
       );
     }
   }, [protectedRoute, loading, session, requested, authUnavailable]);
 
+  useEffect(() => {
+    if (!protectedRoute) return;
+    function verifyRestoredSession(event: PageTransitionEvent) {
+      if (event.persisted) window.location.reload();
+    }
+    window.addEventListener("pageshow", verifyRestoredSession);
+    return () => window.removeEventListener("pageshow", verifyRestoredSession);
+  }, [protectedRoute]);
+
   async function signOut() {
+    if (signingOut.current) return;
+    signingOut.current = true;
     try {
       if (session) {
         await fetch("/api/settings/provider", {
@@ -365,6 +384,7 @@ function AccountSite() {
       }
       window.location.assign("/");
     } catch {
+      signingOut.current = false;
       setNotice("Sign-out failed. Try again.");
     }
   }

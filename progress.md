@@ -252,3 +252,20 @@
 - The desktop development preview uses one typed HEAD check per page before offering a model download. Verified the actual loopback route in an isolated directory and covered valid GLB, missing and HTML responses, unavailable WebGL, loading failure, and context loss in Chromium. The production bundle excludes the viewer.
 - Verified all three recorded cases and Markdown export in Windows Chrome, and the CI layout at 320, 390, 768, 1280, and 1920 pixels in both themes with keyboard and reduced motion. Passed the repository check, 71 Node tests, 63 Chromium tests with two mobile skips for desktop viewport sweeps, eight Crossfire integration tests, fixture evaluation, production build, and both dependency audits. No live provider was used.
 - The original GLB and Blender master remain pending. The handoff's GLB can use the existing development path once delivered. Local scene verification, distribution permission, and performance checks remain open for the optional 3D feature.
+
+## Original Operator Room local asset verification
+
+- Extracted the authored GLB from Tactile commit `4e991081d1bcad47054e83a824ac173179d08c02` into the ignored local asset directory. Verified 27,258,868 bytes and SHA-256 `c70bdec3dc366f17f6fe6a9f86ed9b0c2ab64c9f14195e684f52409ead45be45` on disk and over loopback.
+- Windows Chrome displayed the original room, all four reviewers, both couriers, Steelman, five holograms, and the pod and relay animations. All three recorded cases reached the decision. Mocked live reviews covered concurrent reviewers, courier handoff, reconciliation, the decision memo, cancellation, failure, and export.
+- Aligned the local preview's labels with the actual recorded and live events, added a camera reset, and explicitly released decoded images and skeletal animation resources when the viewer closes. Three opens and closes released three WebGL contexts and all 24 decoded image bitmaps.
+- On Intel UHD with ANGLE/D3D11, first frames appeared in 1.07–1.62 seconds and the warmed CI preview reopened in 0.68 seconds. CI activity averaged about 89 FPS over a three-second animation-frame sample. Cold shader compilation and projected labels that crowd at some angles remain optional-feature performance and readability issues.
+- Passed 71 Node tests, eight Crossfire integration tests, 63 Chromium tests with two intentional skips, fixture evaluation, both npm audits, and the production build. The built frontend excludes the viewer and GLB, and the production model route returns 404 even with the GLB on disk. Worker distribution rights and rollout approval remain open.
+
+## Local pre-release engineering audit
+
+- Preserved the approved branch and checkpointed the original-preview work at `413272146a9ca362ffc760f67418e9efd6d32449`. The local GLB still matches the original handoff hash and is ignored.
+- Hardened the live report contract, stream bounds and cancellation, extraction identity checks, request validation before quota, evaluator progress, route aliases and session restore. Added reproducible browser, stream, Unicode and lifecycle regressions.
+- Re-ran Node, Crossfire and Chromium three times with 81, 8 and 74 passes per run and two intentional viewport skips. Fixture evaluation, production builds, both audits and compiled hosted-mode checks passed using local fixtures. No real provider requests were made.
+- Ran 110 responsive checks, 96 seeded browser interactions, 1,600 feed transitions and 240 seeded Unicode inputs. Recorded the remaining accessibility, account and provider verification gaps in the local QA report.
+- Verified all three original-asset replays and mocked live activity. The 35-second Intel UHD sample averaged 88 FPS. Twenty open-and-close cycles released 20 WebGL contexts and 160 decoded images. Shader startup and occasional frame delays still need more work before a 3D rollout.
+- The compiled production artifact and runtime exclude the GLB and viewer. Worker distribution rights, Meta account entitlement and separate rollout approval remain pending.
