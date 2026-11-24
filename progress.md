@@ -269,3 +269,11 @@
 - Ran 110 responsive checks, 96 seeded browser interactions, 1,600 feed transitions and 240 seeded Unicode inputs. Recorded the remaining accessibility, account and provider verification gaps in the local QA report.
 - Verified all three original-asset replays and mocked live activity. The 35-second Intel UHD sample averaged 88 FPS. Twenty open-and-close cycles released 20 WebGL contexts and 160 decoded images. Shader startup and occasional frame delays still need more work before a 3D rollout.
 - The compiled production artifact and runtime exclude the GLB and viewer. Worker distribution rights, Meta account entitlement and separate rollout approval remain pending.
+
+## Local release closure
+
+- Replayed the audit regressions against the saved checkpoint and current candidate. A synthetic subprocess confirmed that missing and failed checks remain unavailable. Tightened the Tactile adapter to discard progress for foreign claims or unselected reviewers, including nested worker events. Exercised all 15 supported panels through the worker with local fixtures.
+- Profiled shader linking and an offscreen memo/export pause in headed Windows Chrome. Parallel shader preparation reduced median click-to-first-render from 1,528 to 1,087 ms in three runs per variant. The stable memo renders matched pixel-for-pixel. Suspended graphics rendering while the canvas is offscreen, reducing the matched export from 4.43 s to 26 ms. Kept the original asset, visual settings and animation state.
+- Verified the real 60- and 135-second deadlines, storage errors, pending extraction reload, synthesis cancellation/reload, interrupted model retry and native Chrome zoom. Windows UI Automation exposed the expected controls. Spoken screen-reader output and external session behavior were not verified.
+- The final suite passed 81 Node, 9 Crossfire and 75 Chromium cases with two existing viewport skips. Builds, fixture evaluation, dependency audits and local compiled parity passed. Twenty rendered open-and-close cycles released 20 WebGL contexts and 160 decoded image bitmaps.
+- The local recorded demonstration passes. Public authored 3D still needs rights and broader device qualification. Live Meta still needs entitlement and separate verification approval.

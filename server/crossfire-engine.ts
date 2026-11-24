@@ -25,7 +25,7 @@ import { ProposalScopeError } from "./pipeline.ts";
 import type { ReviewProvider } from "./provider.ts";
 import { ProviderResponseError } from "./provider.ts";
 import { readSource } from "./source-reader.ts";
-import { reviewersSchema } from "../shared/reviewers.ts";
+import { reviewerByStage, reviewersSchema } from "../shared/reviewers.ts";
 import { evaluateEngineeringCheck } from "../shared/engineering.ts";
 import {
   crossfireRuntime,
@@ -391,6 +391,8 @@ export function createCrossfireEngine(
       const metadata = input.claims.find(
         ({ crossfire }) => crossfire,
       )?.crossfire;
+      const panel = input.reviewers ?? metadata?.agents;
+      const claimIds = new Set(input.claims.map(({ id }) => id));
       const stages = new Map<
         string,
         { stage: z.infer<typeof stageSchema>; claimId: string }
@@ -421,7 +423,7 @@ export function createCrossfireEngine(
             mechanism_of: claim.crossfire?.mechanism,
           })),
           metadata: {
-            selected_agents: input.reviewers ?? metadata?.agents,
+            selected_agents: panel,
             reversibility: input.decision
               ? input.decision.reversibility
               : metadata?.reversibility,
@@ -438,7 +440,8 @@ export function createCrossfireEngine(
               ? "Synthesis"
               : (evaluatorStage(data.evaluator ?? finding?.evaluator) ??
                 (name === "verdict_ready" ? "Verification" : undefined));
-          const claimId = data.claim_id ?? data.target_claim_id;
+          const claimId =
+            data.claim_id ?? data.target_claim_id ?? finding?.claim_id;
           const active = name === "test_started" || name === "activity";
           if (
             !stage ||
@@ -450,6 +453,13 @@ export function createCrossfireEngine(
             )
           )
             return;
+          if (
+            claimId !== undefined &&
+            (typeof claimId !== "string" || !claimIds.has(claimId))
+          )
+            return;
+          const reviewer = reviewerByStage[stage];
+          if (reviewer && panel && !panel.includes(reviewer)) return;
           const status = active
             ? "running"
             : finding?.result === "System Error / Timeout"
@@ -461,10 +471,7 @@ export function createCrossfireEngine(
             status,
           });
           if (global.success) emit(global.data);
-          if (
-            typeof claimId === "string" &&
-            input.claims.some(({ id }) => id === claimId)
-          ) {
+          if (typeof claimId === "string") {
             if (active) stages.set(`${stage}:${claimId}`, { stage, claimId });
             else stages.delete(`${stage}:${claimId}`);
             const detail =

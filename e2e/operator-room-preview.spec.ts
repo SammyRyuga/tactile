@@ -125,6 +125,69 @@ test("available model loads on demand and context loss preserves the memo", asyn
   await exportMarkdown(page);
 });
 
+test("offscreen preview stops drawing while export remains available", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const count = (
+      target: typeof WebGL2RenderingContext.prototype.drawArrays,
+    ) =>
+      new Proxy(target, {
+        apply(draw, context: WebGL2RenderingContext, args) {
+          const canvas = context.canvas;
+          if (canvas instanceof HTMLCanvasElement) {
+            canvas.dataset.drawCalls = String(
+              Number(canvas.dataset.drawCalls ?? 0) + 1,
+            );
+          }
+          return Reflect.apply(draw, context, args);
+        },
+      });
+    WebGL2RenderingContext.prototype.drawArrays = count(
+      WebGL2RenderingContext.prototype.drawArrays,
+    );
+  });
+  await page.route(modelRoute, (route) =>
+    route.fulfill({
+      contentType: modelType,
+      ...(route.request().method() === "GET" ? { body: fixtureModel() } : {}),
+    }),
+  );
+  const summary = await completeReview(page);
+  await summary.press("Enter");
+  await page.getByRole("button", { name: "Load local 3D preview" }).click();
+  const canvas = page.locator('canvas[data-ready="true"]');
+  await canvas.scrollIntoViewIfNeeded();
+  const draws = async () =>
+    Number(await canvas.getAttribute("data-draw-calls"));
+  await expect.poll(draws).toBeGreaterThan(0);
+  await page
+    .getByRole("heading", { name: "Review results" })
+    .scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      canvas.evaluate((el) => el.getBoundingClientRect().top >= innerHeight),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      canvas.evaluate(async (el) => {
+        const before = el.dataset.drawCalls;
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          }),
+        );
+        return el.dataset.drawCalls === before;
+      }),
+    )
+    .toBe(true);
+  await exportMarkdown(page);
+  const before = await draws();
+  await canvas.scrollIntoViewIfNeeded();
+  await expect.poll(draws).toBeGreaterThan(before);
+});
+
 test("unavailable WebGL leaves the stations accessible without fetching the model", async ({
   page,
 }) => {

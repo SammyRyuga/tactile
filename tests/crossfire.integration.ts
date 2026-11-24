@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createApp } from "../server/app.ts";
 import { toMarkdown } from "../shared/review.ts";
 import { reviewModelSchema } from "../shared/models.ts";
@@ -29,6 +29,90 @@ const engine = createCrossfireEngine(
   process.env.RENDER === "true",
 );
 const proposal = "Switch invoice exports to a queue with independent workers.";
+
+test("worker progress only describes submitted reviewers and resolved checks", async () => {
+  const original = process.cwd();
+  const tempRoot = resolve(tmpdir());
+  const directory = await mkdtemp(join(tempRoot, "tactile-progress-"));
+  const fixture = join(directory, "server", "crossfire");
+  const python = crossfireRuntime(process.env.TACTILE_PYTHON).executable;
+  await mkdir(fixture, { recursive: true });
+  await writeFile(
+    join(fixture, "worker.py"),
+    String.raw`import json, sys, time
+def event(claim, evaluator, name="test_started", result=None):
+    data = {"evaluator": evaluator}
+    if result:
+        data["finding"] = {"claim_id": claim, "evaluator": evaluator, "result": result}
+    else:
+        data["claim_id"] = claim
+    return {"kind": "event", "event": name, "data": data}
+request = json.loads(sys.stdin.readline())
+claims = [dict(id=item["id"], statement=item["statement"], status="unresolved", terms=[])
+          for item in request["claims"]]
+findings = [
+    dict(claim_id="failed", evaluator="builder", result="System Error / Timeout",
+         reasoning="The local fixture timed out.", evidence=[]),
+    dict(claim_id="complete", evaluator="builder", result="Supported",
+         reasoning="Fixture checked. 測試", evidence=[]),
+]
+verdict = dict(decision_state="hold", headline="Hold for review", summary="Fixture report",
+               surviving_core="Fixture", deciding_factor=None, dissents=[], next_actions=[], build_spec=None)
+messages = [
+    event("missing", "builder"), event("failed", "builder"),
+    event("failed", "builder", "finding_ready", "System Error / Timeout"),
+    event("complete", "builder"), event("foreign", "researcher"),
+    event("complete", "operator"),
+    {"kind": "case", "case": dict(status="done", selected_agents=["builder", "researcher"],
+                                 claims=claims, findings=findings, consequences=[], case_verdict=verdict)},
+]
+encoded = "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in messages).encode()
+split = encoded.index("測".encode()) + 1
+sys.stdout.buffer.write(encoded[:split])
+sys.stdout.buffer.flush()
+time.sleep(0.05)
+sys.stdout.buffer.write(encoded[split:])
+sys.stdout.buffer.flush()
+`,
+  );
+  process.chdir(directory);
+  try {
+    const localEngine = createCrossfireEngine(python);
+    const provider = createProvider("local-fixture", "fixture", async () => {
+      throw new Error("The worker fixture must not contact a provider.");
+    });
+    const events: ReviewEvent[] = [];
+    const report = await localEngine.review(
+      provider,
+      {
+        proposal,
+        claims: ["missing", "failed", "complete"].map((id) => ({
+          id,
+          text: "Fixture check for " + id,
+        })),
+        reviewers: ["builder", "researcher"],
+      },
+      (event) => events.push(event),
+      AbortSignal.timeout(7000),
+    );
+    const progress = events.filter((event) => event.type === "progress");
+    const status = (id: string) =>
+      progress.filter(({ claimId }) => claimId === id).at(-1)?.status;
+    assert.equal(status("missing"), "unavailable");
+    assert.equal(status("failed"), "unavailable");
+    assert.equal(status("complete"), "done");
+    assert.ok(progress.every(({ stage }) => stage === "Feasibility"));
+    assert.match(
+      report.findings.find(({ claim }) => claim.id === "complete")?.audit?.[0]
+        ?.observation ?? "",
+      /測試/,
+    );
+  } finally {
+    process.chdir(original);
+    if (dirname(directory) === tempRoot)
+      await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through the Tactile gateway", async () => {
   const seen = new Set<string>();

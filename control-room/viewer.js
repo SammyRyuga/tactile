@@ -267,6 +267,12 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   const layout = new ResizeObserver(resize);
   layout.observe(canvas);
   cleanups.push(() => layout.disconnect());
+  let inView = false;
+  const visibility = new IntersectionObserver(([entry]) => {
+    inView = entry.isIntersecting;
+  });
+  visibility.observe(canvas);
+  cleanups.push(() => visibility.disconnect());
 
   const { mixer, actions } = makeActions(asset);
   cleanups.push(() => {
@@ -466,7 +472,22 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
     }
     controls.update();
     updateHolograms(camera, current, shift, process);
+    // Keep replay state current while the user works elsewhere in the report.
+    if (!inView) return;
     composer.render(dt);
+  }
+  if (context.getExtension("KHR_parallel_shader_compile")) {
+    // The main pass renders into the composer, so warm the same shader variants.
+    const previousTarget = renderer.getRenderTarget();
+    let compilation;
+    try {
+      renderer.setRenderTarget(composer.readBuffer);
+      compilation = renderer.compileAsync(scene, camera);
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+    }
+    await compilation;
+    if (signal.aborted) return;
   }
   renderer.setAnimationLoop((time) => {
     try {
