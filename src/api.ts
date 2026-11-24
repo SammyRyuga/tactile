@@ -1,10 +1,12 @@
 import { z } from "zod";
 import {
   attachmentTextSchema,
-  claimSchema,
+  claimListSchema,
   clarificationSchema,
+  matchesLiveReview,
   reviewEventSchema,
 } from "../shared/review.ts";
+import { reviewerByStage } from "../shared/reviewers.ts";
 import type {
   AttachmentKind,
   ProposalIntake,
@@ -71,9 +73,12 @@ export async function extractLive(
   token?: string,
 ) {
   const response = await post("/api/claims", input, signal, token);
-  return z
-    .object({ claims: z.array(claimSchema).min(1).max(6) })
-    .parse(await response.json()).claims;
+  const parsed = z
+    .object({ claims: claimListSchema })
+    .safeParse(await response.json().catch(() => null));
+  if (!parsed.success)
+    throw new Error("The server returned invalid assumptions. Try again.");
+  return parsed.data.claims;
 }
 
 export class IntakeClarification extends Error {
@@ -113,32 +118,71 @@ export async function runLive(
   signal: AbortSignal,
   token?: string,
 ) {
-  const response = await post("/api/reviews", input, signal, token);
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(135_000)]);
+  const response = await post("/api/reviews", input, requestSignal, token);
   if (!response.body) throw new Error("The server returned an empty review.");
+  const maxLineLength = 2 * 1024 * 1024;
+  const claims = new Set(input.claims.map(({ id }) => id));
   let buffer = "";
-  let receivedReport = false;
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let messages = 0;
+  const reader = response.body
+    .pipeThrough(new TextDecoderStream("utf-8", { fatal: true }))
+    .getReader();
+  const abortReader = () => void reader.cancel().catch(() => undefined);
+  requestSignal.addEventListener("abort", abortReader, { once: true });
   try {
     while (true) {
-      const { value, done } = await reader.read();
+      requestSignal.throwIfAborted();
+      const { value, done } = await reader.read().catch(() => {
+        requestSignal.throwIfAborted();
+        throw new Error("The review response was interrupted. Try again.");
+      });
+      requestSignal.throwIfAborted();
       if (done) break;
       buffer += value;
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
+      let start = 0;
+      for (
+        let end = buffer.indexOf("\n");
+        end !== -1;
+        end = buffer.indexOf("\n", start)
+      ) {
+        if (end - start > maxLineLength || ++messages > 4096)
+          throw new Error("The review response exceeded its size limit.");
+        const line = buffer.slice(start, end);
+        start = end + 1;
         if (!line.trim()) continue;
-        const event = reviewEventSchema.parse(JSON.parse(line));
+        let event: ReviewEvent;
+        try {
+          event = reviewEventSchema.parse(JSON.parse(line));
+        } catch {
+          throw new Error("The review response was invalid. Try again.");
+        }
         if (event.type === "error")
           throw new Error(event.message + requestReference(response));
-        emit(event);
-        if (event.type === "report") receivedReport = true;
+        if (event.type === "report") {
+          if (!matchesLiveReview(event.report, input))
+            throw new Error(
+              "The report did not match the submitted review. Try again.",
+            );
+          emit(event);
+          return;
+        }
+        const reviewer = reviewerByStage[event.stage];
+        if (
+          (!event.claimId || claims.has(event.claimId)) &&
+          (!reviewer || !input.reviewers || input.reviewers.includes(reviewer))
+        )
+          emit(event);
       }
+      buffer = buffer.slice(start);
+      if (buffer.length > maxLineLength)
+        throw new Error("The review response exceeded its size limit.");
     }
-    if (!receivedReport)
-      throw new Error(
-        "The review connection closed before a report arrived. Try again.",
-      );
+    throw new Error(
+      "The review connection closed before a report arrived. Try again.",
+    );
   } finally {
+    requestSignal.removeEventListener("abort", abortReader);
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }

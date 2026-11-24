@@ -19,7 +19,13 @@ export const verdictSchema = z.enum([
   "Broken",
   "Unresolved",
 ]);
-export const proposalSchema = z.string().trim().min(20).max(limits.proposal);
+export const proposalSchema = z
+  .string()
+  .trim()
+  .refine(
+    (text) => text.length >= 20 && text.length <= limits.proposal,
+    "Proposal text must fit the editor's 20–3,000 character limit.",
+  );
 const idSchema = z.string().regex(/^[a-zA-Z0-9-]{1,40}$/);
 
 export const riskSchema = z.enum([
@@ -103,12 +109,28 @@ const crossfireClaimSchema = z.object({
 
 export const claimSchema = z.object({
   id: idSchema,
-  text: z.string().trim().min(1).max(limits.claim),
+  text: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (text) => text.length <= limits.claim,
+      "Claim text must fit the editor.",
+    ),
   risk: riskSchema.optional(),
   loadBearing: z.boolean().optional(),
   engineeringCheck: engineeringCheckSchema.optional(),
   crossfire: crossfireClaimSchema.optional(),
 });
+
+export const claimListSchema = z
+  .array(claimSchema)
+  .min(1)
+  .max(limits.claims)
+  .refine(
+    (claims) => new Set(claims.map(({ id }) => id)).size === claims.length,
+    "Claim IDs must be unique.",
+  );
 
 export const decisionContextSchema = z.object({
   reversibility: z.enum(["one_way", "two_way"]).nullable(),
@@ -137,14 +159,7 @@ export const reviewInputSchema = z.object({
   decision: decisionContextSchema.optional(),
   projectEvidence: evidenceListSchema.optional(),
   reviewers: reviewersSchema.optional(),
-  claims: z
-    .array(claimSchema)
-    .min(1)
-    .max(limits.claims)
-    .refine(
-      (claims) => new Set(claims.map(({ id }) => id)).size === claims.length,
-      "Claim IDs must be unique.",
-    ),
+  claims: claimListSchema,
 });
 
 export const stages = [
@@ -294,6 +309,39 @@ export type ProgressEvent = Extract<ReviewEvent, { type: "progress" }>;
 export type Finding = z.infer<typeof findingSchema>;
 export type Source = z.infer<typeof sourceSchema>;
 export type Report = z.infer<typeof reportSchema>;
+
+export function matchesLiveReview(report: Report, input: ReviewInput): boolean {
+  if (
+    report.mode !== "live" ||
+    !report.recommendation.trim() ||
+    report.findings.length !== input.claims.length
+  )
+    return false;
+  if (
+    input.reviewers &&
+    report.crossfireReviewers &&
+    (input.reviewers.length !== report.crossfireReviewers.length ||
+      report.crossfireReviewers.some(
+        (role) => !input.reviewers!.includes(role),
+      ))
+  )
+    return false;
+
+  const claims = new Map(input.claims.map(({ id, text }) => [id, text]));
+  const sources = new Set(report.sources.map(({ id }) => id));
+  if (sources.size !== report.sources.length) return false;
+  return report.findings.every(({ claim, sourceIds, audit }) => {
+    if (claims.get(claim.id) !== claim.text) return false;
+    claims.delete(claim.id);
+    return (
+      sourceIds.every((id) => sources.has(id)) &&
+      (!audit ||
+        audit.every(
+          (check) => check.sourceIds?.every((id) => sources.has(id)) ?? true,
+        ))
+    );
+  });
+}
 
 function markdownText(text: string): string {
   return text

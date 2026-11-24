@@ -238,3 +238,42 @@
 - Production revision `9369462` served the public app while emitting the generic worker error. The screenshot was consistent with a slow initialization. A clean Linux build with the pinned dependency target completed its normal handshake. With a controlled startup delay, the original probe failed after 5.01 seconds and the patched worker became ready after 6.26 seconds. The original Render log did not identify the exact failure category.
 - Shared interpreter and dependency selection between build and runtime, verified the full worker handshake and native imports during the authenticated Render build, and moved runtime probing off the HTTP startup path with a bounded 20-second budget and sanitized diagnostics. No files under `server/crossfire/` changed.
 - Passed 68 Node tests, 52 Chromium tests, eight Crossfire integration tests, fixture evaluation, the production build, and both npm audits. The hosted-mode Linux smoke used fixture auth and verified public routes during initialization plus authenticated readiness afterward. No live provider was used.
+
+## Operator Room local integration
+
+- Integrated the three `operator_room` changes selectively. Review events drive the selected stations and Steelman. The existing review trail and export remain independent, and the visual preview uses only in-memory stage state.
+- Curved action arrows and native FAQ disclosures passed keyboard checks from 320 to 1920 CSS pixels. Completed 71 Node tests, 57 Chromium tests with one desktop-only width sweep skipped in the mobile project, and eight Crossfire integration tests. The fixture evaluation and production build passed. Both npm audits found zero vulnerabilities.
+- Verified the loopback 3D route with an original synthetic GLB, including compression, ranges, loading delay, context loss, missing assets and missing WebGL. The optional preview stays local until source availability, licenses and performance of the original scene are verified. The production build omits the viewer and GLB route. See the [asset inventory and rollout plan](docs/blender-scene.md).
+
+## Operator Room manual QA
+
+- Restored the Results-to-Operator Room gap from 0 to 16 CSS pixels. A later shared proposal rule had reset the room's margin. At 320 pixels the transformed deck also extended past the review canvas. The narrower deck at compact widths, even disclosure insets, and matched chevrons keep the panels and their contents visible.
+- Named the detailed disclosure **Review activity** and made Operator Room station cards equal in size with state-specific labels and marks. Recorded playback and live checks are labeled. Unrecorded, skipped, and unavailable checks remain distinct from completed checks.
+- The desktop development preview uses one typed HEAD check per page before offering a model download. Verified the actual loopback route in an isolated directory and covered valid GLB, missing and HTML responses, unavailable WebGL, loading failure, and context loss in Chromium. The production bundle excludes the viewer.
+- Verified all three recorded cases and Markdown export in Windows Chrome, and the CI layout at 320, 390, 768, 1280, and 1920 pixels in both themes with keyboard and reduced motion. Passed the repository check, 71 Node tests, 63 Chromium tests with two mobile skips for desktop viewport sweeps, eight Crossfire integration tests, fixture evaluation, production build, and both dependency audits. No live provider was used.
+- The original GLB and Blender master remain pending. The handoff's GLB can use the existing development path once delivered. Local scene verification, distribution permission, and performance checks remain open for the optional 3D feature.
+
+## Original Operator Room local asset verification
+
+- Extracted the authored GLB from Tactile commit `4e991081d1bcad47054e83a824ac173179d08c02` into the ignored local asset directory. Verified 27,258,868 bytes and SHA-256 `c70bdec3dc366f17f6fe6a9f86ed9b0c2ab64c9f14195e684f52409ead45be45` on disk and over loopback.
+- Windows Chrome displayed the original room, all four reviewers, both couriers, Steelman, five holograms, and the pod and relay animations. All three recorded cases reached the decision. Mocked live reviews covered concurrent reviewers, courier handoff, reconciliation, the decision memo, cancellation, failure, and export.
+- Aligned the local preview's labels with the actual recorded and live events, added a camera reset, and explicitly released decoded images and skeletal animation resources when the viewer closes. Three opens and closes released three WebGL contexts and all 24 decoded image bitmaps.
+- On Intel UHD with ANGLE/D3D11, first frames appeared in 1.07–1.62 seconds and the warmed CI preview reopened in 0.68 seconds. CI activity averaged about 89 FPS over a three-second animation-frame sample. Cold shader compilation and projected labels that crowd at some angles remain optional-feature performance and readability issues.
+- Passed 71 Node tests, eight Crossfire integration tests, 63 Chromium tests with two intentional skips, fixture evaluation, both npm audits, and the production build. The built frontend excludes the viewer and GLB, and the production model route returns 404 even with the GLB on disk. Worker distribution rights and rollout approval remain open.
+
+## Local pre-release engineering audit
+
+- Preserved the approved branch and checkpointed the original-preview work at `413272146a9ca362ffc760f67418e9efd6d32449`. The local GLB still matches the original handoff hash and is ignored.
+- Hardened the live report contract, stream bounds and cancellation, extraction identity checks, request validation before quota, evaluator progress, route aliases and session restore. Added reproducible browser, stream, Unicode and lifecycle regressions.
+- Re-ran Node, Crossfire and Chromium three times with 81, 8 and 74 passes per run and two intentional viewport skips. Fixture evaluation, production builds, both audits and compiled hosted-mode checks passed using local fixtures. No real provider requests were made.
+- Ran 110 responsive checks, 96 seeded browser interactions, 1,600 feed transitions and 240 seeded Unicode inputs. Recorded the remaining accessibility, account and provider verification gaps in the local QA report.
+- Verified all three original-asset replays and mocked live activity. The 35-second Intel UHD sample averaged 88 FPS. Twenty open-and-close cycles released 20 WebGL contexts and 160 decoded images. Shader startup and occasional frame delays still need more work before a 3D rollout.
+- The compiled production artifact and runtime exclude the GLB and viewer. Worker distribution rights, Meta account entitlement and separate rollout approval remain pending.
+
+## Local release closure
+
+- Replayed the audit regressions against the saved checkpoint and current candidate. A synthetic subprocess confirmed that missing and failed checks remain unavailable. Tightened the Tactile adapter to discard progress for foreign claims or unselected reviewers, including nested worker events. Exercised all 15 supported panels through the worker with local fixtures.
+- Profiled shader linking and an offscreen memo/export pause in headed Windows Chrome. Parallel shader preparation reduced median click-to-first-render from 1,528 to 1,087 ms in three runs per variant. The stable memo renders matched pixel-for-pixel. Suspended graphics rendering while the canvas is offscreen, reducing the matched export from 4.43 s to 26 ms. Kept the original asset, visual settings and animation state.
+- Verified the real 60- and 135-second deadlines, storage errors, pending extraction reload, synthesis cancellation/reload, interrupted model retry and native Chrome zoom. Windows UI Automation exposed the expected controls. Spoken screen-reader output and external session behavior were not verified.
+- The final suite passed 81 Node, 9 Crossfire and 75 Chromium cases with two existing viewport skips. Builds, fixture evaluation, dependency audits and local compiled parity passed. Twenty rendered open-and-close cycles released 20 WebGL contexts and 160 decoded image bitmaps.
+- The local recorded demonstration passes. Public authored 3D still needs rights and broader device qualification. Live Meta still needs entitlement and separate verification approval.

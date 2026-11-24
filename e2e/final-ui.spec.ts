@@ -99,9 +99,7 @@ async function renderedFootprint(page: Page) {
 
 async function verifyDisclosures(page: Page) {
   const plan = page.locator("summary").filter({ hasText: "Read your plan" });
-  const room = page
-    .locator("summary")
-    .filter({ hasText: "See the review room" });
+  const room = page.locator("summary").filter({ hasText: "Review activity" });
   const gaps = () =>
     page.evaluate(() => {
       const cards = document.querySelectorAll(".finding");

@@ -2,9 +2,11 @@ import { Buffer } from "node:buffer";
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-export async function mockAuthentication(page: Page) {
-  const id = "00000000-0000-4000-8000-000000000001";
-  const email = "engineer@example.invalid";
+export async function mockAuthentication(
+  page: Page,
+  id = "00000000-0000-4000-8000-000000000001",
+  email = "engineer@example.invalid",
+) {
   const user = {
     id,
     email,
@@ -46,11 +48,11 @@ export async function mockAuthentication(page: Page) {
   );
 }
 
-export async function signIn(page: Page) {
+export async function signIn(page: Page, email = "engineer@example.invalid") {
   await expect(
     page.getByRole("heading", { name: "Sign in to Tactile" }),
   ).toBeVisible();
-  await page.getByLabel("Email address").fill("engineer@example.invalid");
+  await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("fixture-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }

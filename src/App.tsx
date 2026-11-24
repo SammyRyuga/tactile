@@ -9,6 +9,10 @@ import { motion, useReducedMotion } from "motion/react";
 import type { MotionProps } from "motion/react";
 import { z } from "zod";
 import { ThemeToggle } from "./Theme.tsx";
+import { ActionArrow } from "./ActionArrow.tsx";
+import { OperatorRoom } from "./OperatorRoom.tsx";
+import { startControlRoomFeed } from "./controlRoomFeed.ts";
+import type { ControlRoomActivity } from "./controlRoomFeed.ts";
 import { TeamCredits } from "./TeamCredits.tsx";
 import { ProposalAttachments } from "./ProposalAttachments.tsx";
 import { ProposalRevision } from "./ProposalRevision.tsx";
@@ -158,14 +162,9 @@ function reviewWorkflow(state: Workflow, action: WorkflowAction): Workflow {
 }
 type ClaimDraft = Claim & { selected: boolean; checkDraft?: CheckDraft };
 
-function mark(
-  icon: "logo" | "arrow" | "external" | "download" | "plus" | "remove",
-) {
+function mark(icon: "logo" | "plus" | "remove") {
   const paths = {
     logo: "M3 18h5v-5h5V8h5V3h3",
-    arrow: "M4 12h15m-6-6 6 6-6 6",
-    external: "M14 4h6v6m0-6-9 9m7 0v6H5V6h6",
-    download: "M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3",
     plus: "M12 5v14M5 12h14",
     remove: "M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5",
   };
@@ -222,7 +221,10 @@ const savedDraftSchema = z
             .optional(),
         }),
       )
-      .max(limits.claims),
+      .max(limits.claims)
+      .refine(
+        (claims) => new Set(claims.map(({ id }) => id)).size === claims.length,
+      ),
     projectEvidence: z
       .array(
         projectEvidenceSchema.extend({
@@ -360,6 +362,9 @@ export function App({
     },
   );
   const { page } = state;
+  const [roomActivity, setRoomActivity] = useState<ControlRoomActivity>();
+  const roomId = useRef<string | undefined>(undefined);
+
   const report = page === "report" ? state.report : undefined;
   const uncheckedCriticalClaims = report?.uncheckedCriticalClaims ?? [];
   const memoSections = decisionMemoSections(report?.crossfireMemo);
@@ -453,6 +458,8 @@ export function App({
       if (!entry) return;
       request.current?.abort();
       request.current = null;
+      roomId.current = undefined;
+      setRoomActivity(undefined);
       setError("");
       setCopyStatus("");
       dispatch({ type: "restore-demo-step", step: entry });
@@ -667,8 +674,18 @@ export function App({
     setError("");
     setCopyStatus("");
     dispatch({ type: "start", claims: input.data.claims });
+    const room = startControlRoomFeed(
+      mode === "live" ? reviewPanel : reviewerIds,
+      mode === "live" ? "live" : "recorded",
+      (snapshot) => {
+        if (snapshot.phase === "start") roomId.current = snapshot.id;
+        if (roomId.current === snapshot.id) setRoomActivity(snapshot);
+      },
+    );
     const emit = (event: ReviewEvent) => {
-      if (controller.signal.aborted || event.type === "error") return;
+      if (controller.signal.aborted) return;
+      room.event(event);
+      if (event.type === "error") return;
       if (event.type === "report" && !publicDemo) {
         const record = {
           id: crypto.randomUUID(),
@@ -698,6 +715,7 @@ export function App({
         dispatch({ type: "claims" });
       }
     } finally {
+      room.finish();
       if (request.current === controller) request.current = null;
     }
   }
@@ -709,7 +727,15 @@ export function App({
     dispatch({ type: "claims" });
   }
 
+  function leaveWorkspace() {
+    if (page === "running") cancelReview();
+    else request.current?.abort();
+    void signOut?.();
+  }
+
   function reopen(entry: Recent) {
+    roomId.current = undefined;
+    setRoomActivity(undefined);
     setCopyStatus("");
     setError("");
     dispatch({
@@ -833,7 +859,7 @@ export function App({
             )}
             <ThemeToggle />
             <a href="https://github.com/SammyRyuga/tactile">
-              GitHub {mark("external")}
+              GitHub <ActionArrow />
             </a>
           </nav>
         </div>
@@ -856,7 +882,7 @@ export function App({
             <button
               type="button"
               className="text-button"
-              onClick={() => void signOut?.()}
+              onClick={leaveWorkspace}
             >
               Sign out
             </button>
@@ -1022,7 +1048,7 @@ export function App({
                           <strong>{item.label}</strong>
                           <small>{item.title}</small>
                         </span>
-                        {mark("arrow")}
+                        <ActionArrow />
                       </a>
                     </li>
                   ))}
@@ -1071,7 +1097,7 @@ export function App({
                                     : "Bundled example"}
                                 </small>
                               </span>
-                              {mark("arrow")}
+                              <ActionArrow />
                             </button>
                             <button
                               className="history-delete"
@@ -1280,7 +1306,7 @@ export function App({
                       selectionGuidance ? "selection-guidance" : undefined
                     }
                   >
-                    Run checks {mark("arrow")}
+                    Run checks <ActionArrow />
                   </button>
                 </div>
               </div>
@@ -1306,9 +1332,10 @@ export function App({
                     : "Checking the assumptions you selected…"}
             </p>
             <details className="proposal review-room-disclosure">
-              <summary>Explore the review room</summary>
+              <summary>Review activity</summary>
               <LiveReviewRoom
                 claims={state.claims}
+                demo={mode === "demo"}
                 progress={state.progress}
                 updates={state.updates}
                 panel={mode === "live" ? reviewPanel : undefined}
@@ -1423,7 +1450,7 @@ export function App({
                         event.preventDefault();
                     }}
                   >
-                    {mark("download")} Export Markdown
+                    <ActionArrow direction="down" /> Export Markdown
                   </button>
                 </div>
                 <span className="field-note report-copy-status" role="status">
@@ -1525,7 +1552,7 @@ export function App({
                       ).map((source) => (
                         <li key={source.id}>
                           <a href={source.url} target="_blank" rel="noreferrer">
-                            {source.title} {mark("external")}
+                            {source.title} <ActionArrow />
                           </a>
                         </li>
                       ))}
@@ -1574,6 +1601,10 @@ export function App({
               )}
             </div>
           </motion.section>
+        )}
+
+        {roomActivity && (page === "running" || page === "report") && (
+          <OperatorRoom key={roomActivity.id} activity={roomActivity} />
         )}
 
         <footer>

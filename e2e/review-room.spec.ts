@@ -125,9 +125,7 @@ test("the review room shows streamed activity and opens recorded checks from the
   ).toBeFocused();
   await expect(page.getByRole("status")).toBeVisible();
   await expect(room).toBeHidden();
-  await page
-    .getByText("Explore the review room", { exact: true })
-    .press("Enter");
+  await page.getByText("Review activity", { exact: true }).press("Enter");
   const stations = room.getByRole("group", { name: "Review stations" });
   await expect(stations.getByRole("button")).toHaveCount(5);
   expect(
@@ -213,7 +211,7 @@ test("the review room shows streamed activity and opens recorded checks from the
     .getByText("How we reached this result", { exact: true })
     .press("Enter");
   await expect(page.getByText("Run the pilot in staging.")).toBeVisible();
-  await page.getByText("See the review room").press("Enter");
+  await page.getByText("Review activity").press("Enter");
   await expect(
     room.getByRole("button", { name: "Researcher Incomplete" }),
   ).toBeVisible();

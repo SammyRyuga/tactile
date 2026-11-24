@@ -6,7 +6,9 @@ import { isIP } from "node:net";
 import type { ErrorRequestHandler, Request, Response } from "express";
 import {
   attachmentKindSchema,
+  claimListSchema,
   limits,
+  matchesLiveReview,
   proposalIntakeSchema,
   proposalRevisionSchema,
   reviewInputSchema,
@@ -613,12 +615,15 @@ export function createApp(
     });
   });
 
-  async function execute(
+  async function execute<T>(
     request: Request,
     response: Response,
+    schema: z.ZodType<T>,
+    invalidMessage: string,
     run: (
       provider: ReviewProvider,
       signal: AbortSignal,
+      input: T,
       cache?: ClaimCache,
     ) => Promise<void>,
   ) {
@@ -632,6 +637,11 @@ export function createApp(
       ? await requireSession(request, response)
       : undefined;
     if (options.verifySession && !session) return;
+    const input = schema.safeParse(request.body);
+    if (!input.success) {
+      response.status(400).json({ message: invalidMessage });
+      return;
+    }
     const cache =
       session && settings.get(session.account, session.token)?.claims;
     const client =
@@ -697,7 +707,7 @@ export function createApp(
         }
       }
       signal.throwIfAborted();
-      await run(client, signal, cache);
+      await run(client, signal, input.data, cache);
     } catch (error) {
       if (disconnected.signal.aborted) return;
       if (error instanceof CrossfireClarification) {
@@ -746,95 +756,93 @@ export function createApp(
   }
 
   app.post("/api/claims", (request, response) =>
-    execute(request, response, async (client, signal, cache) => {
-      const parsed = proposalIntakeSchema.safeParse(request.body);
-      if (!parsed.success) {
-        response.status(400).json({
-          message:
-            "Enter an engineering proposal between 20 and 3,000 characters.",
-        });
-        return;
-      }
-      const { proposal, ...context } = parsed.data;
-      const cacheKey = JSON.stringify(parsed.data);
-      const cached = cache?.get(cacheKey);
-      if (cached) {
-        console.info(
-          JSON.stringify({
-            event: "claim_cache_hit",
-            requestId: response.getHeader("X-Request-Id"),
-          }),
-        );
-        response.json({ claims: cached });
-        return;
-      }
-      const claims = options.crossfire
-        ? await options.crossfire.extract(client, proposal, signal, context)
-        : await extractClaims(client, proposal, signal);
-      signal.throwIfAborted();
-      cache?.add(cacheKey, claims);
-      response.json({ claims });
-    }),
+    execute(
+      request,
+      response,
+      proposalIntakeSchema,
+      "Enter an engineering proposal between 20 and 3,000 characters.",
+      async (client, signal, input, cache) => {
+        const { proposal, ...context } = input;
+        const cacheKey = JSON.stringify(input);
+        const cached = cache?.get(cacheKey);
+        if (cached) {
+          console.info(
+            JSON.stringify({
+              event: "claim_cache_hit",
+              requestId: response.getHeader("X-Request-Id"),
+            }),
+          );
+          response.json({ claims: cached });
+          return;
+        }
+        const claims = options.crossfire
+          ? await options.crossfire.extract(client, proposal, signal, context)
+          : await extractClaims(client, proposal, signal);
+        signal.throwIfAborted();
+        const validated = claimListSchema.safeParse(claims);
+        if (!validated.success) throw new ProviderOutputError("malformed");
+        cache?.add(cacheKey, validated.data);
+        response.json({ claims: validated.data });
+      },
+    ),
   );
 
   app.post("/api/revisions", (request, response) =>
-    execute(request, response, async (client, signal) => {
-      const input = proposalRevisionSchema.safeParse(request.body);
-      if (!input.success) {
-        response.status(400).json({
-          message: "Choose at least one suggested change to revise the plan.",
-        });
-        return;
-      }
-      if (!options.crossfire) {
-        response
-          .status(503)
-          .json({ message: "Plan revision is temporarily unavailable." });
-        return;
-      }
-      const revision = await options.crossfire.revise(
-        client,
-        input.data,
-        signal,
-      );
-      signal.throwIfAborted();
-      response.json(revision);
-    }),
+    execute(
+      request,
+      response,
+      proposalRevisionSchema,
+      "Choose at least one suggested change to revise the plan.",
+      async (client, signal, input) => {
+        if (!options.crossfire) {
+          response
+            .status(503)
+            .json({ message: "Plan revision is temporarily unavailable." });
+          return;
+        }
+        const revision = await options.crossfire.revise(client, input, signal);
+        signal.throwIfAborted();
+        response.json(revision);
+      },
+    ),
   );
 
   app.post("/api/reviews", (request, response) =>
-    execute(request, response, async (client, signal) => {
-      const input = reviewInputSchema.safeParse(request.body);
-      if (!input.success) {
-        response.status(400).json({
-          message:
-            "Select at least one claim. Include only distinct claims with text.",
-        });
-        return;
-      }
-      response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-      response.setHeader("X-Accel-Buffering", "no");
-      response.flushHeaders();
-      const emit = (event: ReviewEvent) => {
-        if (!response.destroyed) response.write(JSON.stringify(event) + "\n");
-      };
-      const report = options.crossfire
-        ? await options.crossfire.review(client, input.data, emit, signal)
-        : await runReview(client, input.data, emit, signal, {
-            verifierModel: options.verifierModel,
-            sourceReader: options.sourceReader,
-            log: (entry) =>
-              console.info(
-                JSON.stringify({
-                  requestId: response.getHeader("X-Request-Id"),
-                  ...entry,
-                }),
-              ),
-          });
-      signal.throwIfAborted();
-      emit({ type: "report", report });
-      response.end();
-    }),
+    execute(
+      request,
+      response,
+      reviewInputSchema,
+      "Select at least one claim. Include only distinct claims with text.",
+      async (client, signal, input) => {
+        response.setHeader(
+          "Content-Type",
+          "application/x-ndjson; charset=utf-8",
+        );
+        response.setHeader("X-Accel-Buffering", "no");
+        response.flushHeaders();
+        const emit = (event: ReviewEvent) => {
+          if (!response.destroyed) response.write(JSON.stringify(event) + "\n");
+        };
+        const report = options.crossfire
+          ? await options.crossfire.review(client, input, emit, signal)
+          : await runReview(client, input, emit, signal, {
+              verifierModel: options.verifierModel,
+              sourceReader: options.sourceReader,
+              log: (entry) =>
+                console.info(
+                  JSON.stringify({
+                    requestId: response.getHeader("X-Request-Id"),
+                    ...entry,
+                  }),
+                ),
+            });
+        signal.throwIfAborted();
+        if (!matchesLiveReview(report, input))
+          throw new ProviderOutputError("malformed");
+        emit({ type: "report", report });
+        response.end();
+      },
+    ),
   );
 
   app.use("/api", (_request, response) => {

@@ -1083,19 +1083,36 @@
   margin: 0;
 }
 
-:is(.review-disclosures > details, .proposal-attachments) > summary {
+:is(
+    .review-disclosures > details,
+    .proposal-attachments,
+    .review-room-disclosure,
+    .operator-room
+  )
+  > summary {
   position: relative;
   display: block;
   padding-inline-end: 1.75rem;
   list-style: none;
 }
 
-:is(.review-disclosures > details, .proposal-attachments)
+:is(
+    .review-disclosures > details,
+    .proposal-attachments,
+    .review-room-disclosure,
+    .operator-room
+  )
   > summary::-webkit-details-marker {
   display: none;
 }
 
-:is(.review-disclosures > details, .proposal-attachments) > summary::after {
+:is(
+    .review-disclosures > details,
+    .proposal-attachments,
+    .review-room-disclosure,
+    .operator-room
+  )
+  > summary::after {
   position: absolute;
   inset-block-start: 1rem;
   inset-inline-end: 0.45rem;
@@ -1108,7 +1125,12 @@
   rotate: 45deg;
 }
 
-:is(.review-disclosures > details, .proposal-attachments)[open]
+:is(
+    .review-disclosures > details,
+    .proposal-attachments,
+    .review-room-disclosure,
+    .operator-room
+  )[open]
   > summary::after {
   rotate: 225deg;
 }

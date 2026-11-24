@@ -482,8 +482,8 @@
   font-weight: 650;
 }
 
-.room-disclosure .review-room {
-  margin-block-end: 0.15rem;
+:is(.room-disclosure, .review-room-disclosure) .review-room {
+  margin-block: 0.5rem;
 }
 
 @keyframes room-signal {
@@ -494,7 +494,7 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .review-room {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -522,6 +522,12 @@
   .room-station[data-station="assumptions"],
   .room-station[data-station="adoption"] {
     --station-y: 82%;
+  }
+}
+
+@container (max-width: 16rem) {
+  .room-deck {
+    width: 80%;
   }
 }
 
