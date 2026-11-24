@@ -1,3 +1,5 @@
+import { activeProviderSchema } from "../shared/providers.ts";
+import type { ActiveProvider } from "../shared/providers.ts";
 import { z } from "zod";
 import {
   attachmentTextSchema,
@@ -20,19 +22,43 @@ export function requestReference(response: Response) {
   return requestId.success ? ` Request ID ${requestId.data}.` : "";
 }
 
+function retryGuidance(value: string | null | undefined) {
+  if (!value) return "";
+  const seconds = /^\d{1,15}$/.test(value)
+    ? Number(value)
+    : value.length === 29 && new Date(value).toUTCString() === value
+      ? Math.ceil((Date.parse(value) - Date.now()) / 1000)
+      : 0;
+  if (seconds <= 0) return "";
+  const [unit, interval] =
+    seconds >= 86400
+      ? (["day", 86400] as const)
+      : seconds >= 3600
+        ? (["hour", 3600] as const)
+        : seconds >= 60
+          ? (["minute", 60] as const)
+          : (["second", 1] as const);
+  const count = Math.ceil(seconds / interval);
+  return ` Try again in about ${count} ${unit}${count === 1 ? "" : "s"}.`;
+}
+
 export async function liveAvailable(
   signal: AbortSignal,
   token?: string,
-): Promise<boolean> {
+): Promise<{ live: boolean; activeProvider?: ActiveProvider }> {
   const response = await fetch("/api/status", {
     signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) throw new Error("Live status is unavailable.");
   const result = z
-    .object({ live: z.boolean() })
+    .object({
+      live: z.boolean(),
+      activeProvider: activeProviderSchema.optional(),
+    })
     .safeParse(await response.json().catch(() => null));
-  return response.ok && result.success && result.data.live;
+  if (!result.success) throw new Error("Live status is unavailable.");
+  return result.data;
 }
 
 async function post(
@@ -40,6 +66,7 @@ async function post(
   body: object | Blob,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ): Promise<Response> {
   const response = await fetch(path, {
     method: "POST",
@@ -48,6 +75,9 @@ async function post(
       "Content-Type":
         body instanceof Blob ? "application/octet-stream" : "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(selection
+        ? { "X-Tactile-Provider": `${selection.id} ${selection.model}` }
+        : {}),
     },
     signal,
   });
@@ -61,7 +91,11 @@ async function post(
     throw new IntakeClarification(clarification.data.clarification);
   throw new Error(
     parsed.success
-      ? parsed.data.message + requestReference(response)
+      ? parsed.data.message +
+          (response.status === 429
+            ? retryGuidance(response.headers.get("Retry-After"))
+            : "") +
+          requestReference(response)
       : "The server could not complete that request." +
           requestReference(response),
   );
@@ -71,8 +105,9 @@ export async function extractLive(
   input: ProposalIntake,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
-  const response = await post("/api/claims", input, signal, token);
+  const response = await post("/api/claims", input, signal, token, selection);
   const parsed = z
     .object({ claims: claimListSchema })
     .safeParse(await response.json().catch(() => null));
@@ -106,8 +141,15 @@ export async function reviseProposal(
   input: ProposalRevision,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
-  const response = await post("/api/revisions", input, signal, token);
+  const response = await post(
+    "/api/revisions",
+    input,
+    signal,
+    token,
+    selection,
+  );
   return z.object({ proposal: z.string().min(20) }).parse(await response.json())
     .proposal;
 }
@@ -117,9 +159,16 @@ export async function runLive(
   emit: (event: ReviewEvent) => void,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(135_000)]);
-  const response = await post("/api/reviews", input, requestSignal, token);
+  const response = await post(
+    "/api/reviews",
+    input,
+    requestSignal,
+    token,
+    selection,
+  );
   if (!response.body) throw new Error("The server returned an empty review.");
   const maxLineLength = 2 * 1024 * 1024;
   const claims = new Set(input.claims.map(({ id }) => id));
@@ -158,7 +207,11 @@ export async function runLive(
           throw new Error("The review response was invalid. Try again.");
         }
         if (event.type === "error")
-          throw new Error(event.message + requestReference(response));
+          throw new Error(
+            event.message +
+              retryGuidance(event.retryAfter) +
+              requestReference(response),
+          );
         if (event.type === "report") {
           if (!matchesLiveReview(event.report, input))
             throw new Error(

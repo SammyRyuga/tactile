@@ -1,3 +1,4 @@
+import { providers, providerSchema } from "./providers.ts";
 import { z } from "zod";
 import { engineeringCheckSchema } from "./engineering.ts";
 import { reviewersSchema, reviewerStageLabel } from "./reviewers.ts";
@@ -256,6 +257,7 @@ export const findingSchema = z.object({
 export const reportSchema = z.object({
   mode: modeSchema,
   model: z.string().optional(),
+  provider: providerSchema.optional(),
   verifier: z.object({ model: z.string(), distinct: z.boolean() }).optional(),
   recommendation: z.string(),
   uncheckedCriticalClaims: z.array(z.string()).optional(),
@@ -414,6 +416,11 @@ export function toMarkdown(
     "# Tactile decision review",
     "",
     report.mode === "demo" ? "Mode: Bundled example" : "Mode: Live review",
+    ...(report.mode === "live" && report.provider
+      ? [
+          `Provider: ${providers[report.provider].name}${report.model ? " · " + markdownText(report.model) : ""}`,
+        ]
+      : []),
     "",
     "## Proposal",
     "",

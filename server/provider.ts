@@ -1,11 +1,23 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { ProviderId } from "../shared/providers.ts";
 import { uniqueSourcesByUrl } from "../shared/review.ts";
+
+import {
+  createRateSchedule,
+  failureDetails,
+  maximumWaitMs,
+  readErrorBody,
+  readRate,
+  retryDelay,
+  waitForProvider,
+} from "./provider-rate.ts";
+import type { ProviderFailureDetails, RateSchedule } from "./provider-rate.ts";
 
 const annotationSchema = z.object({
   type: z.literal("url_citation"),
   url: z.url({ protocol: /^https?$/ }),
-  title: z.string().min(1).max(500),
+  title: z.string().max(500).nullish(),
   start_index: z.number().int().nonnegative(),
   end_index: z.number().int().positive(),
 });
@@ -31,6 +43,7 @@ export interface Citation {
 }
 
 export interface ReviewProvider {
+  providerId?: ProviderId;
   modelId?: string;
   verifierInfo?(modelOverride?: string): { model: string; distinct: boolean };
   structured<T>(
@@ -70,6 +83,183 @@ const usageSchema = z.object({
   }),
 });
 
+export type ProviderConfig = {
+  verifierModel?: string;
+  requestTimeoutMs?: number;
+  onRequest?: () => void;
+  onUsage?: (usage: ProviderUsage, stage?: string) => void;
+  onResponse?: (
+    event: ProviderFailureDetails & {
+      stage: string;
+      status: number;
+      attempt: number;
+      estimatedInputTokens?: number;
+      requestedOutputTokens?: number;
+      retryAfter?: string;
+    },
+  ) => void;
+  schedule?: RateSchedule;
+  retryBudget?: { remaining: number };
+};
+
+export function structuredResult<T>(text: string, schema: z.ZodType<T>): T {
+  try {
+    return schema.parse(JSON.parse(text));
+  } catch {
+    throw new ProviderOutputError("malformed");
+  }
+}
+
+export async function providerJson(
+  request: typeof fetch,
+  url: string,
+  key: string,
+  signal: AbortSignal,
+  body?: Record<string, unknown>,
+  config: ProviderConfig = {},
+  keyHeader = "Authorization",
+  call?: { vendor: ProviderId; stage: string; outputTokens: number },
+): Promise<unknown> {
+  const deadline = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(config.requestTimeoutMs ?? 30_000),
+  ]);
+  const schedule = config.schedule ?? createRateSchedule();
+  const serialized = body ? JSON.stringify(body) : undefined;
+  return schedule.run(call?.vendor === "groq", deadline, async () => {
+    for (let attempt = 1; ; attempt++) {
+      if (call) {
+        const waitUntil = Date.now() + maximumWaitMs;
+        for (
+          let wait = schedule.remainingWait();
+          wait > 0;
+          wait = schedule.remainingWait()
+        ) {
+          if (wait > waitUntil - Date.now())
+            throw new ProviderResponseError(
+              429,
+              String(Math.ceil(wait / 1000)),
+              {
+                limitKind: schedule.limitKind(),
+              },
+            );
+          await waitForProvider(wait, deadline);
+        }
+      }
+      deadline.throwIfAborted();
+      config.onRequest?.();
+      const response = await providerFetch(request, url, {
+        method: body ? "POST" : "GET",
+        headers: {
+          [keyHeader]: keyHeader === "Authorization" ? "Bearer " + key : key,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        redirect: "error",
+        signal: deadline,
+        body: serialized,
+      });
+      const rate = readRate(response.headers);
+      const rawError = response.ok
+        ? undefined
+        : await readErrorBody(response, deadline);
+      const details = failureDetails(response.status, rawError, rate);
+      const retryAfter = providerRetryAfter(response);
+      if (call)
+        config.onResponse?.({
+          ...details,
+          stage: call.stage,
+          status: response.status,
+          attempt,
+          retryAfter,
+          requestedOutputTokens: call.outputTokens,
+          estimatedInputTokens: serialized
+            ? Math.ceil(Buffer.byteLength(serialized, "utf8") / 3)
+            : undefined,
+        });
+      const tokenReset = rate?.tokens?.resetMs;
+      const requestReset = rate?.requests?.resetMs;
+      if (response.ok) {
+        if (call && rate?.tokens?.remaining === 0 && tokenReset !== undefined)
+          schedule.defer(tokenReset, "tokens");
+        if (
+          call &&
+          rate?.requests?.remaining === 0 &&
+          requestReset !== undefined
+        )
+          schedule.defer(
+            requestReset,
+            call.vendor === "groq" ? "daily" : "requests",
+          );
+        const payload = await response.json().catch(() => null);
+        deadline.throwIfAborted();
+        return payload;
+      }
+      deadline.throwIfAborted();
+      if (
+        call?.vendor === "meta" &&
+        response.status === 404 &&
+        details.upstreamCode !== "model_not_found"
+      )
+        throw new MetaResponsesNotFound();
+      const delay =
+        retryDelay(retryAfter) ??
+        details.retryHintMs ??
+        (details.limitKind === "tokens"
+          ? tokenReset
+          : details.limitKind === "requests"
+            ? requestReset
+            : undefined);
+      const rateLimited =
+        response.status === 429 &&
+        details.limitKind !== "billing" &&
+        details.limitKind !== "daily" &&
+        details.limitKind !== "request_size";
+      if (call && rateLimited && delay !== undefined) {
+        schedule.defer(Math.max(250, delay), details.limitKind);
+        if (
+          delay <= maximumWaitMs &&
+          attempt === 1 &&
+          (config.retryBudget?.remaining ?? 1) > 0
+        ) {
+          if (config.retryBudget) config.retryBudget.remaining--;
+          continue;
+        }
+      }
+      throw new ProviderResponseError(
+        response.status,
+        retryAfter ??
+          (rateLimited && delay !== undefined
+            ? String(Math.ceil(delay / 1000))
+            : undefined),
+        details,
+      );
+    }
+  });
+}
+
+const phaseNames: Readonly<Record<string, string>> = Object.freeze({
+  ExtractedClaims: "claim_extraction",
+  LoadBearingRanking: "assumption_ranking",
+  ReasoningOutput: "reviewer_reasoning",
+  BuilderVerdict: "builder",
+  OperatorVerdict: "operator",
+  ResearcherAssessment: "researcher",
+  ProbeVerdict: "cross_examination",
+  SteelManVerdict: "steelman",
+  StrategicConsequenceOutput: "recommendation",
+  CaseVerdictOutput: "decision_memo",
+  ReformulatedPromptOutput: "revision",
+  RecoveryResult: "clarification",
+});
+
+export function providerStage(schema: unknown): string {
+  const parsed = z.object({ title: z.string() }).safeParse(schema);
+  const title = parsed.success ? parsed.data.title : "";
+  return Object.hasOwn(phaseNames, title)
+    ? phaseNames[title]
+    : "structured_output";
+}
+
 export const metaStructuredEffort = "low";
 
 export function providerRetryAfter(response: Response): string | undefined {
@@ -86,12 +276,18 @@ export function providerRetryAfter(response: Response): string | undefined {
 export class ProviderResponseError extends Error {
   readonly status: number;
   readonly retryAfter?: string;
+  readonly details?: ProviderFailureDetails;
 
-  constructor(status: number, retryAfter?: string) {
+  constructor(
+    status: number,
+    retryAfter?: string,
+    details?: ProviderFailureDetails,
+  ) {
     super(`Provider request failed with status ${status}.`);
     this.name = "ProviderResponseError";
     this.status = status;
     this.retryAfter = retryAfter;
+    this.details = details;
   }
 }
 
@@ -125,16 +321,18 @@ export async function metaResponsesError(
   response: Response,
   signal: AbortSignal,
 ) {
-  if (response.status === 404) {
-    if (!(await isMetaModelNotFound(response, signal)))
-      return new MetaResponsesNotFound();
-  } else {
-    await response.body?.cancel();
-  }
+  const details = failureDetails(
+    response.status,
+    await readErrorBody(response, signal),
+    readRate(response.headers),
+  );
+  if (response.status === 404 && details.upstreamCode !== "model_not_found")
+    return new MetaResponsesNotFound();
   signal.throwIfAborted();
   return new ProviderResponseError(
     response.status,
     providerRetryAfter(response),
+    details,
   );
 }
 
@@ -164,14 +362,14 @@ export function createProvider(
   key: string,
   model: string,
   request = fetch,
-  vendor: "openai" | "meta" = "openai",
-  config: {
-    verifierModel?: string;
-    requestTimeoutMs?: number;
-    onRequest?: () => void;
-    onUsage?: (usage: ProviderUsage) => void;
-  } = {},
+  vendor: "openai" | "meta" | "xai" = "openai",
+  config: ProviderConfig = {},
 ): ReviewProvider {
+  config = {
+    schedule: createRateSchedule(),
+    retryBudget: { remaining: 1 },
+    ...config,
+  };
   function verifierInfo(modelOverride?: string) {
     const verifier =
       vendor === "openai"
@@ -189,6 +387,7 @@ export function createProvider(
     signal: AbortSignal,
     options: Record<string, unknown>,
     messages?: { role: "user" | "assistant"; content: string }[],
+    stage = "structured_output",
   ) {
     const requestModel =
       "model" in options && typeof options.model === "string"
@@ -207,20 +406,17 @@ export function createProvider(
       AbortSignal.timeout(config.requestTimeoutMs ?? 35_000),
     ]);
     async function send(maxOutputTokens: number): Promise<unknown> {
-      const endpoint =
-        vendor === "meta"
-          ? "https://api.meta.ai/v1/responses"
-          : "https://api.openai.com/v1/responses";
-      config.onRequest?.();
-      const response = await providerFetch(request, endpoint, {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-        },
-        signal: callSignal,
-        body: JSON.stringify({
+      const endpoint = {
+        meta: "https://api.meta.ai/v1/responses",
+        openai: "https://api.openai.com/v1/responses",
+        xai: "https://api.x.ai/v1/responses",
+      }[vendor];
+      const payload = await providerJson(
+        request,
+        endpoint,
+        key,
+        callSignal,
+        {
           model: requestModel,
           instructions,
           input: messages
@@ -247,34 +443,27 @@ export function createProvider(
               ? { reasoning: { effort: "low" } }
               : {}),
           ...options,
-        }),
-      });
-      const payload: unknown = response.ok
-        ? await response.json().catch(() => null)
-        : undefined;
-      callSignal.throwIfAborted();
+        },
+        config,
+        "Authorization",
+        { vendor, stage, outputTokens: maxOutputTokens },
+      );
       const usage = usageSchema.safeParse(payload);
-      config.onUsage?.({
-        inputTokens: usage.success ? usage.data.usage.input_tokens : null,
-        outputTokens: usage.success ? usage.data.usage.output_tokens : null,
-        cachedInputTokens: usage.success
-          ? (usage.data.usage.input_tokens_details?.cached_tokens ?? null)
-          : null,
-      });
-      if (!response.ok) {
-        if (vendor === "meta")
-          throw await metaResponsesError(response, callSignal);
-        await response.body?.cancel();
-        throw new ProviderResponseError(
-          response.status,
-          providerRetryAfter(response),
-        );
-      }
+      config.onUsage?.(
+        {
+          inputTokens: usage.success ? usage.data.usage.input_tokens : null,
+          outputTokens: usage.success ? usage.data.usage.output_tokens : null,
+          cachedInputTokens: usage.success
+            ? (usage.data.usage.input_tokens_details?.cached_tokens ?? null)
+            : null,
+        },
+        stage,
+      );
       return payload;
     }
     const first = await send(5500);
     if (
-      vendor === "meta" &&
+      vendor !== "openai" &&
       z.object({ status: z.literal("incomplete") }).safeParse(first).success
     )
       throw new ProviderOutputError("incomplete");
@@ -329,7 +518,7 @@ export function createProvider(
           },
         },
       });
-      return schema.parse(JSON.parse(result.map(({ text }) => text).join("")));
+      return structuredResult(result.map(({ text }) => text).join(""), schema);
     },
 
     async crossfireGenerate(instructions, messages, schema, signal) {
@@ -355,69 +544,82 @@ export function createProvider(
             }
           : {},
         messages,
+        providerStage(schema),
       );
       return output.map(({ text }) => text).join("");
     },
 
     async research(instruction, data, signal, options) {
       const maxToolCalls = options?.maxToolCalls ?? 2;
-      const result = await respond(instruction, data, signal, {
-        max_tool_calls: maxToolCalls,
-        ...(vendor === "meta"
-          ? {
-              tools: [
-                {
-                  type: "web_search",
-                  search_context_size:
-                    maxToolCalls === 1
-                      ? "low"
-                      : maxToolCalls === 3
-                        ? "high"
-                        : "medium",
-                },
-              ],
-            }
-          : {
-              tools: [{ type: "web_search" }],
-              tool_choice: { type: "web_search" },
-            }),
-      });
-      const citations: Citation[] = [];
-      for (const item of result) {
-        const characters = Array.from(item.text);
-        for (const annotation of item.annotations) {
-          const parsed = annotationSchema.safeParse(annotation);
-          if (!parsed.success) continue;
-          const { url, title, start_index, end_index } = parsed.data;
-          if (end_index <= start_index || end_index > characters.length)
-            continue;
-          // The annotation can point to a citation marker. Preserve its offsets
-          // and include the adjacent wording from the same response paragraph.
-          const before = characters
-            .slice(Math.max(0, start_index - 480), start_index)
-            .join("")
-            .split("\n")
-            .at(-1);
-          const after = characters
-            .slice(start_index, Math.min(characters.length, end_index + 200))
-            .join("")
-            .split("\n")[0];
-          const passage = ((before ?? "") + after).trim().slice(0, 700);
-          if (passage)
-            citations.push({
-              url,
-              title,
-              passage,
-              anchor: characters.slice(start_index, end_index).join("").trim(),
-              startIndex: start_index,
-              endIndex: end_index,
-            });
-        }
-      }
+      const result = await respond(
+        instruction,
+        data,
+        signal,
+        {
+          ...(vendor !== "xai" ? { max_tool_calls: maxToolCalls } : {}),
+          ...(vendor === "meta"
+            ? {
+                tools: [
+                  {
+                    type: "web_search",
+                    search_context_size:
+                      maxToolCalls === 1
+                        ? "low"
+                        : maxToolCalls === 3
+                          ? "high"
+                          : "medium",
+                  },
+                ],
+              }
+            : {
+                tools: [{ type: "web_search" }],
+                tool_choice: { type: "web_search" },
+              }),
+        },
+        undefined,
+        "evidence_search",
+      );
+      const citations = result.flatMap((item) =>
+        citationsFromAnnotations(item.text, item.annotations),
+      );
       return {
         text: result.map(({ text }) => text).join("\n"),
         citations: uniqueSourcesByUrl(citations).slice(0, 8),
       };
     },
   };
+}
+
+export function citationsFromAnnotations(
+  text: string,
+  annotations: unknown[],
+): Citation[] {
+  const citations: Citation[] = [];
+  const characters = Array.from(text);
+  for (const annotation of annotations) {
+    const parsed = annotationSchema.safeParse(annotation);
+    if (!parsed.success) continue;
+    const { url, title, start_index, end_index } = parsed.data;
+    if (end_index <= start_index || end_index > characters.length) continue;
+    const before = characters
+      .slice(Math.max(0, start_index - 480), start_index)
+      .join("")
+      .split("\n")
+      .at(-1);
+    const after = characters
+      .slice(start_index, Math.min(characters.length, end_index + 200))
+      .join("")
+      .split("\n")[0];
+    const passage = ((before ?? "") + after).trim().slice(0, 700);
+    if (passage)
+      citations.push({
+        url,
+        title: title || new URL(url).hostname,
+        passage,
+        anchor: characters.slice(start_index, end_index).join("").trim(),
+        startIndex: start_index,
+        endIndex: end_index,
+      });
+  }
+  return citations;
 }

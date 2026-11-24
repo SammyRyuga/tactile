@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const staging = process.env.TACTILE_SMOKE_URL;
+const mobileOrigin = "http://127.0.0.1:5191";
 const production3dOrigin = "http://127.0.0.1:5190";
 const previewSpec = "operator-room-preview.spec.ts";
 
@@ -21,7 +22,11 @@ export default defineConfig({
       testIgnore: previewSpec,
       use: devices["Desktop Chrome"],
     },
-    { name: "mobile", testIgnore: previewSpec, use: devices["Pixel 7"] },
+    {
+      name: "mobile",
+      testIgnore: previewSpec,
+      use: { ...devices["Pixel 7"], baseURL: staging ?? mobileOrigin },
+    },
     ...(!staging
       ? [
           {
@@ -53,6 +58,12 @@ export default defineConfig({
           command: "npm start",
           env: { ...demoEnv, PORT: "5190" },
           url: production3dOrigin + "/health",
+        },
+        {
+          // Isolate the per-IP page budget across independent browser projects.
+          command: "npm start",
+          env: { ...demoEnv, PORT: "5191" },
+          url: mobileOrigin + "/health",
         },
       ],
 });

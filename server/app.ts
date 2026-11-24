@@ -1,4 +1,6 @@
 import { defaultReviewModel } from "../shared/models.ts";
+import { activeProviderSchema, providers } from "../shared/providers.ts";
+import { discoverModels, supportsReviewModel } from "./provider-catalog.ts";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
@@ -43,13 +45,14 @@ function providerFailure(
   error: unknown,
   timedOut: boolean,
   validation = false,
+  vendorName = "Meta",
 ) {
   if (timedOut || (error instanceof Error && error.name === "TimeoutError"))
     return {
       status: 504,
       code: "provider_timeout",
       message: validation
-        ? "Meta did not respond in time. Try saving again."
+        ? `${vendorName} did not respond in time. Try again.`
         : "The provider request timed out. Your inputs are ready to retry.",
     };
   if (error instanceof CrossfireRuntimeError)
@@ -91,6 +94,15 @@ function providerFailure(
     };
   if (error instanceof ProviderResponseError) {
     const retryAfter = error.retryAfter;
+    const limit = error.details?.limitKind;
+    if (error.status === 402 || limit === "billing")
+      return {
+        status: 429,
+        code: "provider_billing",
+        retryAfter,
+        message:
+          "The provider reported a billing or credit limit. Check the account in the provider dashboard.",
+      };
     switch (error.status) {
       case 0:
         return {
@@ -104,7 +116,7 @@ function providerFailure(
           status: 502,
           code: "provider_request",
           message: validation
-            ? "Meta declined the validation request. Share the request ID if this continues."
+            ? `${vendorName} declined the validation request. Share the request ID if this continues.`
             : "The provider declined the review request. Share the request ID so the integration can be checked.",
         };
       case 401:
@@ -112,7 +124,7 @@ function providerFailure(
           status: validation ? 422 : 502,
           code: "provider_key",
           message:
-            "The provider did not accept this key. Check that it was copied from the Model API dashboard and has not been revoked.",
+            "The provider did not accept this key. Check that it was copied from the selected provider’s API dashboard and has not been revoked.",
         };
       case 403:
         return {
@@ -128,21 +140,21 @@ function providerFailure(
           message:
             "The selected model is unavailable to this key. Choose another model or check access in the provider dashboard.",
         };
-      case 402:
-        return {
-          status: 429,
-          code: "provider_billing",
-          retryAfter,
-          message:
-            "The provider reached a usage or billing limit. Check billing in the provider dashboard.",
-        };
       case 429:
         return {
           status: 429,
           code: "provider_rate_limit",
           retryAfter,
           message:
-            "The provider reached a usage or billing limit. Wait before trying again and check provider usage if it persists.",
+            limit === "tokens"
+              ? "The provider reached its token rate limit. Wait for it to reset before trying again."
+              : limit === "requests"
+                ? "The provider reached its request rate limit. Wait for it to reset before trying again."
+                : limit === "daily"
+                  ? "The provider reached a daily quota. Check its dashboard for the reset time."
+                  : limit === "request_size"
+                    ? "The provider rejected this request because it exceeds its token allowance. Reduce the selected claims or attachment sizes."
+                    : "The provider returned a rate or quota limit without a clear cause. Check its usage dashboard before trying again.",
         };
       default:
         return {
@@ -174,6 +186,7 @@ export function createApp(
     trustProxy?: boolean | ((address: string, hop: number) => boolean);
     verifierModel?: string;
     metaRequest?: typeof fetch;
+    providerRequest?: typeof fetch;
     sourceReader?: NonNullable<Parameters<typeof runReview>[4]>["sourceReader"];
     crossfire?: ReturnType<typeof createCrossfireEngine>;
     crossfireUnavailable?: boolean;
@@ -185,7 +198,8 @@ export function createApp(
   let importing = false;
   const validatingKeys = new Map<string, AbortController>();
   const maxConcurrentKeyValidations = 32;
-  const settings = createProviderSettings(options.metaRequest);
+  const providerRequest = options.providerRequest ?? options.metaRequest;
+  const settings = createProviderSettings(providerRequest);
   const allowedHosts = options.allowedHosts ?? ["localhost", "127.0.0.1"];
   const accountUsage = new Map<string, number>();
   const preAuthUsage = new Map<string, number>();
@@ -350,8 +364,12 @@ export function createApp(
     }
     const session = await requireSession(request, response);
     if (!session) return;
+    const entry = settings.get(session.account, session.token);
     response.json({
-      live: Boolean(settings.get(session.account, session.token) || provider),
+      live: Boolean(entry || provider),
+      ...(entry
+        ? { activeProvider: { id: entry.vendor, model: entry.model } }
+        : {}),
       ...(options.auth ? { workerReady: Boolean(options.crossfire) } : {}),
     });
   });
@@ -366,6 +384,9 @@ export function createApp(
         saved: Boolean(stored),
         expiresAt: stored?.expiresAt,
         model: stored?.model ?? defaultReviewModel,
+        ...(stored && stored.vendor !== "meta"
+          ? { provider: stored.vendor }
+          : {}),
       });
     },
   );
@@ -378,7 +399,7 @@ export function createApp(
       const parsed = personalKeySchema.safeParse(request.body);
       if (!parsed.success) {
         response.status(400).json({
-          message: "Choose a review model and check your Meta API key.",
+          message: "Choose a compatible review model and check the API key.",
         });
         return;
       }
@@ -390,15 +411,28 @@ export function createApp(
         return;
       }
       const stored = settings.get(session.account, session.token);
-      const key = parsed.data.key ?? stored?.key;
-      if (!key) {
+      const vendor = parsed.data.provider ?? stored?.vendor ?? "meta";
+      const existing = stored?.vendor === vendor ? stored : undefined;
+      const key = parsed.data.key ?? existing?.key;
+      const model =
+        parsed.data.model ??
+        existing?.model ??
+        (vendor === "meta" ? defaultReviewModel : undefined);
+      const discover = parsed.data.action === "discover";
+      const testGeneration = parsed.data.verification === "generation";
+      const name = providers[vendor].name;
+      if (
+        !key ||
+        (!discover && (!model || !supportsReviewModel(vendor, model))) ||
+        (testGeneration && (vendor !== "meta" || discover))
+      ) {
         response.status(400).json({
-          message: "Enter your Meta Model API key to save this model.",
+          message: !key
+            ? `Enter your ${name} API key.`
+            : "Choose a compatible model from the provider catalog.",
         });
         return;
       }
-      const model = parsed.data.model ?? stored?.model ?? defaultReviewModel;
-      const testGeneration = parsed.data.verification === "generation";
       if (testGeneration && options.crossfireUnavailable) {
         response.status(503).json({
           code: "review_engine",
@@ -428,36 +462,50 @@ export function createApp(
       const deadline = AbortSignal.timeout(15_000);
       try {
         const signal = AbortSignal.any([controller.signal, deadline]);
-        let catalogFallback: Awaited<ReturnType<typeof validateMetaKey>>;
-        try {
-          catalogFallback = await validateMetaKey(
+        if (discover || vendor !== "meta") {
+          const catalog = await discoverModels(
+            vendor,
             key,
-            model,
             signal,
-            options.metaRequest,
+            providerRequest,
           );
-        } catch (error) {
-          if (
-            !testGeneration ||
-            !(error instanceof MetaModelLookupError) ||
-            error.confirmedMissing
-          )
-            throw error;
-          signal.throwIfAborted();
-          verification = "generation";
-          await testMetaGeneration(key, model, signal, options.metaRequest);
-          catalogFallback = error.catalogOutcome;
+          if (discover) {
+            response.json(catalog);
+            return;
+          }
+          if (!catalog.models.some((option) => option.id === model))
+            throw new ProviderResponseError(404);
+        } else {
+          let catalogFallback: Awaited<ReturnType<typeof validateMetaKey>>;
+          try {
+            catalogFallback = await validateMetaKey(
+              key,
+              model!,
+              signal,
+              providerRequest,
+            );
+          } catch (error) {
+            if (
+              !testGeneration ||
+              !(error instanceof MetaModelLookupError) ||
+              error.confirmedMissing
+            )
+              throw error;
+            signal.throwIfAborted();
+            verification = "generation";
+            await testMetaGeneration(key, model!, signal, providerRequest);
+            catalogFallback = error.catalogOutcome;
+          }
+          if (catalogFallback)
+            console.info(
+              JSON.stringify({
+                event: "meta_key_validation_model_lookup",
+                requestId: response.getHeader("X-Request-Id"),
+                catalogOutcome: catalogFallback,
+                verification,
+              }),
+            );
         }
-        if (catalogFallback)
-          console.info(
-            JSON.stringify({
-              event: "meta_key_validation_model_lookup",
-              requestId: response.getHeader("X-Request-Id"),
-              model,
-              catalogOutcome: catalogFallback,
-              verification,
-            }),
-          );
       } catch (error) {
         if (response.destroyed) return;
         if (controller.signal.aborted) {
@@ -470,6 +518,7 @@ export function createApp(
           error,
           deadline.aborted,
           true,
+          name,
         );
         const upstreamStatus =
           error instanceof ProviderResponseError && error.status > 0
@@ -477,10 +526,10 @@ export function createApp(
             : undefined;
         console.info(
           JSON.stringify({
-            event: "meta_key_validation_failed",
+            event: "provider_key_validation_failed",
+            provider: vendor,
             requestId: response.getHeader("X-Request-Id"),
             code,
-            model,
             verification,
             catalogOutcome:
               error instanceof MetaModelLookupError
@@ -501,8 +550,9 @@ export function createApp(
         session.account,
         session.token,
         key,
-        model,
-        parsed.data.key ? undefined : stored?.expiresAt,
+        model!,
+        parsed.data.key ? undefined : existing?.expiresAt,
+        vendor,
       );
       if (!expiresAt) {
         response
@@ -514,6 +564,7 @@ export function createApp(
         saved: true,
         expiresAt,
         model,
+        ...(vendor !== "meta" ? { provider: vendor } : {}),
         ...(verification === "generation" ? { verification } : {}),
       });
     },
@@ -642,25 +693,58 @@ export function createApp(
       response.status(400).json({ message: invalidMessage });
       return;
     }
-    const cache =
-      session && settings.get(session.account, session.token)?.claims;
+    const entry = session && settings.get(session.account, session.token);
+    const requested = request.get("X-Tactile-Provider");
+    if (requested !== undefined) {
+      const [id, model, extra] = requested.split(" ");
+      const selection = activeProviderSchema.safeParse({ id, model });
+      if (
+        extra !== undefined ||
+        !selection.success ||
+        entry?.vendor !== selection.data.id ||
+        entry.model !== selection.data.model
+      ) {
+        response.status(409).json({
+          message:
+            "Your saved provider or model changed. Refresh the workspace before running this request.",
+        });
+        return;
+      }
+    }
+    const cache = entry?.claims;
     const client =
       (session &&
-        settings.provider(session.account, session.token, (usage) => {
-          if (usage.inputTokens === null) return;
-          console.info(
-            JSON.stringify({
-              event: "provider_token_usage",
-              requestId: response.getHeader("X-Request-Id"),
-              ...usage,
-            }),
-          );
-        })) ??
+        settings.provider(
+          session.account,
+          session.token,
+          (usage, stage) => {
+            if (usage.inputTokens === null) return;
+            console.info(
+              JSON.stringify({
+                event: "provider_token_usage",
+                provider: entry?.vendor,
+                stage,
+                requestId: response.getHeader("X-Request-Id"),
+                ...usage,
+              }),
+            );
+          },
+          (event) => {
+            console.info(
+              JSON.stringify({
+                event: "provider_response",
+                provider: entry?.vendor,
+                requestId: response.getHeader("X-Request-Id"),
+                ...event,
+              }),
+            );
+          },
+        )) ??
       provider;
     if (!client) {
       response.status(session ? 409 : 503).json({
         message: session
-          ? "Add a Meta Model API key in Settings to extract claims or run a live review."
+          ? "Add a provider API key in Settings to extract claims or run a live review."
           : "Live reviews require a provider key.",
       });
       return;
@@ -839,7 +923,12 @@ export function createApp(
         signal.throwIfAborted();
         if (!matchesLiveReview(report, input))
           throw new ProviderOutputError("malformed");
-        emit({ type: "report", report });
+        emit({
+          type: "report",
+          report: client.providerId
+            ? { ...report, provider: client.providerId }
+            : report,
+        });
         response.end();
       },
     ),

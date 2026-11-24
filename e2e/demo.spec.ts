@@ -71,9 +71,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
     .getByRole("link", { name: "Sign in to workspace", exact: true })
     .click();
   await expect(page).toHaveURL(/\/login\?next=/);
-  await expect(
-    page.getByText(/add your Meta Model API key in Settings/),
-  ).toBeVisible();
+  await expect(page.getByText(/connect a provider in Settings/)).toBeVisible();
   await signIn(page);
   await expect(page).toHaveURL(/\/review$/);
   await expect(
@@ -82,7 +80,7 @@ test("signed-in user reviews an example, exports, and restores the report", asyn
   await expect(page.getByLabel("Your plan")).toHaveValue("");
   await page.getByRole("button", { name: "Analyze my plan" }).click();
   await expect(page.getByRole("alert")).toContainText(
-    "Meta Model API key in Settings",
+    "provider API key in Settings",
   );
   await page.getByRole("link", { name: /CI coverage/ }).click();
   await expect(
@@ -449,6 +447,91 @@ test("settings require sign-in and store the appearance preference across reload
   await expect(page.getByText("Key saved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Remove key" }).click();
   await expect(page.getByText("No key saved", { exact: true })).toBeVisible();
+});
+
+test("Settings exposes the five provider choices and their key links", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  await page.route("**/api/settings/provider", (route) =>
+    route.fulfill({ json: { saved: false } }),
+  );
+  await page.goto("/settings");
+  await signIn(page);
+  for (const [name, domain] of [
+    ["GroqCloud", "console.groq.com"],
+    ["Meta", "dev.meta.ai"],
+    ["Google Gemini", "aistudio.google.com"],
+    ["OpenAI", "platform.openai.com"],
+    ["xAI Grok", "console.x.ai"],
+  ]) {
+    const option = page.getByRole("radio", { name, exact: true });
+    await option.check();
+    await expect(option).toBeChecked();
+    await expect(page.getByLabel("API key", { exact: true })).toBeVisible();
+    const link = page.getByRole("link", { name: `Get your ${name} API key` });
+    const url = new URL((await link.getAttribute("href")) ?? "");
+    expect(url.hostname).toBe(domain);
+    expect(url.protocol).toBe("https:");
+  }
+});
+
+test("Groq discovery validates the chosen model without persisting the key in the browser", async ({
+  page,
+}) => {
+  await mockAuthentication(page);
+  const key = "groq-fixture-key-for-browser";
+  const model = "openai/gpt-oss-20b";
+  let saved = false;
+  await page.route("**/api/settings/provider", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { saved: false } });
+    const input = route.request().postDataJSON();
+    expect(input.provider).toBe("groq");
+    if (input.action === "discover") {
+      expect(input.key).toBe(key);
+      return route.fulfill({
+        json: {
+          models: [{ id: model, name: "GPT OSS 20B" }],
+          recommended: model,
+        },
+      });
+    }
+    expect(input.model).toBe(model);
+    expect(input.key).toBe(key);
+    saved = true;
+    return route.fulfill({ json: { saved, model, provider: "groq" } });
+  });
+  await page.goto("/settings");
+  await signIn(page);
+  await page.getByRole("radio", { name: "GroqCloud" }).check();
+  const field = page.getByLabel("API key", { exact: true });
+  await field.fill(key);
+  await page.getByRole("button", { name: "Load models" }).click();
+  await expect(page.getByLabel("Review model", { exact: true })).toHaveValue(
+    model,
+  );
+  await expect(
+    page.getByRole("option", { name: "GPT OSS 20B (recommended)" }),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "Validate & save key" }).click();
+  await expect(page.getByText("Key saved", { exact: true })).toBeVisible();
+  await expect(field).toHaveValue("");
+  expect(saved).toBe(true);
+  const storage = await page.evaluate(() =>
+    JSON.stringify({
+      session: { ...sessionStorage },
+      local: { ...localStorage },
+    }),
+  );
+  expect(storage).not.toContain(key);
+  await field.fill("replacement-fixture-key");
+  await page.getByRole("radio", { name: "Google Gemini" }).check();
+  await expect(field).toHaveValue("");
+  await expect(page.getByText(/Connected to GroqCloud/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Validate & save key" }),
+  ).toBeDisabled();
 });
 
 test("a Supabase-configured site keeps the public demo separate from protected routes", async ({

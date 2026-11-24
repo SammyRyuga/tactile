@@ -50,6 +50,9 @@ export function ProposalRevision({
         },
         controller.signal,
         token,
+        report.provider && report.model
+          ? { id: report.provider, model: report.model }
+          : undefined,
       );
       if (!controller.signal.aborted) setDraft(revision);
     } catch (cause) {
