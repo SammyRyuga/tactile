@@ -290,3 +290,9 @@
 - The build verifies the 27,258,868-byte GLB and creates static Brotli and gzip variants. The server streams only the versioned model and its attribution under the rate-limited asset route. The viewer and model load on demand. Production keeps the mobile and WebGL fallbacks, shader prewarming, offscreen suspension, and review and export independence.
 - Tested all three recorded demos in Windows Chrome on Intel UHD. Opening the room took about 1.28–1.88 seconds on loopback. A disk-backed browser profile reused the model without a network transfer when reopening. The local HTTP browser used 20,602,622 bytes of gzip payload. The server also delivers a 19,780,006-byte Brotli variant to clients that negotiate it. Hosted cold starts and first-open performance remain to be measured.
 - Verified mocked live reviewer activity, courier handoff, completion, cancellation, failure, and Markdown export in the compiled app. Added release regressions for the versioned asset, range requests, attribution, the independent asset rate limit, lazy loading, and WebGL resource release.
+
+## Five-provider local preview
+
+- Added GroqCloud, Gemini, OpenAI, and xAI alongside the existing Meta Responses integration. Settings discovers compatible catalog models. A verified session holds one active provider key, and workspace requests pin the saved provider and model.
+- Mocked HTTP tests cover catalog, structured output, citation metadata, usage, authentication errors, cancellation, timeouts, and rate limits. The Python suite verifies extraction, reviewers, source retrieval, synthesis, Markdown export, and revision through the provider interfaces.
+- The [local provider preview](docs/local-providers.md) describes the sign-in fixture, Groq workflow, and Gemini's independent reference search. Genuine provider access remains unverified pending user testing. No live provider calls were made.

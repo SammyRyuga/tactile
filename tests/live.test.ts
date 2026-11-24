@@ -1235,7 +1235,7 @@ test("personal keys require authentication, stay scoped to the sign-in session, 
       );
       assert.deepEqual(
         await (await fetch(url + "/api/status", { headers })).json(),
-        { live: true },
+        { live: true, activeProvider: { id: "meta", model: "muse-spark-1.3" } },
       );
       assert.deepEqual(
         await (

@@ -120,8 +120,8 @@ function Login({
               : "Sign in to Tactile"}
         </h1>
         <p className="field-note">
-          To review your own plan, add your Meta Model API key in Settings after
-          you sign in. You can try an example without a key after signing in.
+          To review your own plan, connect a provider in Settings after you sign
+          in. You can try an example without a key after signing in.
         </p>
         {session ? (
           <a className="button primary" href={next}>

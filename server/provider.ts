@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { ProviderId } from "../shared/providers.ts";
 import { uniqueSourcesByUrl } from "../shared/review.ts";
 
 const annotationSchema = z.object({
   type: z.literal("url_citation"),
   url: z.url({ protocol: /^https?$/ }),
-  title: z.string().min(1).max(500),
+  title: z.string().max(500).nullish(),
   start_index: z.number().int().nonnegative(),
   end_index: z.number().int().positive(),
 });
@@ -31,6 +32,7 @@ export interface Citation {
 }
 
 export interface ReviewProvider {
+  providerId?: ProviderId;
   modelId?: string;
   verifierInfo?(modelOverride?: string): { model: string; distinct: boolean };
   structured<T>(
@@ -69,6 +71,58 @@ const usageSchema = z.object({
       .nullish(),
   }),
 });
+
+export type ProviderConfig = {
+  verifierModel?: string;
+  requestTimeoutMs?: number;
+  onRequest?: () => void;
+  onUsage?: (usage: ProviderUsage) => void;
+};
+
+export function structuredResult<T>(text: string, schema: z.ZodType<T>): T {
+  try {
+    return schema.parse(JSON.parse(text));
+  } catch {
+    throw new ProviderOutputError("malformed");
+  }
+}
+
+export async function providerJson(
+  request: typeof fetch,
+  url: string,
+  key: string,
+  signal: AbortSignal,
+  body?: Record<string, unknown>,
+  config: ProviderConfig = {},
+  keyHeader = "Authorization",
+): Promise<unknown> {
+  const deadline = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(config.requestTimeoutMs ?? 30_000),
+  ]);
+  config.onRequest?.();
+  const response = await providerFetch(request, url, {
+    method: body ? "POST" : "GET",
+    headers: {
+      [keyHeader]: keyHeader === "Authorization" ? "Bearer " + key : key,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    redirect: "error",
+    signal: deadline,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    deadline.throwIfAborted();
+    throw new ProviderResponseError(
+      response.status,
+      providerRetryAfter(response),
+    );
+  }
+  const payload = await response.json().catch(() => null);
+  deadline.throwIfAborted();
+  return payload;
+}
 
 export const metaStructuredEffort = "low";
 
@@ -164,13 +218,8 @@ export function createProvider(
   key: string,
   model: string,
   request = fetch,
-  vendor: "openai" | "meta" = "openai",
-  config: {
-    verifierModel?: string;
-    requestTimeoutMs?: number;
-    onRequest?: () => void;
-    onUsage?: (usage: ProviderUsage) => void;
-  } = {},
+  vendor: "openai" | "meta" | "xai" = "openai",
+  config: ProviderConfig = {},
 ): ReviewProvider {
   function verifierInfo(modelOverride?: string) {
     const verifier =
@@ -207,10 +256,11 @@ export function createProvider(
       AbortSignal.timeout(config.requestTimeoutMs ?? 35_000),
     ]);
     async function send(maxOutputTokens: number): Promise<unknown> {
-      const endpoint =
-        vendor === "meta"
-          ? "https://api.meta.ai/v1/responses"
-          : "https://api.openai.com/v1/responses";
+      const endpoint = {
+        meta: "https://api.meta.ai/v1/responses",
+        openai: "https://api.openai.com/v1/responses",
+        xai: "https://api.x.ai/v1/responses",
+      }[vendor];
       config.onRequest?.();
       const response = await providerFetch(request, endpoint, {
         method: "POST",
@@ -274,7 +324,7 @@ export function createProvider(
     }
     const first = await send(5500);
     if (
-      vendor === "meta" &&
+      vendor !== "openai" &&
       z.object({ status: z.literal("incomplete") }).safeParse(first).success
     )
       throw new ProviderOutputError("incomplete");
@@ -329,7 +379,7 @@ export function createProvider(
           },
         },
       });
-      return schema.parse(JSON.parse(result.map(({ text }) => text).join("")));
+      return structuredResult(result.map(({ text }) => text).join(""), schema);
     },
 
     async crossfireGenerate(instructions, messages, schema, signal) {
@@ -362,7 +412,7 @@ export function createProvider(
     async research(instruction, data, signal, options) {
       const maxToolCalls = options?.maxToolCalls ?? 2;
       const result = await respond(instruction, data, signal, {
-        max_tool_calls: maxToolCalls,
+        ...(vendor !== "xai" ? { max_tool_calls: maxToolCalls } : {}),
         ...(vendor === "meta"
           ? {
               tools: [
@@ -382,42 +432,47 @@ export function createProvider(
               tool_choice: { type: "web_search" },
             }),
       });
-      const citations: Citation[] = [];
-      for (const item of result) {
-        const characters = Array.from(item.text);
-        for (const annotation of item.annotations) {
-          const parsed = annotationSchema.safeParse(annotation);
-          if (!parsed.success) continue;
-          const { url, title, start_index, end_index } = parsed.data;
-          if (end_index <= start_index || end_index > characters.length)
-            continue;
-          // The annotation can point to a citation marker. Preserve its offsets
-          // and include the adjacent wording from the same response paragraph.
-          const before = characters
-            .slice(Math.max(0, start_index - 480), start_index)
-            .join("")
-            .split("\n")
-            .at(-1);
-          const after = characters
-            .slice(start_index, Math.min(characters.length, end_index + 200))
-            .join("")
-            .split("\n")[0];
-          const passage = ((before ?? "") + after).trim().slice(0, 700);
-          if (passage)
-            citations.push({
-              url,
-              title,
-              passage,
-              anchor: characters.slice(start_index, end_index).join("").trim(),
-              startIndex: start_index,
-              endIndex: end_index,
-            });
-        }
-      }
+      const citations = result.flatMap((item) =>
+        citationsFromAnnotations(item.text, item.annotations),
+      );
       return {
         text: result.map(({ text }) => text).join("\n"),
         citations: uniqueSourcesByUrl(citations).slice(0, 8),
       };
     },
   };
+}
+
+export function citationsFromAnnotations(
+  text: string,
+  annotations: unknown[],
+): Citation[] {
+  const citations: Citation[] = [];
+  const characters = Array.from(text);
+  for (const annotation of annotations) {
+    const parsed = annotationSchema.safeParse(annotation);
+    if (!parsed.success) continue;
+    const { url, title, start_index, end_index } = parsed.data;
+    if (end_index <= start_index || end_index > characters.length) continue;
+    const before = characters
+      .slice(Math.max(0, start_index - 480), start_index)
+      .join("")
+      .split("\n")
+      .at(-1);
+    const after = characters
+      .slice(start_index, Math.min(characters.length, end_index + 200))
+      .join("")
+      .split("\n")[0];
+    const passage = ((before ?? "") + after).trim().slice(0, 700);
+    if (passage)
+      citations.push({
+        url,
+        title: title || new URL(url).hostname,
+        passage,
+        anchor: characters.slice(start_index, end_index).join("").trim(),
+        startIndex: start_index,
+        endIndex: end_index,
+      });
+  }
+  return citations;
 }

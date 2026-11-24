@@ -20,7 +20,7 @@ const steps = [
 const answers = [
   [
     "Do I need an account or API key?",
-    "Run any bundled case without an account or provider key. To review a new proposal, sign in and add a Meta Model API key in Settings.",
+    "Run any bundled case without an account or provider key. To review a new proposal, sign in and connect a provider in Settings.",
   ],
   [
     "What does Unresolved mean?",

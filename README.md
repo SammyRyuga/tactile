@@ -60,6 +60,8 @@ npm run dev
 
 Open the [public demo on localhost](http://127.0.0.1:5173/demo). To serve the production build locally, use `npm run build` followed by `npm start`.
 
+The [local provider preview](docs/local-providers.md) covers GroqCloud, Meta, Google Gemini, OpenAI, and xAI Grok.
+
 To use the authenticated workspace, install Python 3.13 and create the local worker environment. On macOS or Linux, run `TACTILE_BOOTSTRAP_PYTHON=python3.13 npm run setup:crossfire`. On Windows, run the following from the repository root.
 
 ```powershell

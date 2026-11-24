@@ -1,3 +1,5 @@
+import { providers } from "../shared/providers.ts";
+import type { ActiveProvider } from "../shared/providers.ts";
 import {
   useEffect,
   useLayoutEffect,
@@ -326,6 +328,7 @@ export function App({
   const [historyMessage, setHistoryMessage] = useState("");
   const historyHeading = useRef<HTMLHeadingElement>(null);
   const [copyStatus, setCopyStatus] = useState("");
+  const [activeProvider, setActiveProvider] = useState<ActiveProvider>();
   const reduceMotion = useReducedMotion();
   const enter: MotionProps = {
     initial: reduceMotion ? false : { opacity: 0, y: 8 },
@@ -513,8 +516,11 @@ export function App({
     if (publicDemo) return;
     const controller = new AbortController();
     liveAvailable(controller.signal, token).then(
-      (live) => {
-        if (!controller.signal.aborted) setAvailability(live ? "live" : "demo");
+      ({ live, activeProvider }) => {
+        if (!controller.signal.aborted) {
+          setActiveProvider(activeProvider);
+          setAvailability(live ? "live" : "demo");
+        }
       },
       () => {
         if (!controller.signal.aborted) setAvailability("unavailable");
@@ -555,7 +561,7 @@ export function App({
         setError(
           availability === "unavailable"
             ? "Live reviews are temporarily unavailable. Refresh to try again. Your plan is saved in this tab."
-            : "To analyze your own plan, add a Meta Model API key in Settings. You can try an example now.",
+            : "To analyze your own plan, add a provider API key in Settings. You can try an example now.",
         );
       return;
     }
@@ -589,6 +595,7 @@ export function App({
         },
         controller.signal,
         token,
+        activeProvider,
       );
       if (controller.signal.aborted) return;
       setProposal(parsed.data);
@@ -699,12 +706,15 @@ export function App({
     };
 
     try {
-      await (mode === "demo" ? runDemo : runLive)(
-        input.data,
-        emit,
-        controller.signal,
-        token,
-      );
+      if (mode === "demo") await runDemo(input.data, emit, controller.signal);
+      else
+        await runLive(
+          input.data,
+          emit,
+          controller.signal,
+          token,
+          activeProvider,
+        );
     } catch (cause) {
       if (!controller.signal.aborted) {
         setError(
@@ -994,12 +1004,14 @@ export function App({
                 {availability === "demo" &&
                   proposal.trim() !== example.proposal && (
                     <p className="field-note">
-                      To review your own plan, add a Meta API key in{" "}
+                      To review your own plan, add a provider API key in{" "}
                       <a href="/settings">Settings</a>.
                     </p>
                   )}
                 {availability === "live" && (
                   <p className="field-note">
+                    {activeProvider &&
+                      `Using ${providers[activeProvider.id].name} · ${activeProvider.model}. `}
                     Tactile sends your plan and readable attachment text to the
                     model for review. Share only information you’re allowed to
                     send.
@@ -1420,6 +1432,7 @@ export function App({
                   {report.mode === "demo"
                     ? "Bundled example evidence"
                     : "Live review"}
+                  {report.provider && ` · ${providers[report.provider].name}`}
                   {modelName && ` · ${modelName}`}
                   {report.verifier?.distinct &&
                     ` · Verified by ${report.verifier.model}`}

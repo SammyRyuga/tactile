@@ -1,3 +1,5 @@
+import { activeProviderSchema } from "../shared/providers.ts";
+import type { ActiveProvider } from "../shared/providers.ts";
 import { z } from "zod";
 import {
   attachmentTextSchema,
@@ -23,16 +25,20 @@ export function requestReference(response: Response) {
 export async function liveAvailable(
   signal: AbortSignal,
   token?: string,
-): Promise<boolean> {
+): Promise<{ live: boolean; activeProvider?: ActiveProvider }> {
   const response = await fetch("/api/status", {
     signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) throw new Error("Live status is unavailable.");
   const result = z
-    .object({ live: z.boolean() })
+    .object({
+      live: z.boolean(),
+      activeProvider: activeProviderSchema.optional(),
+    })
     .safeParse(await response.json().catch(() => null));
-  return response.ok && result.success && result.data.live;
+  if (!result.success) throw new Error("Live status is unavailable.");
+  return result.data;
 }
 
 async function post(
@@ -40,6 +46,7 @@ async function post(
   body: object | Blob,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ): Promise<Response> {
   const response = await fetch(path, {
     method: "POST",
@@ -48,6 +55,9 @@ async function post(
       "Content-Type":
         body instanceof Blob ? "application/octet-stream" : "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(selection
+        ? { "X-Tactile-Provider": `${selection.id} ${selection.model}` }
+        : {}),
     },
     signal,
   });
@@ -71,8 +81,9 @@ export async function extractLive(
   input: ProposalIntake,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
-  const response = await post("/api/claims", input, signal, token);
+  const response = await post("/api/claims", input, signal, token, selection);
   const parsed = z
     .object({ claims: claimListSchema })
     .safeParse(await response.json().catch(() => null));
@@ -106,8 +117,15 @@ export async function reviseProposal(
   input: ProposalRevision,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
-  const response = await post("/api/revisions", input, signal, token);
+  const response = await post(
+    "/api/revisions",
+    input,
+    signal,
+    token,
+    selection,
+  );
   return z.object({ proposal: z.string().min(20) }).parse(await response.json())
     .proposal;
 }
@@ -117,9 +135,16 @@ export async function runLive(
   emit: (event: ReviewEvent) => void,
   signal: AbortSignal,
   token?: string,
+  selection?: ActiveProvider,
 ) {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(135_000)]);
-  const response = await post("/api/reviews", input, requestSignal, token);
+  const response = await post(
+    "/api/reviews",
+    input,
+    requestSignal,
+    token,
+    selection,
+  );
   if (!response.body) throw new Error("The server returned an empty review.");
   const maxLineLength = 2 * 1024 * 1024;
   const claims = new Set(input.claims.map(({ id }) => id));

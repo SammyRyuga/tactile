@@ -471,6 +471,269 @@ test("the pinned Crossfire engine extracts, ranks, tests, and reconciles through
   }
 });
 
+for (const [vendor, model, host] of [
+  ["groq", "openai/gpt-oss-20b", "api.groq.com"],
+  ["meta", "muse-spark-1.3", "api.meta.ai"],
+  ["gemini", "gemini-3.8-flash", "generativelanguage.googleapis.com"],
+  ["openai", "gpt-5-mini", "api.openai.com"],
+  ["xai", "grok-4.7", "api.x.ai"],
+] as const) {
+  test(`${vendor} connects a session key to the complete Crossfire review and revision routes`, async () => {
+    const token =
+      "fixture." +
+      Buffer.from(
+        JSON.stringify({ session_id: "717a78cf-627d-4df6-9cbf-2cecafaa8052" }),
+      ).toString("base64url") +
+      ".fixture";
+    const key = `synthetic-${vendor}-session-key`;
+    const findings = new Set<string>();
+    const claimText =
+      "The invoice queue preserves ordering within each partition.";
+    const source =
+      vendor === "gemini"
+        ? "https://en.wikipedia.org/wiki/Message_queue"
+        : "https://docs.example.invalid/queue";
+    const choices: Record<string, unknown> = {
+      ExtractedClaims: {
+        statements: [
+          claimText,
+          "Workers can independently finish invoice exports.",
+        ],
+        agents: [
+          { agent: "builder", rationale: "Check worker capacity." },
+          {
+            agent: "researcher",
+            rationale: "Check published ordering guarantees.",
+          },
+        ],
+      },
+      LoadBearingRanking: {
+        ranked_indices: [1, 2],
+        load_bearing_count: 1,
+        reasons: ["Ordering is critical."],
+      },
+      BuilderVerdict: {
+        result: "No material blocker",
+        reasoning: claimText,
+        confidence: 0.1,
+      },
+      ReasoningOutput: {
+        result: "No material blocker",
+        reasoning: claimText,
+        confidence: 0.1,
+      },
+      ResearcherAssessment: {
+        result: "The fixture documents partition ordering",
+        reasoning: claimText,
+        confidence: 0,
+        contradiction: null,
+        cited: [{ source_url: source, stance: "supports", tier: 1 }],
+      },
+      SteelManVerdict: { status: "survived", reasoning: claimText },
+      StrategicConsequenceOutput: {
+        impact: "low",
+        recommended_change: "Verify order during rollout.",
+      },
+      CaseVerdictOutput: {
+        decision_state: "proceed",
+        headline: "Proceed with queue verification",
+        summary: claimText,
+      },
+      ReformulatedPromptOutput: {
+        improved_prompt:
+          "Keep a backup until rollout ends, then migrate invoice exports to the queue.",
+      },
+    };
+    const crossfire = createCrossfireEngine(
+      process.env.TACTILE_PYTHON,
+      false,
+      async (url) => {
+        assert.equal(url, source);
+        return { text: claimText };
+      },
+    );
+    const app = createApp(undefined, {
+      crossfire,
+      verifySession: async (candidate) =>
+        candidate === token ? "fixture-account" : null,
+      providerRequest: async (input, init) => {
+        const url = new URL(String(input));
+        const headers = new Headers(init?.headers);
+        if (url.hostname === "en.wikipedia.org") {
+          assert.equal(vendor, "gemini");
+          assert.equal(headers.get("authorization"), null);
+          assert.equal(headers.get("x-goog-api-key"), null);
+          return Response.json({
+            pages: [
+              {
+                key: "Message_queue",
+                title: "Queue ordering",
+                excerpt: claimText,
+              },
+            ],
+          });
+        }
+        assert.equal(url.hostname, host);
+        assert.equal(
+          headers.get(vendor === "gemini" ? "x-goog-api-key" : "authorization"),
+          vendor === "gemini" ? key : "Bearer " + key,
+        );
+        if (url.pathname.endsWith("/models"))
+          return Response.json(
+            vendor === "gemini"
+              ? {
+                  models: [
+                    {
+                      name: "models/" + model,
+                      supportedGenerationMethods: ["generateContent"],
+                    },
+                  ],
+                }
+              : { object: "list", data: [{ id: model }] },
+          );
+        const body = JSON.parse(String(init?.body));
+        const search = Boolean(body.tools);
+        const jsonSchema =
+          vendor === "groq"
+            ? body.response_format?.json_schema?.schema
+            : vendor === "gemini"
+              ? body.generationConfig?.responseJsonSchema
+              : vendor === "meta"
+                ? body.text?.format?.schema
+                : search
+                  ? undefined
+                  : JSON.parse(
+                      body.instructions.split("matching this schema. ").at(-1),
+                    );
+        const title = jsonSchema?.title;
+        if (!search) {
+          findings.add(title);
+          assert.ok(Object.hasOwn(choices, title), String(title));
+        }
+        const text = search ? claimText : JSON.stringify(choices[title]);
+        const annotations = search
+          ? [
+              {
+                type: "url_citation",
+                url: source,
+                title: "Queue ordering",
+                start_index: 0,
+                end_index: claimText.length,
+              },
+            ]
+          : [];
+        if (vendor === "groq")
+          return Response.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: text, annotations },
+              },
+            ],
+          });
+        if (vendor === "gemini")
+          return Response.json({
+            candidates: [
+              { finishReason: "STOP", content: { parts: [{ text }] } },
+            ],
+          });
+        return Response.json({
+          status: "completed",
+          output: [{ content: [{ type: "output_text", text, annotations }] }],
+        });
+      },
+    });
+    const server = createServer(app).listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const origin = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
+    const post = (path: string, value: object, pin?: string) =>
+      fetch(origin + path, {
+        method: "POST",
+        body: JSON.stringify(value),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+          ...(pin ? { "X-Tactile-Provider": pin } : {}),
+        },
+      });
+    try {
+      const discovery = await post("/api/settings/provider", {
+        action: "discover",
+        provider: vendor,
+        key,
+      });
+      assert.equal(discovery.status, 200, await discovery.clone().text());
+      assert.equal((await discovery.json()).recommended, model);
+      const save = await post("/api/settings/provider", {
+        provider: vendor,
+        key,
+        model,
+      });
+      assert.equal(save.status, 201, await save.clone().text());
+      assert.doesNotMatch(await save.text(), new RegExp(key));
+      const mismatch = await post("/api/settings/provider", {
+        action: "discover",
+        provider: vendor === "meta" ? "groq" : "meta",
+      });
+      assert.equal(mismatch.status, 400);
+      assert.equal(
+        (await post("/api/claims", { proposal }, "xai grok-4.99")).status,
+        409,
+      );
+      const pin = vendor + " " + model;
+      const extraction = await post("/api/claims", { proposal }, pin);
+      assert.equal(extraction.status, 200, await extraction.clone().text());
+      const {
+        claims: [claim],
+      } = await extraction.json();
+      const response = await post(
+        "/api/reviews",
+        {
+          proposal,
+          claims: [{ ...claim, risk: "evidence" }],
+          reviewers: ["builder", "researcher"],
+        },
+        pin,
+      );
+      const events = (await response.text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as ReviewEvent);
+      const result = events.at(-1);
+      assert.ok(result?.type === "report", JSON.stringify(result));
+      assert.equal(result.report.provider, vendor);
+      assert.equal(result.report.model, model);
+      assert.ok(events.some((event) => event.type === "progress"));
+      assert.ok(
+        result.report.sources.some(
+          (item) => item.url === source && item.passage,
+        ),
+      );
+      assert.doesNotMatch(toMarkdown(proposal, result.report), new RegExp(key));
+      const revise = await post(
+        "/api/revisions",
+        {
+          proposal,
+          changes: [
+            {
+              id: claim.id,
+              claim: claim.text,
+              salvage: "Keep a backup until rollout ends.",
+            },
+          ],
+        },
+        pin,
+      );
+      assert.equal(revise.status, 200, await revise.clone().text());
+      assert.match((await revise.json()).proposal, /^Keep a backup/);
+      assert.ok(findings.has("CaseVerdictOutput"));
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+}
+
 test("the input gate returns Crossfire’s clarification wording", async () => {
   const prompt =
     "Which part of the launch are you deciding whether to commit to?";

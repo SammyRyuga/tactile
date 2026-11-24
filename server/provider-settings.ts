@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import type { Claim } from "../shared/review.ts";
 import { z } from "zod";
 import {
-  createProvider,
   isMetaModelNotFound,
   metaResponsesError,
   ProviderOutputError,
@@ -11,8 +10,10 @@ import {
   ProviderResponseError,
   metaStructuredEffort,
 } from "./provider.ts";
-import { reviewModelSchema } from "../shared/models.ts";
-import type { ReviewModel } from "../shared/models.ts";
+import { modelIdSchema, providerSchema } from "../shared/providers.ts";
+import type { ProviderId } from "../shared/providers.ts";
+import type { ProviderConfig } from "./provider.ts";
+import { createReviewProvider } from "./provider-catalog.ts";
 const maxSessions = 500;
 const lifetime = 8 * 60 * 60 * 1000;
 
@@ -24,7 +25,9 @@ export const personalKeySchema = z.object({
     .max(512)
     .regex(/^[!-~]+$/)
     .optional(),
-  model: reviewModelSchema.optional(),
+  provider: providerSchema.optional(),
+  model: modelIdSchema.optional(),
+  action: z.literal("discover").optional(),
   verification: z.literal("generation").optional(),
 });
 
@@ -59,7 +62,7 @@ export class MetaModelLookupError extends ProviderResponseError {
 
 export async function validateMetaKey(
   key: string,
-  model: ReviewModel,
+  model: string,
   signal: AbortSignal,
   request = fetch,
 ) {
@@ -131,7 +134,7 @@ const metaTestText = z.object({
 
 export async function testMetaGeneration(
   key: string,
-  model: ReviewModel,
+  model: string,
   signal: AbortSignal,
   request = fetch,
 ) {
@@ -232,7 +235,8 @@ export function createProviderSettings(request = fetch) {
     string,
     {
       key: string;
-      model: ReviewModel;
+      vendor: ProviderId;
+      model: string;
       expiresAt: number;
       generation: symbol;
       claims: ClaimCache;
@@ -256,8 +260,9 @@ export function createProviderSettings(request = fetch) {
       account: string,
       token: string,
       key: string,
-      model: ReviewModel,
-      expiresAt?: number,
+      model: string,
+      expiresAt: number | undefined,
+      vendor: ProviderId = "meta",
     ) {
       const id = providerSessionId(account, token);
       if (!id) return undefined;
@@ -275,6 +280,7 @@ export function createProviderSettings(request = fetch) {
       const generation = Symbol();
       keys.set(id, {
         key,
+        vendor,
         model,
         generation,
         expiresAt: deadline,
@@ -299,13 +305,11 @@ export function createProviderSettings(request = fetch) {
     provider(
       account: string,
       token: string,
-      onUsage: NonNullable<
-        Parameters<typeof createProvider>[4]
-      >["onUsage"] = undefined,
+      onUsage: ProviderConfig["onUsage"] = undefined,
     ) {
       const entry = get(account, token);
       return entry
-        ? createProvider(entry.key, entry.model, request, "meta", {
+        ? createReviewProvider(entry.vendor, entry.key, entry.model, request, {
             onUsage,
           })
         : undefined;
