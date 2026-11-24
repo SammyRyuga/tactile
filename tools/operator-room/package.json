@@ -1,0 +1,12 @@
+{
+  "name": "tactile-operator-room-tools",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24"
+  },
+  "devDependencies": {
+    "meshoptimizer": "0.25.0",
+    "sharp": "0.35.5"
+  }
+}
