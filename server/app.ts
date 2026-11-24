@@ -209,7 +209,7 @@ export function createApp(
     if (!options.allowDevAssets)
       response.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ${authOrigin}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'`,
+        `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' blob: ${authOrigin}; img-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'`,
       );
     next();
   });

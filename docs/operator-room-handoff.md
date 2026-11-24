@@ -1,6 +1,6 @@
 # Original Operator Room handoff
 
-The original `operator_room` branch preserves the scene work and the GLB anchored at commit `4e991081d1bcad47054e83a824ac173179d08c02`. The editable Blender master belongs to the local handoff package. Both assets remain outside the production build. [Source branch](https://github.com/SammyRyuga/tactile/tree/operator_room)
+The original `operator_room` branch preserves the scene work and the GLB anchored at commit `4e991081d1bcad47054e83a824ac173179d08c02`. The [release GLB](../assets/operator-room/control-room.glb) uses those exact bytes. The build verifies the checksum and packages the GLB with its [attribution notice](../assets/operator-room/ATTRIBUTION.txt). The editable Blender master belongs to the local handoff package. [Source branch](https://github.com/SammyRyuga/tactile/tree/operator_room)
 
 | Handoff file                 |      Bytes | SHA-256                                                            |
 | ---------------------------- | ---------: | ------------------------------------------------------------------ |
@@ -19,21 +19,21 @@ blender --background build/operator-room-inputs/tactile_control_room.blend --pyt
 blender --background build/operator-room-inputs/tactile_control_room.blend --python-exit-code 2 --python tools/operator-room/export_control_room.py
 ```
 
-The inspector checks packed dependencies, all five holograms, both original couriers, and the decision terminal. The exporter samples animations every two frames and includes visible, renderable objects, cameras, modifiers, and custom properties. The packer uses lossless Meshopt and verifies pixels before retaining a lossless WebP conversion. It also writes gzip and Brotli sidecars. Outputs default to `build/operator-room-export` so re-exporting preserves the verified file used by the [local preview](blender-scene.md#preview-the-original-scene-locally). If Blender reports the Windows shutdown error recorded in the handoff, verify that the exporter printed `Web model saved to` and that the output opens.
+The inspector checks packed dependencies, all five holograms, both original couriers, and the decision terminal. The exporter samples animations every two frames and includes visible, renderable objects, cameras, modifiers, and custom properties. The packer uses lossless Meshopt and verifies pixels before retaining a lossless WebP conversion. It also writes gzip and Brotli sidecars. Outputs default to `build/operator-room-export` so re-exporting preserves the verified file used by the [viewer](blender-scene.md#open-the-original-scene). If Blender reports the Windows shutdown error recorded in the handoff, verify that the exporter printed `Web model saved to` and that the output opens.
 
 ## Rebuild from the original actor inputs
 
 An authorized owner can place the following inputs in a local directory. The editable master and handed-off GLB already include their geometry and textures.
 
-| Original input                               | Provenance                                                                                     | SHA-256                                                            |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `Maintenance Hoverbot - rigged animated.zip` | ClayOgre’s Maintenance Hoverbot, `bot_normal_toolbox2.blend`, CC BY 3.0 per the archive notice | `cb240836b07d45fd6bc5afe7d6ce4a96a6c58c2eecf54a20246fe7917440963a` |
-| `Slump.zip`                                  | masterxeon1001’s SafetyBotBust, `Slump2.blend`, CC BY 3.0 per the archive notice               | `0f403aac26e9c3429b0f5502b169111e43f30e923aebebf262c9630e2b391a2c` |
-| `Worker robot.blend`                         | Both original couriers. Author and distribution terms remain unverified.                       | `a5b7788caae2d07e0360f55253b7868408ae8e6e7cff9942483f7c63d4b1a4bd` |
+| Original input                               | Provenance                                                                                                                                    | SHA-256                                                            |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `Maintenance Hoverbot - rigged animated.zip` | [ClayOgre’s Maintenance Hoverbot](https://www.blendswap.com/blends/view/77451), `bot_normal_toolbox2.blend`, CC BY 3.0 per the archive notice | `cb240836b07d45fd6bc5afe7d6ce4a96a6c58c2eecf54a20246fe7917440963a` |
+| `Slump.zip`                                  | [masterxeon1001’s SafetyBotBust](https://www.blendswap.com/blends/view/71997), `Slump2.blend`, CC BY 3.0 per the archive notice               | `0f403aac26e9c3429b0f5502b169111e43f30e923aebebf262c9630e2b391a2c` |
+| `Worker robot.blend`                         | Both original couriers. Redistribution without attribution is owner-confirmed.                                                                | `a5b7788caae2d07e0360f55253b7868408ae8e6e7cff9942483f7c63d4b1a4bd` |
 
 ```powershell
 blender --background --python-exit-code 2 --python tools/operator-room/build_tactile_control_room.py -- --models-dir build/operator-room-inputs --draft --skip-render
 blender --background build/operator-room-rebuild/tactile_control_room.blend --python-exit-code 2 --python tools/operator-room/export_control_room.py -- --output-dir build/operator-room-rebuild/export
 ```
 
-The room adapts the Hoverbot with four skins and station animation. It uses SafetyBotBust as Steelman with updated materials, eye lighting, and head motion. Retain the archive notices and adaptation credits. The earlier apartment and Skaro fan-art prototypes remain on the source branch and are separate from this scene. Distribution of the room requires verified Worker robot rights. [CC BY 3.0 terms](https://creativecommons.org/licenses/by/3.0/)
+The room adapts the Hoverbot with four skins and station animation. It uses SafetyBotBust as Steelman with updated materials, eye lighting, and head motion. Retain the archive notices and adaptation credits. The earlier apartment and Skaro fan-art prototypes remain on the source branch and are separate from the released scene. [CC BY 3.0 terms](https://creativecommons.org/licenses/by/3.0/)

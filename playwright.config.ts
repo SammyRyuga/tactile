@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const staging = process.env.TACTILE_SMOKE_URL;
-const devOrigin = "http://127.0.0.1:5190";
+const production3dOrigin = "http://127.0.0.1:5190";
 const previewSpec = "operator-room-preview.spec.ts";
 
 const demoEnv = {
@@ -25,11 +25,11 @@ export default defineConfig({
     ...(!staging
       ? [
           {
-            name: "local-preview",
+            name: "production-3d",
             testMatch: previewSpec,
             use: {
               ...devices["Desktop Chrome"],
-              baseURL: devOrigin,
+              baseURL: production3dOrigin,
               launchOptions: {
                 args: [
                   "--use-angle=swiftshader",
@@ -50,9 +50,9 @@ export default defineConfig({
           url: "http://127.0.0.1:5189/health",
         },
         {
-          command: "npm run dev",
+          command: "npm start",
           env: { ...demoEnv, PORT: "5190" },
-          url: devOrigin + "/health",
+          url: production3dOrigin + "/health",
         },
       ],
 });
