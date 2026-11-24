@@ -14,9 +14,10 @@ The Blender master already packs its texture images, including the two robots’
 metal materials and the generated floor map. It uses Blender’s built-in font
 and has no linked libraries or external texture paths required at runtime.
 The GLB embeds its geometry, animations, and images and uses Meshopt and
-WebP extensions. The website includes the matching decoder. These binaries
-are handed off as local files. The Git branch carries the reproducible tools
-and this manifest.
+WebP extensions. The website includes the matching decoder. The Git branch
+carries the [original GLB export](../assets/operator-room/control-room.glb),
+the reproducible tools, and this manifest. The editable master is in the
+local handoff package.
 
 ## Re-export the exact master
 
@@ -39,7 +40,8 @@ Meshopt and verified lossless WebP data plus gzip and Brotli transport variants.
 If Blender reports its known Windows shutdown crash, check that the exporter
 printed `Web model saved to` and that the target GLB opens in the viewer.
 
-To use the delivered export directly, place `control-room.glb` at
+To use the delivered export directly, copy
+`assets/operator-room/control-room.glb` to
 `build/control-room-assets/control-room.glb` and run `npm run dev`.
 
 ## Rebuild from the original actor inputs
