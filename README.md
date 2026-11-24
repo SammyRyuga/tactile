@@ -95,6 +95,16 @@ Expand **Operator Room** to see the selected reviewers and their status. Recorde
 
 Desktop localhost can also show the original 3D scene. Place the authorized GLB at `build/control-room-assets/control-room.glb`, run `npm run dev`, and select **Load local 3D preview** in the room. Production builds include the text-based room. The 3D viewer and GLB stay local while Worker robot distribution rights and broader device performance are pending. [Local preview](docs/blender-scene.md) · [Blender asset and tool handoff](docs/operator-room-handoff.md)
 
+### 3D asset credits
+
+The Operator Room scene and its integration are developed by Team Tactile. The scene includes adapted third-party models:
+
+- [SafetyBotBust](https://www.blendswap.com/blends/view/71997) by [masterxeon1001](https://www.blendswap.com/users/view/masterxeon1001), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Adapted as Steelman with updated materials, eye lighting and head motion.
+- [Maintenance Hoverbot — rigged, animated](https://www.blendswap.com/blends/view/77451) by [ClayOgre](https://www.blendswap.com/users/view/ClayOgre), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Adapted with four reviewer skins and station animations.
+- Worker robot (couriers): the team confirms that this asset is free to redistribute and does not require attribution.
+
+The two CC BY 3.0 models retain their original licenses; the repository's MIT software license does not replace those terms. See the [asset handoff](docs/operator-room-handoff.md) for provenance and export details.
+
 ## Deploy to Render
 
 Follow the [deployment and staging guide](docs/DUAL_DEPLOYMENT.md) to verify the deployed commit and run the public demo smoke tests. A current build serves the anonymous examples at `/demo` and protects the workspace at `/review` and `/settings`. On an authenticated Render service, `npm run build` installs and checks the pinned Python dependencies. Independent staging is available for rehearsals.
