@@ -139,6 +139,4 @@ For a self-managed reverse proxy, set **TRUSTED_PROXY_RANGES** to the verified s
 
 Built by [Ryan Fernandes](https://github.com/ryanfer123), [Samanyu Pattanayak](https://github.com/SammyRyuga) and [Aritra Ghosh](https://github.com/aritraghosh2005). Tactile’s original code and documentation are available under the [MIT License](LICENSE).
 
-Tactile includes Crossfire’s original review, file ingestion, and plan revision code under the [upstream MIT license](server/crossfire/upstream/LICENSE). [Crossfire repository](https://github.com/hriday-singh/crossfire) · [Technical breakdown](https://www.linkedin.com/pulse/crossfire-technical-breakdown-ashutosh-padhy-wnaqc/)
-
 The homepage illustration is original artwork generated for Tactile. The site uses Bricolage Grotesque and Geist with GSAP and Lenis for motion.
