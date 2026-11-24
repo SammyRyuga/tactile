@@ -1,27 +1,114 @@
-.operator-room {
-  margin-block: 1rem;
+.review-workspace > .operator-room {
+  margin-block: 1rem 0;
+}
+
+.operator-room-body {
+  padding-block: 0.25rem 0.65rem;
+}
+
+.operator-room-body > .field-note {
+  margin: 0;
 }
 
 .operator-stations {
   list-style: none;
-  margin: 0.75rem 0;
+  margin: 0.65rem 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 0.5rem;
 }
 
 .operator-stations li {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.65rem;
-  border: 1px solid currentColor;
-  border-radius: 0.5rem;
+  grid-template-rows: 1fr auto;
+  align-items: start;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--soft-line);
+  border-radius: 0.65rem;
+  background: var(--paper);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.operator-station-status {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--station-status, var(--quiet));
+  font-size: 0.85rem;
+}
+
+.operator-station-status i::before {
+  content: "–";
+}
+
+.operator-stations :is([data-state="done"], [data-state="result"]) {
+  --station-status: light-dark(#345420, #cbe696);
+  border-color: color-mix(in srgb, var(--station-status) 42%, var(--soft-line));
+}
+
+.operator-stations
+  :is(
+    [data-state="working"],
+    [data-state="verifying"],
+    [data-state="synthesizing"]
+  ) {
+  --station-status: light-dark(#234b78, #b9d6ff);
+}
+
+.operator-stations [data-state="unavailable"] {
+  --station-status: light-dark(#833e2d, #f7baa8);
+}
+
+.operator-stations [data-state="result"] {
+  background: color-mix(in srgb, var(--station-status) 9%, var(--paper));
+}
+
+.operator-stations :is([data-state="done"], [data-state="result"]) i::before {
+  content: "✓";
+}
+
+.operator-stations
+  :is(
+    [data-state="working"],
+    [data-state="verifying"],
+    [data-state="synthesizing"]
+  )
+  i::before {
+  content: "●";
+}
+
+.operator-stations [data-state="unavailable"] i::before {
+  content: "!";
+}
+
+.operator-stations [data-state="skipped"] i::before {
+  content: "↷";
+}
+
+.operator-stations
+  :is([data-state="unrecorded"], [data-state="unreported"])
+  i::before {
+  content: "○";
 }
 
 .operator-preview {
-  margin-top: 0.8rem;
+  margin-top: 0.75rem;
 }
+
+.operator-preview > .field-note:empty {
+  margin: 0;
+}
+
+@media (min-width: 51rem) {
+  .operator-stations {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
 .operator-viewer {
   position: relative;
   height: clamp(22rem, 65vh, 50rem);
@@ -47,9 +134,4 @@
   list-style: none;
   margin: 0.35rem 0;
   padding: 0;
-}
-@media (max-width: 768px) {
-  .operator-preview {
-    display: none;
-  }
 }

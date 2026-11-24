@@ -1323,9 +1323,10 @@ export function App({
                     : "Checking the assumptions you selected…"}
             </p>
             <details className="proposal review-room-disclosure">
-              <summary>Explore the review room</summary>
+              <summary>Review activity</summary>
               <LiveReviewRoom
                 claims={state.claims}
+                demo={mode === "demo"}
                 progress={state.progress}
                 updates={state.updates}
                 panel={mode === "live" ? reviewPanel : undefined}

@@ -252,7 +252,7 @@ test("the demo aligns the desktop plan and exposes the supported conclusion, exp
   await expect(copy).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(download).toBeFocused();
-  await page.getByText("See the review room", { exact: true }).press("Enter");
+  await page.getByText("Review activity", { exact: true }).press("Enter");
   const room = page.getByRole("group", { name: "Review stations" });
   await expect(
     room.getByRole("button", { name: "Feasibility Complete" }),

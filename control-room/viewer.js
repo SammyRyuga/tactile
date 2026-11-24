@@ -64,16 +64,16 @@ export function mountControlRoom(root, readReview, onReady, onFailure) {
     controller.abort();
     while (cleanups.length) cleanups.pop()();
   };
-  const fail = () => {
+  const fail = (reason) => {
     if (controller.signal.aborted) return;
     close();
-    onFailure();
+    onFailure(reason);
   };
   void showRoom(root, readReview, controller.signal, cleanups, fail)
     .then(() => {
       if (!controller.signal.aborted) onReady();
     })
-    .catch(fail);
+    .catch(() => fail("loadFailed"));
   return close;
 }
 
@@ -100,14 +100,19 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
   const flowRelay = root.querySelector("[data-room-relay]");
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const context = canvas.getContext("webgl2", { antialias: true });
-  if (!context) throw new Error("WebGL 2 unavailable.");
+  if (!context) {
+    fail("unsupported");
+    return;
+  }
   const renderer = new THREE.WebGLRenderer({ canvas, context });
   cleanups.push(() => {
     renderer.setAnimationLoop(null);
     renderer.dispose();
     renderer.forceContextLoss();
   });
-  canvas.addEventListener("webglcontextlost", fail, { signal });
+  canvas.addEventListener("webglcontextlost", () => fail("contextLost"), {
+    signal,
+  });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.toneMapping = THREE.AgXToneMapping;
   renderer.toneMappingExposure = 1.08;
@@ -144,7 +149,16 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
     signal,
     redirect: "error",
   });
-  if (!response.ok) throw new Error("Local room model unavailable.");
+  if (response.status === 404) {
+    fail("missing");
+    return;
+  }
+  if (
+    !response.ok ||
+    response.headers.get("content-type")?.split(";")[0]?.trim() !==
+      "model/gltf-binary"
+  )
+    throw new Error("Invalid local room model response.");
   const manager = new THREE.LoadingManager();
   manager.setURLModifier((url) => {
     if (/^(blob:|data:)/.test(url)) return url;
@@ -432,7 +446,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
     try {
       draw(time);
     } catch {
-      fail();
+      fail("loadFailed");
     }
   });
   canvas.dataset.ready = "true";

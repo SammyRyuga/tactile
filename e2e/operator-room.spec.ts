@@ -180,3 +180,118 @@ test("mocked live stations track concurrent work and cancel without a report", a
   await expect(stations.getByText("Unavailable")).toBeVisible();
   await expect(stations.getByText("Memo ready")).toBeVisible();
 });
+
+test("CI review activity and Operator Room stay separated at release widths", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "desktop");
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.goto("/demo?example=ci");
+  await page.getByRole("button", { name: "Review example" }).press("Enter");
+  await page.getByRole("button", { name: "Run checks" }).press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Review results" }),
+  ).toBeVisible();
+
+  const review = page.locator(".room-disclosure");
+  const operator = page.locator(".operator-room");
+  const reviewSummary = review.locator("summary");
+  const operatorSummary = operator.locator("summary");
+  const stations = page.getByRole("list", { name: "Operator Room stations" });
+  async function checkBounds() {
+    const { reportGap, footerGap, activityInside, disclosuresAligned, fits } =
+      await page.evaluate(() => {
+        const rect = (selector: string) =>
+          document.querySelector(selector)!.getBoundingClientRect();
+        const report = rect("section.report");
+        const activity = rect(".room-disclosure");
+        const operator = rect(".operator-room");
+        const footer = rect("main > footer");
+        const plan = rect(".report-details > details:first-child");
+        return {
+          reportGap: operator.top - report.bottom,
+          footerGap: footer.top - operator.bottom,
+          activityInside:
+            activity.bottom < report.bottom && activity.top > report.top,
+          disclosuresAligned:
+            plan.left === activity.left && plan.right === activity.right,
+          fits: document.documentElement.scrollWidth <= innerWidth,
+        };
+      });
+    expect(reportGap).toBeGreaterThanOrEqual(12);
+    expect(footerGap).toBeGreaterThanOrEqual(16);
+    expect(activityInside).toBe(true);
+    expect(disclosuresAligned).toBe(true);
+    expect(fits).toBe(true);
+  }
+
+  for (const theme of ["light", "dark"]) {
+    if (theme === "dark")
+      await page.getByRole("button", { name: "Dark mode" }).press("Enter");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    for (const width of [320, 390, 768, 1280, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(review).toHaveJSProperty("open", false);
+      await expect(operator).toHaveJSProperty("open", false);
+      await checkBounds();
+      await reviewSummary.press("Enter");
+      await operatorSummary.press("Space");
+      await expect(stations.getByText("Memo ready")).toBeVisible();
+      await expect(stations.getByText("Not recorded")).toBeVisible();
+      await expect(review.getByText("Recorded checks")).toBeVisible();
+      await checkBounds();
+      expect(
+        await review.evaluate((disclosure) => {
+          const room = disclosure.querySelector(".review-room")!;
+          const scene = room
+            .querySelector(".room-scene")!
+            .getBoundingClientRect();
+          const panel = room.getBoundingClientRect();
+          const frame = disclosure.getBoundingClientRect();
+          const detail = room
+            .querySelector(".room-detail")!
+            .getBoundingClientRect();
+          const stationBoxes = Array.from(
+            room.querySelectorAll(".room-station"),
+            (item) => item.getBoundingClientRect(),
+          );
+          return (
+            panel.bottom < frame.bottom &&
+            detail.bottom <= panel.bottom &&
+            detail.right <= panel.right &&
+            stationBoxes.every(
+              (box, index) =>
+                box.left >= scene.left &&
+                box.right <= scene.right &&
+                box.top >= scene.top &&
+                box.bottom <= scene.bottom &&
+                stationBoxes
+                  .slice(index + 1)
+                  .every(
+                    (other) =>
+                      box.right <= other.left ||
+                      other.right <= box.left ||
+                      box.bottom <= other.top ||
+                      other.bottom <= box.top,
+                  ),
+            ) &&
+            room.scrollWidth <= room.clientWidth
+          );
+        }),
+      ).toBe(true);
+      expect(
+        await stations.locator(":scope > li").evaluateAll((cards) => {
+          const boxes = cards.map((card) => card.getBoundingClientRect());
+          return boxes.every(
+            (box) =>
+              Math.abs(box.width - boxes[0].width) < 1 &&
+              Math.abs(box.height - boxes[0].height) < 1,
+          );
+        }),
+      ).toBe(true);
+      await expect(page.locator(".operator-preview")).toHaveCount(0);
+      await operatorSummary.press("Enter");
+      await reviewSummary.press("Space");
+    }
+  }
+});

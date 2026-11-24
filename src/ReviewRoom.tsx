@@ -168,7 +168,11 @@ function ReviewRoom({
       </div>
       <div className="room-detail" id={detailId}>
         <p className="room-detail-mode">
-          {recorded ? "Recorded checks" : "Review room"}
+          {demo
+            ? recorded
+              ? "Recorded checks"
+              : "Recorded playback"
+            : "Live checks"}
         </p>
         <h3>{selected.label}</h3>
         <p
@@ -229,11 +233,13 @@ export function LiveReviewRoom({
   progress,
   updates,
   panel,
+  demo,
 }: {
   claims: Claim[];
   progress: Partial<Record<Stage, ProgressEvent["status"]>>;
   updates: Record<string, Partial<Record<Stage, ProgressEvent>>>;
   panel?: readonly Reviewer[];
+  demo: boolean;
 }) {
   const checks: Check[] = Object.entries(progress).map(([stage, status]) => ({
     stage: stage as Stage,
@@ -244,7 +250,7 @@ export function LiveReviewRoom({
       checks.push({ ...event, claim: claim.text });
     }
   }
-  return <ReviewRoom checks={checks} panel={panel} />;
+  return <ReviewRoom checks={checks} panel={panel} demo={demo} />;
 }
 
 export function RecordedReviewRoom({ report }: { report: Report }) {
@@ -264,7 +270,7 @@ export function RecordedReviewRoom({ report }: { report: Report }) {
   if (!checks.length) return null;
   return (
     <details className="proposal room-disclosure">
-      <summary>See the review room</summary>
+      <summary>Review activity</summary>
       <ReviewRoom
         checks={checks}
         recommendation={report.recommendation}
