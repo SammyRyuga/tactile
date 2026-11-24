@@ -1,0 +1,24 @@
+Tactile Operator Room
+
+Scene and integration by Team Tactile. Source, attribution and export notes:
+https://github.com/SammyRyuga/tactile/blob/main/docs/operator-room-handoff.md
+
+SafetyBotBust by masterxeon1001
+Source: https://www.blendswap.com/blends/view/71997
+Creator: https://www.blendswap.com/users/view/masterxeon1001
+License: Creative Commons Attribution 3.0 Unported
+https://creativecommons.org/licenses/by/3.0/
+Adapted as Steelman with updated materials, eye lighting and head motion.
+
+Maintenance Hoverbot — rigged, animated by ClayOgre
+Source: https://www.blendswap.com/blends/view/77451
+Creator: https://www.blendswap.com/users/view/ClayOgre
+License: Creative Commons Attribution 3.0 Unported
+https://creativecommons.org/licenses/by/3.0/
+Adapted with four reviewer skins and station animations.
+
+Worker robot (couriers): the Tactile owner confirms redistribution is
+authorized without attribution.
+
+The CC BY 3.0 models retain their original license. Tactile's MIT software
+license does not replace the model terms.

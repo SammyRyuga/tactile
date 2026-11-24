@@ -47,6 +47,8 @@ In PowerShell use `$env:TACTILE_SMOKE_URL = 'https://your-staging-service.onrend
 
 The smoke suite replays all three cases in Chromium, checks that the demo avoids API and external requests, opens the evidence timeline, exports the memo, and checks anonymous access to the settings read endpoint. Review the new service's **Events** and **Logs** for deploy or runtime errors. See the [Round 1 walkthrough](round1-demo.md) for a manual rehearsal.
 
+The build packages the versioned Operator Room model, its precompressed variants, and the attribution notice from the commit. On desktop, open the room in a recorded demo after the service wakes. Confirm that the browser loads the model only after **Open 3D Operator Room**, renders the scene, and still exports Markdown with the room open. The server streams the prebuilt variants. Cold starts and the visitor’s connection and GPU affect first-open time. [Operator Room guide](blender-scene.md)
+
 ### Verify Crossfire startup on Render
 
 For an approved authenticated deploy, check the build log for `crossfire_build_ready`. It reports the Python version, the dependency mode, and the time taken by the full worker handshake. The default uses `python3` and installs the pinned requirements in `.crossfire-python`. A deliberate `TACTILE_PYTHON` override must name an executable available during both build and startup with the required packages already installed.

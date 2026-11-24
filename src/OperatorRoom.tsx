@@ -1,6 +1,5 @@
-/// <reference types="vite/client" />
-
 import { useEffect, useRef, useState } from "react";
+import { roomAssetUrl } from "../shared/operator-room-asset.ts";
 import { reviewerIds, reviewers } from "../shared/reviewers.ts";
 import type { PreviewFailure } from "../control-room/viewer.js";
 import type { ControlRoomActivity } from "./controlRoomFeed.ts";
@@ -27,12 +26,12 @@ const steelmanLabels = {
 };
 
 const previewMessages = {
-  checking: "Checking for a local 3D model…",
-  missing: "Local 3D model is missing.",
-  checkFailed: "Could not check for the local 3D model.",
-  loading: "Loading local scene…",
+  checking: "Checking for the 3D Operator Room…",
+  missing: "The 3D Operator Room model is unavailable.",
+  checkFailed: "Could not check for the 3D Operator Room.",
+  loading: "Loading 3D scene…",
   unsupported: "WebGL 2 is unavailable in this browser.",
-  loadFailed: "Could not load the local 3D scene.",
+  loadFailed: "Could not load the 3D Operator Room.",
   contextLost: "The 3D preview lost its graphics connection.",
 };
 
@@ -40,8 +39,8 @@ type Availability = "available" | "missing" | "checkFailed";
 type Preview = "closed" | "loading" | "ready" | PreviewFailure;
 let assetCheck: Promise<Availability> | undefined;
 
-function checkLocalModel() {
-  assetCheck ??= fetch("/control-room-assets/control-room.glb", {
+function checkRoomAsset() {
+  assetCheck ??= fetch(roomAssetUrl, {
     method: "HEAD",
     cache: "no-store",
     redirect: "error",
@@ -59,7 +58,7 @@ function checkLocalModel() {
   return assetCheck;
 }
 
-function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
+function RoomPreview({ activity }: { activity: ControlRoomActivity }) {
   const [desktop, setDesktop] = useState(
     () => matchMedia("(min-width: 769px)").matches,
   );
@@ -89,7 +88,7 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
   useEffect(() => {
     if (!desktop) return;
     let active = true;
-    void checkLocalModel().then((result) => {
+    void checkRoomAsset().then((result) => {
       if (active) setAvailability(result);
     });
     return () => {
@@ -152,7 +151,7 @@ function LocalPreview({ activity }: { activity: ControlRoomActivity }) {
             className="button"
             onClick={() => setPreview(showing ? "closed" : "loading")}
           >
-            {showing ? "Close 3D preview" : "Load local 3D preview"}
+            {showing ? "Close 3D preview" : "Open 3D Operator Room"}
           </button>
           {preview === "ready" && (
             <button
@@ -223,9 +222,7 @@ export function OperatorRoom({ activity }: { activity: ControlRoomActivity }) {
             </span>
           </li>
         </ul>
-        {import.meta.env.DEV && expanded && (
-          <LocalPreview activity={activity} />
-        )}
+        {expanded && <RoomPreview activity={activity} />}
       </div>
     </details>
   );

@@ -93,7 +93,7 @@ The browser keeps drafts and completed reports in the tab’s session storage. R
 
 Expand **Operator Room** to see the selected reviewers and their status. Recorded examples replay saved activity. Live reviews show events as they arrive. The memo and Markdown export are available independently of the room.
 
-Desktop localhost can also show the original 3D scene. Place the authorized GLB at `build/control-room-assets/control-room.glb`, run `npm run dev`, and select **Load local 3D preview** in the room. Production builds include the text-based room. The 3D viewer and GLB stay local while Worker robot distribution rights and broader device performance are pending. [Local preview](docs/blender-scene.md) · [Blender asset and tool handoff](docs/operator-room-handoff.md)
+On a supported desktop browser, select **Open 3D Operator Room** to load the original scene on demand. The text-based stations and Markdown export are available on mobile and without WebGL 2. The development server and production build use the verified scene from the repository. [Operator Room guide](docs/blender-scene.md) · [Blender asset and tool handoff](docs/operator-room-handoff.md)
 
 ### 3D asset credits
 
@@ -101,9 +101,9 @@ The Operator Room scene and its integration are developed by Team Tactile. The s
 
 - [SafetyBotBust](https://www.blendswap.com/blends/view/71997) by [masterxeon1001](https://www.blendswap.com/users/view/masterxeon1001), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Adapted as Steelman with updated materials, eye lighting and head motion.
 - [Maintenance Hoverbot — rigged, animated](https://www.blendswap.com/blends/view/77451) by [ClayOgre](https://www.blendswap.com/users/view/ClayOgre), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Adapted with four reviewer skins and station animations.
-- Worker robot (couriers): the team confirms that this asset is free to redistribute and does not require attribution.
+- Worker robot (couriers): the Tactile owner confirms redistribution is authorized without attribution.
 
-The two CC BY 3.0 models retain their original licenses; the repository's MIT software license does not replace those terms. See the [asset handoff](docs/operator-room-handoff.md) for provenance and export details.
+The two CC BY 3.0 models retain their original licenses; the repository's MIT software license does not replace those terms. The release packages an [attribution notice](assets/operator-room/ATTRIBUTION.txt) with the model. See the [asset handoff](docs/operator-room-handoff.md) for provenance and export details.
 
 ## Deploy to Render
 

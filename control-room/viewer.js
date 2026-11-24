@@ -4,6 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { roomAssetUrl } from "../shared/operator-room-asset.ts";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { makePodShift } from "./pod-shift.js";
@@ -161,7 +162,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
     scene.add(light);
   }
 
-  const response = await fetch("/control-room-assets/control-room.glb", {
+  const response = await fetch(roomAssetUrl, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
     redirect: "error",
   });
@@ -174,7 +175,7 @@ async function showRoom(root, readReview, signal, cleanups, fail) {
     response.headers.get("content-type")?.split(";")[0]?.trim() !==
       "model/gltf-binary"
   )
-    throw new Error("Invalid local room model response.");
+    throw new Error("Invalid Operator Room model response.");
   const manager = new THREE.LoadingManager();
   manager.setURLModifier((url) => {
     if (/^(blob:|data:)/.test(url)) return url;

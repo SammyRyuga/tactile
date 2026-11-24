@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { roomAssetUrl } from "../shared/operator-room-asset.ts";
 import { mockAuthentication, signIn } from "./auth-fixture.ts";
 
 test("FAQ and curved links keep their keyboard semantics at release widths", async ({
@@ -44,7 +45,12 @@ test("FAQ and curved links keep their keyboard semantics at release widths", asy
 
 test("recorded Operator Room displays actual checks and keeps Markdown available", async ({
   page,
-}) => {
+}, info) => {
+  const roomRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === roomAssetUrl)
+      roomRequests.push(request.method());
+  });
   await page.goto("/demo?example=flag");
   await page.getByRole("button", { name: "Review example" }).click();
   await page.getByRole("button", { name: "Run checks" }).click();
@@ -56,6 +62,12 @@ test("recorded Operator Room displays actual checks and keeps Markdown available
   await expect(room.getByText("Memo ready")).toBeVisible();
   await expect(room.getByText("Not recorded").first()).toBeVisible();
   await expect(page.locator("iframe")).toHaveCount(0);
+  if (info.project.name === "mobile") {
+    await expect(
+      page.getByRole("button", { name: "Open 3D Operator Room" }),
+    ).toHaveCount(0);
+    expect(roomRequests).toEqual([]);
+  }
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export Markdown" }).click();
   expect((await download).suggestedFilename()).toBe("tactile-review.md");
@@ -298,7 +310,10 @@ test("CI review activity and Operator Room stay separated at release widths", as
           );
         }),
       ).toBe(true);
-      await expect(page.locator(".operator-preview")).toHaveCount(0);
+      await expect(page.locator(".operator-viewer")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Open 3D Operator Room" }),
+      ).toHaveCount(width >= 769 ? 1 : 0);
       await operatorSummary.press("Enter");
       await reviewSummary.press("Space");
     }
